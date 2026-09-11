@@ -1,3 +1,4 @@
+
 <!doctype html>
 <html lang="en" dir="ltr">
 <head>
@@ -486,7 +487,7 @@ async function sendMessage(prompt=null){
  const historyData=c.messages.map(m=>({role:m.role,content:m.content}));
  controller=new AbortController();setBusy(true);setOnline(true);thinking();scrollBottom();
  try{
-  const response=await fetch(API_ENDPOINT,{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({message:text,messages:historyData,history:historyData}),signal:controller.signal});
+  const response=await fetch(API_ENDPOINT,{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({message:text,messages:historyData}),signal:controller.signal});
   if(!response.ok)throw new Error("HTTP "+response.status);
   const type=response.headers.get("content-type")||"";
   const data=type.includes("application/json")?await response.json():await response.text();
