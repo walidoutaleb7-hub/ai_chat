@@ -1,0 +1,13 @@
+{
+  "name": "weura-ai",
+  "version": "1.0.0",
+  "private": true,
+  "description": "WEURA AI web app backend",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
