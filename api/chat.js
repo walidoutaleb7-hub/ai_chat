@@ -1,14 +1,28 @@
+
 export default async function handler(req, res) {
+    // السماح بـ POST فقط
     if (req.method !== "POST") {
         return res.status(405).json({
             error: "Method not allowed"
         });
     }
 
-    try {
-        const { message } = req.body || {};
+    // التأكد من وجود مفتاح API
+    if (!process.env.OPENAI_API_KEY) {
+        return res.status(500).json({
+            error: "OPENAI_API_KEY is missing"
+        });
+    }
 
-        if (!message || typeof message !== "string") {
+    try {
+        const body = req.body || {};
+
+        const message =
+            typeof body.message === "string"
+                ? body.message.trim()
+                : "";
+
+        if (!message) {
             return res.status(400).json({
                 error: "Message is required"
             });
@@ -21,43 +35,78 @@ export default async function handler(req, res) {
 
                 headers: {
                     "Content-Type": "application/json",
-
                     "Authorization":
                         `Bearer ${process.env.OPENAI_API_KEY}`
                 },
 
                 body: JSON.stringify({
-                    model: "gpt-5.6-mini",
+                    model: "gpt-5.6-luna",
 
                     instructions: `
-أنت NEURA، مساعد ذكاء اصطناعي ذكي.
-هدفك ليس فقط الإجابة، بل مساعدة المستخدم
-على فهم المشكلة والتخطيط للحل وتنفيذه بشكل واضح.
+أنت WEURA AI، مساعد ذكاء اصطناعي ذكي وودود.
 
-كن دقيقًا ومفيدًا ومختصرًا عندما لا يحتاج الأمر
-إلى شرح طويل.
+قواعدك الأساسية:
+- أجب بنفس لغة المستخدم.
+- تدعم العربية، الدارجة الجزائرية، الفرنسية والإنجليزية.
+- كن دقيقًا ولا تخترع المعلومات.
+- افهم سؤال المستخدم قبل الإجابة.
+- عندما يحتاج المستخدم إلى شرح، اشرح بطريقة واضحة ومنظمة.
+- عندما يطلب المستخدم كودًا، قدم كودًا نظيفًا وكاملًا وقابلًا للتطبيق.
+- ساعد المستخدم على فهم المشكلة والتخطيط للحل وتنفيذه.
+- لا تقل إنك NEURA؛ اسمك WEURA AI.
                     `,
 
-                    input: message
+                    input: message,
+
+                    max_output_tokens: 3000
                 })
             }
         );
 
         const data = await response.json();
 
+        // معالجة أخطاء OpenAI
         if (!response.ok) {
-            return res.status(response.status).json({
-                error: data
+            console.error(
+                "OpenAI API Error:",
+                response.status,
+                data
+            );
+
+            return res.status(
+                response.status >= 500
+                    ? 502
+                    : response.status
+            ).json({
+                error:
+                    data?.error?.message ||
+                    "OpenAI API error"
+            });
+        }
+
+        const reply =
+            typeof data.output_text === "string"
+                ? data.output_text.trim()
+                : "";
+
+        if (!reply) {
+            return res.status(502).json({
+                error: "The AI returned an empty response."
             });
         }
 
         return res.status(200).json({
-            reply: data.output_text || "لم أتمكن من إنشاء رد."
+            success: true,
+            reply: reply,
+            model: "gpt-5.6-luna",
+            responseId: data.id || null
         });
 
     } catch (error) {
-
-        console.error(error);
+        console.error(
+            "WEURA SERVER ERROR:",
+            error
+        );
 
         return res.status(500).json({
             error: "Internal server error"
