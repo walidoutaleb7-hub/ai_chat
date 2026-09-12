@@ -2,7 +2,7 @@
 
 /*
 =========================================================
-WEURA AI — GROQ SERVER CORE
+WEURA AI — GROQ SERVER
 =========================================================
 
 Provider:
@@ -17,16 +17,13 @@ Features:
 - Image understanding
 - Conversation history
 - Persistent memory
-- Request validation
-- Timeout protection
-- Optional streaming
+- Streaming
 - CORS
 - Error handling
 
-IMPORTANT:
-- No OpenAI API
-- No OPENAI_API_KEY
-- No gpt-5.6-luna
+NO OPENAI
+NO OPENAI_API_KEY
+NO gpt-5.6-luna
 =========================================================
 */
 
@@ -39,53 +36,51 @@ const crypto = require('crypto');
    CONFIG
 ======================================================== */
 
-const PORT =
-    Number(process.env.PORT || 3000);
+const PORT = Number(process.env.PORT || 3000);
+const HOST = process.env.HOST || '0.0.0.0';
 
-const HOST =
-    process.env.HOST || '0.0.0.0';
-
-/*
- * GROQ ONLY
- */
-const API_KEY =
-    process.env.GROQ_API_KEY || '';
+const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
 
 /*
- * Text + web model
+ * Web-enabled model
  */
-const MODEL =
+const GROQ_MODEL =
     process.env.WEURA_MODEL ||
     'groq/compound';
 
 /*
+ * Normal text model
+ * Used when web search is disabled.
+ */
+const GROQ_TEXT_MODEL =
+    process.env.WEURA_TEXT_MODEL ||
+    'llama-3.3-70b-versatile';
+
+/*
  * Vision model
  */
-const VISION_MODEL =
+const GROQ_VISION_MODEL =
     process.env.WEURA_VISION_MODEL ||
     'qwen/qwen3.6-27b';
 
-const ROOT =
-    __dirname;
-
-const MEMORY_FILE =
-    path.join(
-        ROOT,
-        'weura-memory.json'
-    );
-
 /*
- * Groq Chat Completions endpoint.
+ * Groq's OpenAI-compatible endpoint.
  *
- * This is Groq's OpenAI-compatible endpoint.
- * The request goes to Groq.
+ * IMPORTANT:
+ * This is still Groq.
+ * There is NO OpenAI API being used.
  */
 const GROQ_ENDPOINT =
     'https://api.groq.com/openai/v1/chat/completions';
 
+const ROOT = __dirname;
+
+const MEMORY_FILE =
+    path.join(ROOT, 'weura-memory.json');
+
 /* ========================================================
    LIMITS
-======================================================== */
+========================================================= */
 
 const MAX_REQUEST_SIZE =
     20 * 1024 * 1024;
@@ -109,11 +104,11 @@ const MAX_SOURCES =
     12;
 
 const REQUEST_TIMEOUT =
-    90_000;
+    90000;
 
 /* ========================================================
    SYSTEM PROMPT
-======================================================== */
+========================================================= */
 
 const SYSTEM_PROMPT = `
 You are WEURA AI, a helpful, intelligent, accurate and friendly AI assistant.
@@ -149,11 +144,11 @@ QUALITY
 - Maintain conversation context.
 
 WEB SEARCH
-- Web search is available through the WEURA backend.
+- Web search may be available through WEURA AI.
 - For current, recent, changing or internet-dependent information, use web search when available.
-- Do not claim that a search happened unless the backend actually used a web-search tool.
-- Do not invent sources.
-- Do not invent URLs.
+- Never invent sources.
+- Never invent URLs.
+- Do not claim that a web search happened unless the backend actually used the search tool.
 - Sources are returned separately to the WEURA interface.
 
 IMAGES
@@ -180,18 +175,14 @@ PROGRAMMING
 
 /* ========================================================
    REQUEST ID
-======================================================== */
+========================================================= */
 
 function createRequestId() {
-
     try {
-
         return crypto
             .randomBytes(8)
             .toString('hex');
-
     } catch {
-
         return (
             Date.now().toString(36) +
             Math.random()
@@ -203,7 +194,7 @@ function createRequestId() {
 
 /* ========================================================
    JSON RESPONSE
-======================================================== */
+========================================================= */
 
 function sendJSON(
     res,
@@ -211,18 +202,15 @@ function sendJSON(
     data,
     requestId = null
 ) {
-
     const payload = {
         ...data
     };
 
     if (requestId) {
-        payload.requestId =
-            requestId;
+        payload.requestId = requestId;
     }
 
-    const body =
-        JSON.stringify(payload);
+    const body = JSON.stringify(payload);
 
     if (res.headersSent) {
         return res.end();
@@ -256,13 +244,11 @@ function sendJSON(
 
 /* ========================================================
    BODY READER
-======================================================== */
+========================================================= */
 
 function readBody(req) {
-
     return new Promise(
         (resolve, reject) => {
-
             let body = '';
             let size = 0;
             let finished = false;
@@ -272,21 +258,11 @@ function readBody(req) {
             req.on(
                 'data',
                 chunk => {
+                    if (finished) return;
 
-                    if (finished) {
-                        return;
-                    }
+                    size += Buffer.byteLength(chunk);
 
-                    size +=
-                        Buffer.byteLength(
-                            chunk
-                        );
-
-                    if (
-                        size >
-                        MAX_REQUEST_SIZE
-                    ) {
-
+                    if (size > MAX_REQUEST_SIZE) {
                         finished = true;
 
                         reject(
@@ -309,13 +285,9 @@ function readBody(req) {
             req.on(
                 'end',
                 () => {
-
-                    if (finished) {
-                        return;
-                    }
+                    if (finished) return;
 
                     finished = true;
-
                     resolve(body);
                 }
             );
@@ -323,13 +295,9 @@ function readBody(req) {
             req.on(
                 'error',
                 error => {
-
-                    if (finished) {
-                        return;
-                    }
+                    if (finished) return;
 
                     finished = true;
-
                     reject(error);
                 }
             );
@@ -339,23 +307,17 @@ function readBody(req) {
 
 /* ========================================================
    MEMORY ID
-======================================================== */
+========================================================= */
 
 function safeMemoryId(value) {
-
-    if (
-        typeof value !==
-        'string'
-    ) {
+    if (typeof value !== 'string') {
         return null;
     }
 
-    const id =
-        value.trim();
+    const id = value.trim();
 
     if (
-        !/^[a-zA-Z0-9_-]{8,128}$/
-            .test(id)
+        !/^[a-zA-Z0-9_-]{8,128}$/.test(id)
     ) {
         return null;
     }
@@ -365,17 +327,11 @@ function safeMemoryId(value) {
 
 /* ========================================================
    MEMORY LOAD
-======================================================== */
+========================================================= */
 
 function loadMemories() {
-
     try {
-
-        if (
-            !fs.existsSync(
-                MEMORY_FILE
-            )
-        ) {
+        if (!fs.existsSync(MEMORY_FILE)) {
             return {};
         }
 
@@ -399,7 +355,6 @@ function loadMemories() {
         return data;
 
     } catch (error) {
-
         console.error(
             'MEMORY LOAD ERROR:',
             error
@@ -411,15 +366,13 @@ function loadMemories() {
 
 /* ========================================================
    MEMORY SAVE
-======================================================== */
+========================================================= */
 
 function saveMemories(memories) {
-
     const tempFile =
         `${MEMORY_FILE}.tmp`;
 
     try {
-
         fs.writeFileSync(
             tempFile,
             JSON.stringify(
@@ -436,19 +389,12 @@ function saveMemories(memories) {
         );
 
     } catch (error) {
-
         try {
-
             if (
-                fs.existsSync(
-                    tempFile
-                )
+                fs.existsSync(tempFile)
             ) {
-                fs.unlinkSync(
-                    tempFile
-                );
+                fs.unlinkSync(tempFile);
             }
-
         } catch {}
 
         throw error;
@@ -457,12 +403,9 @@ function saveMemories(memories) {
 
 /* ========================================================
    GET MEMORY
-======================================================== */
+========================================================= */
 
-function getUserMemory(
-    memoryId
-) {
-
+function getUserMemory(memoryId) {
     if (!memoryId) {
         return [];
     }
@@ -473,9 +416,7 @@ function getUserMemory(
     const list =
         memories[memoryId];
 
-    if (
-        !Array.isArray(list)
-    ) {
+    if (!Array.isArray(list)) {
         return [];
     }
 
@@ -493,7 +434,6 @@ function getUserMemory(
         )
         .map(
             item => ({
-
                 text:
                     item.text
                         .trim()
@@ -503,29 +443,25 @@ function getUserMemory(
                         ),
 
                 createdAt:
-                    item.createdAt ||
-                    null,
+                    item.createdAt || null,
 
                 updatedAt:
-                    item.updatedAt ||
-                    null
+                    item.updatedAt || null
             })
         );
 }
 
 /* ========================================================
    ADD MEMORY
-======================================================== */
+========================================================= */
 
 function addMemory(
     memoryId,
     text
 ) {
-
     if (
         !memoryId ||
-        typeof text !==
-        'string'
+        typeof text !== 'string'
     ) {
         return false;
     }
@@ -558,63 +494,45 @@ function addMemory(
             .toISOString();
 
     const existing =
-        memories[memoryId]
-            .find(
-                item =>
-                    item &&
-                    typeof item.text ===
-                        'string' &&
-                    item.text
+        memories[memoryId].find(
+            item =>
+                item &&
+                typeof item.text ===
+                    'string' &&
+                item.text
+                    .toLowerCase()
+                    .trim() ===
+                    cleanText
                         .toLowerCase()
-                        .trim() ===
-                        cleanText
-                            .toLowerCase()
-                            .trim()
-            );
+                        .trim()
+        );
 
     if (existing) {
-
-        existing.updatedAt =
-            now;
-
+        existing.updatedAt = now;
     } else {
-
-        memories[memoryId]
-            .unshift({
-
-                text:
-                    cleanText,
-
-                createdAt:
-                    now,
-
-                updatedAt:
-                    now
-            });
+        memories[memoryId].unshift({
+            text: cleanText,
+            createdAt: now,
+            updatedAt: now
+        });
     }
 
     memories[memoryId] =
-        memories[memoryId]
-            .slice(
-                0,
-                MAX_MEMORY_ITEMS
-            );
+        memories[memoryId].slice(
+            0,
+            MAX_MEMORY_ITEMS
+        );
 
-    saveMemories(
-        memories
-    );
+    saveMemories(memories);
 
     return true;
 }
 
 /* ========================================================
    DELETE MEMORY
-======================================================== */
+========================================================= */
 
-function deleteMemory(
-    memoryId
-) {
-
+function deleteMemory(memoryId) {
     if (!memoryId) {
         return false;
     }
@@ -623,33 +541,29 @@ function deleteMemory(
         loadMemories();
 
     if (
-        !Object.prototype
-            .hasOwnProperty.call(
-                memories,
-                memoryId
-            )
+        !Object.prototype.hasOwnProperty.call(
+            memories,
+            memoryId
+        )
     ) {
         return false;
     }
 
     delete memories[memoryId];
 
-    saveMemories(
-        memories
-    );
+    saveMemories(memories);
 
     return true;
 }
 
 /* ========================================================
    DELETE MEMORY ITEM
-======================================================== */
+========================================================= */
 
 function deleteMemoryItem(
     memoryId,
     index
 ) {
-
     if (!memoryId) {
         return false;
     }
@@ -674,35 +588,25 @@ function deleteMemoryItem(
         return false;
     }
 
-    memories[memoryId]
-        .splice(
-            index,
-            1
-        );
-
-    saveMemories(
-        memories
+    memories[memoryId].splice(
+        index,
+        1
     );
+
+    saveMemories(memories);
 
     return true;
 }
 
 /* ========================================================
    MEMORY PROMPT
-======================================================== */
+========================================================= */
 
-function buildMemoryText(
-    memoryId
-) {
-
+function buildMemoryText(memoryId) {
     const memory =
-        getUserMemory(
-            memoryId
-        );
+        getUserMemory(memoryId);
 
-    if (
-        !memory.length
-    ) {
+    if (!memory.length) {
         return '';
     }
 
@@ -724,12 +628,9 @@ Do not reveal unrelated memories.
 
 /* ========================================================
    CLEAN MESSAGES
-======================================================== */
+========================================================= */
 
-function cleanMessages(
-    messages
-) {
-
+function cleanMessages(messages) {
     if (!Array.isArray(messages)) {
         return [];
     }
@@ -751,58 +652,46 @@ function cleanMessages(
         .slice(-MAX_HISTORY)
         .map(
             item => ({
-
-                role:
-                    item.role,
+                role: item.role,
 
                 content:
                     typeof item.content ===
                         'string'
-
                         ? item.content
                             .trim()
                             .slice(
                                 0,
                                 MAX_MESSAGE_LENGTH
                             )
-
                         : item.content
             })
         )
-        .filter(
-            item => {
-
-                if (
-                    typeof item.content ===
-                    'string'
-                ) {
-
-                    return (
-                        item.content.length > 0
-                    );
-                }
-
+        .filter(item => {
+            if (
+                typeof item.content ===
+                'string'
+            ) {
                 return (
-                    Array.isArray(
-                        item.content
-                    ) &&
                     item.content.length > 0
                 );
             }
-        );
+
+            return (
+                Array.isArray(
+                    item.content
+                ) &&
+                item.content.length > 0
+            );
+        });
 }
 
 /* ========================================================
    IMAGE VALIDATION
-======================================================== */
+========================================================= */
 
-function isValidImageDataUrl(
-    value
-) {
-
+function isValidImageDataUrl(value) {
     if (
-        typeof value !==
-        'string'
+        typeof value !== 'string'
     ) {
         return false;
     }
@@ -813,24 +702,17 @@ function isValidImageDataUrl(
 
 /* ========================================================
    IMAGE CLEANING
-======================================================== */
+========================================================= */
 
-function cleanImage(
-    image
-) {
-
+function cleanImage(image) {
     if (
-        typeof image ===
-        'string'
+        typeof image === 'string'
     ) {
-
         const data =
             image.trim();
 
         if (
-            !isValidImageDataUrl(
-                data
-            )
+            !isValidImageDataUrl(data)
         ) {
             return null;
         }
@@ -850,7 +732,6 @@ function cleanImage(
         typeof image === 'object' &&
         typeof image.data === 'string'
     ) {
-
         return cleanImage(
             image.data
         );
@@ -861,134 +742,100 @@ function cleanImage(
 
 /* ========================================================
    CLEAN IMAGE CONTENT
-======================================================== */
+========================================================= */
 
-function cleanImageContent(
-    content
-) {
-
-    if (
-        !Array.isArray(content)
-    ) {
+function cleanImageContent(content) {
+    if (!Array.isArray(content)) {
         return content;
     }
 
     return content
-        .filter(
-            part => {
-
-                if (
-                    !part ||
-                    typeof part !== 'object'
-                ) {
-                    return false;
-                }
-
-                if (
-                    part.type ===
-                    'input_text' ||
-                    part.type ===
-                    'text'
-                ) {
-
-                    return (
-                        typeof part.text ===
-                            'string' &&
-                        part.text.trim()
-                    );
-                }
-
-                if (
-                    part.type ===
-                        'input_image'
-                ) {
-
-                    return (
-                        typeof part.image_url ===
-                            'string' &&
-                        isValidImageDataUrl(
-                            part.image_url
-                        )
-                    );
-                }
-
-                if (
-                    part.type ===
-                        'image_url'
-                ) {
-
-                    return (
-                        part.image_url &&
-                        typeof part.image_url.url ===
-                            'string'
-                    );
-                }
-
+        .filter(part => {
+            if (
+                !part ||
+                typeof part !== 'object'
+            ) {
                 return false;
             }
-        )
-        .map(
-            part => {
 
-                if (
-                    part.type ===
-                        'input_text' ||
-                    part.type ===
-                        'text'
-                ) {
+            if (
+                part.type === 'input_text' ||
+                part.type === 'text'
+            ) {
+                return (
+                    typeof part.text ===
+                        'string' &&
+                    part.text.trim()
+                );
+            }
 
-                    return {
-
-                        type:
-                            'text',
-
-                        text:
-                            part.text
-                                .trim()
-                                .slice(
-                                    0,
-                                    MAX_MESSAGE_LENGTH
-                                )
-                    };
-                }
-
-                if (
-                    part.type ===
-                        'input_image'
-                ) {
-
-                    return {
-
-                        type:
-                            'image_url',
-
-                        image_url: {
-                            url:
-                                part.image_url
-                        }
-                    };
-                }
-
-                return {
-
-                    type:
-                        'image_url',
-
-                    image_url:
+            if (
+                part.type === 'input_image'
+            ) {
+                return (
+                    typeof part.image_url ===
+                        'string' &&
+                    isValidImageDataUrl(
                         part.image_url
+                    )
+                );
+            }
+
+            if (
+                part.type === 'image_url'
+            ) {
+                return (
+                    part.image_url &&
+                    typeof part.image_url.url ===
+                        'string'
+                );
+            }
+
+            return false;
+        })
+        .map(part => {
+            if (
+                part.type === 'input_text' ||
+                part.type === 'text'
+            ) {
+                return {
+                    type: 'text',
+                    text:
+                        part.text
+                            .trim()
+                            .slice(
+                                0,
+                                MAX_MESSAGE_LENGTH
+                            )
                 };
             }
-        );
+
+            if (
+                part.type ===
+                'input_image'
+            ) {
+                return {
+                    type: 'image_url',
+                    image_url: {
+                        url:
+                            part.image_url
+                    }
+                };
+            }
+
+            return {
+                type: 'image_url',
+                image_url:
+                    part.image_url
+            };
+        });
 }
 
 /* ========================================================
-   CLEAN GROQ MESSAGE
-======================================================== */
+   NORMALIZE MESSAGE
+========================================================= */
 
-function normalizeMessage(
-    item
-) {
-
+function normalizeMessage(item) {
     if (
         !item ||
         typeof item !== 'object'
@@ -1005,7 +852,6 @@ function normalizeMessage(
         typeof item.content ===
         'string'
     ) {
-
         const text =
             item.content
                 .trim()
@@ -1029,7 +875,6 @@ function normalizeMessage(
             item.content
         )
     ) {
-
         const content =
             cleanImageContent(
                 item.content
@@ -1050,14 +895,13 @@ function normalizeMessage(
 
 /* ========================================================
    ENSURE CURRENT MESSAGE
-======================================================== */
+========================================================= */
 
 function ensureCurrentMessage(
     messages,
     message,
     imageData
 ) {
-
     if (
         !message &&
         !imageData
@@ -1068,7 +912,6 @@ function ensureCurrentMessage(
     const content = [];
 
     if (message) {
-
         content.push({
             type: 'text',
             text: message
@@ -1076,15 +919,10 @@ function ensureCurrentMessage(
     }
 
     if (imageData) {
-
         content.push({
-
-            type:
-                'image_url',
-
+            type: 'image_url',
             image_url: {
-                url:
-                    imageData
+                url: imageData
             }
         });
     }
@@ -1094,40 +932,33 @@ function ensureCurrentMessage(
             messages.length - 1
         ];
 
-    let alreadyExists =
-        false;
+    let alreadyExists = false;
 
     if (
         last &&
         last.role === 'user'
     ) {
-
         if (
             typeof last.content ===
             'string'
         ) {
-
             alreadyExists =
                 Boolean(
                     message &&
                     last.content.trim() ===
                         message.trim()
                 );
-
         } else if (
             Array.isArray(
                 last.content
             )
         ) {
-
             const lastText =
                 last.content.find(
                     part =>
                         part &&
-                        (
-                            part.type ===
-                                'text'
-                        )
+                        part.type ===
+                            'text'
                 );
 
             alreadyExists =
@@ -1140,67 +971,46 @@ function ensureCurrentMessage(
         }
     }
 
-    if (
-        alreadyExists
-    ) {
+    if (alreadyExists) {
         return messages;
     }
 
     return [
         ...messages,
         {
-            role:
-                'user',
-
+            role: 'user',
             content:
                 content.length === 1 &&
-                content[0].type ===
-                    'text'
-
+                content[0].type === 'text'
                     ? message
-
                     : content
         }
-    ].slice(
-        -MAX_HISTORY
-    );
+    ].slice(-MAX_HISTORY);
 }
 
 /* ========================================================
    BUILD MESSAGES
-======================================================== */
+========================================================= */
 
 function buildMessages(
     messages,
     instructions
 ) {
-
     const result = [
         {
-            role:
-                'system',
-
-            content:
-                instructions
+            role: 'system',
+            content: instructions
         }
     ];
 
     for (
         const item of messages
     ) {
-
         const normalized =
-            normalizeMessage(
-                item
-            );
+            normalizeMessage(item);
 
-        if (
-            normalized
-        ) {
-
-            result.push(
-                normalized
-            );
+        if (normalized) {
+            result.push(normalized);
         }
     }
 
@@ -1209,13 +1019,12 @@ function buildMessages(
 
 /* ========================================================
    GROQ REQUEST
-======================================================== */
+========================================================= */
 
 async function callGroq(
     requestBody,
     timeoutMs
 ) {
-
     const controller =
         new AbortController();
 
@@ -1228,26 +1037,17 @@ async function callGroq(
         );
 
     try {
-
         return await fetch(
             GROQ_ENDPOINT,
             {
-                method:
-                    'POST',
+                method: 'POST',
 
                 headers: {
-
                     'Authorization':
-                        `Bearer ${API_KEY}`,
+                        `Bearer ${GROQ_API_KEY}`,
 
                     'Content-Type':
-                        'application/json',
-
-                    /*
-                     * Use latest Compound configuration.
-                     */
-                    'Groq-Model-Version':
-                        'latest'
+                        'application/json'
                 },
 
                 body:
@@ -1259,37 +1059,27 @@ async function callGroq(
                     controller.signal
             }
         );
-
     } finally {
-
-        clearTimeout(
-            timeout
-        );
+        clearTimeout(timeout);
     }
 }
 
 /* ========================================================
-   PARSE GROQ ERROR
-======================================================== */
+   PARSE GROQ RESPONSE
+========================================================= */
 
 async function parseGroqResponse(
     response
 ) {
-
     const raw =
         await response.text();
 
     let result;
 
     try {
-
         result =
-            JSON.parse(
-                raw
-            );
-
+            JSON.parse(raw);
     } catch {
-
         result = {
             error: {
                 message:
@@ -1304,20 +1094,18 @@ async function parseGroqResponse(
 
 /* ========================================================
    EXTRACT REPLY
-======================================================== */
+========================================================= */
 
-function extractReply(
-    data
-) {
-
+function extractReply(data) {
     const content =
-        data?.choices?.[0]?.message?.content;
+        data?.choices?.[0]
+            ?.message
+            ?.content;
 
     if (
         typeof content === 'string' &&
         content.trim()
     ) {
-
         return content.trim();
     }
 
@@ -1326,12 +1114,9 @@ function extractReply(
 
 /* ========================================================
    SAFE PUBLIC URL
-======================================================== */
+========================================================= */
 
-function isSafePublicUrl(
-    value
-) {
-
+function isSafePublicUrl(value) {
     if (
         typeof value !== 'string'
     ) {
@@ -1347,7 +1132,6 @@ function isSafePublicUrl(
     }
 
     try {
-
         const parsed =
             new URL(
                 value.trim()
@@ -1376,28 +1160,25 @@ function isSafePublicUrl(
                 '.internal.'
             )
         ) {
-
             return false;
         }
 
         return true;
 
     } catch {
-
         return false;
     }
 }
 
 /* ========================================================
    ADD SOURCE
-======================================================== */
+========================================================= */
 
 function addSource(
     sources,
     seen,
     source
 ) {
-
     if (
         !source ||
         typeof source !== 'object'
@@ -1411,12 +1192,7 @@ function addSource(
             ? source.url.trim()
             : '';
 
-    /*
-     * Some Groq search tool results may expose
-     * the URL under link.
-     */
     if (!url) {
-
         url =
             typeof source.link ===
                 'string'
@@ -1425,9 +1201,7 @@ function addSource(
     }
 
     if (
-        !isSafePublicUrl(
-            url
-        )
+        !isSafePublicUrl(url)
     ) {
         return;
     }
@@ -1435,9 +1209,7 @@ function addSource(
     const key =
         url.toLowerCase();
 
-    if (
-        seen.has(key)
-    ) {
+    if (seen.has(key)) {
         return;
     }
 
@@ -1446,25 +1218,18 @@ function addSource(
     let hostname = '';
 
     try {
-
         hostname =
             new URL(url)
                 .hostname;
-
     } catch {}
 
     const title =
         typeof source.title ===
             'string' &&
         source.title.trim()
-
             ? source.title
                 .trim()
-                .slice(
-                    0,
-                    300
-                )
-
+                .slice(0, 300)
             : hostname ||
               'Web source';
 
@@ -1474,80 +1239,64 @@ function addSource(
         typeof source.snippet ===
         'string'
     ) {
-
         summary =
             source.snippet
                 .trim()
-                .slice(
-                    0,
-                    600
-                );
-
+                .slice(0, 600);
     } else if (
         typeof source.description ===
         'string'
     ) {
-
         summary =
             source.description
                 .trim()
-                .slice(
-                    0,
-                    600
-                );
+                .slice(0, 600);
+    } else if (
+        typeof source.content ===
+        'string'
+    ) {
+        summary =
+            source.content
+                .trim()
+                .slice(0, 600);
     }
 
     sources.push({
-
         title,
-
         url,
-
         hostname,
-
         summary
     });
 }
 
 /* ========================================================
-   EXTRACT SOURCES FROM GROQ COMPOUND
-======================================================== */
+   EXTRACT SOURCES
+========================================================= */
 
-function extractSources(
-    data
-) {
-
+function extractSources(data) {
     const sources = [];
     const seen = new Set();
 
+    const message =
+        data?.choices?.[0]
+            ?.message;
+
     /*
-     * IMPORTANT:
-     * Groq Compound puts executed_tools here:
-     *
-     * choices[0].message.executed_tools
+     * Groq Compound:
+     * executed_tools is attached to
+     * choices[0].message
      */
     const executedTools =
-        data
-            ?.choices?.[0]
-            ?.message
-            ?.executed_tools;
+        message?.executed_tools;
 
     if (
         Array.isArray(
             executedTools
         )
     ) {
-
         for (
-            const tool of
-            executedTools
+            const tool of executedTools
         ) {
-
-            /*
-             * Search result formats can differ
-             * slightly, so inspect several fields.
-             */
-
             const searchResults =
                 tool?.search_results ||
                 tool?.results ||
@@ -1558,12 +1307,10 @@ function extractSources(
                     searchResults
                 )
             ) {
-
                 for (
                     const source of
                     searchResults
                 ) {
-
                     addSource(
                         sources,
                         seen,
@@ -1573,8 +1320,7 @@ function extractSources(
             }
 
             /*
-             * Some responses expose the
-             * result as an object.
+             * Object-based result format.
              */
             if (
                 searchResults &&
@@ -1584,7 +1330,6 @@ function extractSources(
                     searchResults
                 )
             ) {
-
                 const candidates =
                     searchResults.results ||
                     searchResults.sources ||
@@ -1596,12 +1341,10 @@ function extractSources(
                         candidates
                     )
                 ) {
-
                     for (
                         const source of
                         candidates
                     ) {
-
                         addSource(
                             sources,
                             seen,
@@ -1614,26 +1357,27 @@ function extractSources(
     }
 
     /*
-     * Fallback:
-     * inspect the message itself.
+     * Additional fallback fields.
      */
-    const message =
-        data
-            ?.choices?.[0]
-            ?.message;
+    const possibleSources = [
+        message?.sources,
+        message?.search_results,
+        data?.sources,
+        data?.search_results
+    ];
 
-    if (
-        message &&
-        Array.isArray(
-            message.sources
-        )
+    for (
+        const list of possibleSources
     ) {
+        if (
+            !Array.isArray(list)
+        ) {
+            continue;
+        }
 
         for (
-            const source of
-            message.sources
+            const source of list
         ) {
-
             addSource(
                 sources,
                 seen,
@@ -1649,8 +1393,8 @@ function extractSources(
 }
 
 /* ========================================================
-   BUILD GROQ REQUEST
-======================================================== */
+   BUILD REQUEST BODY
+========================================================= */
 
 function buildRequestBody(
     data,
@@ -1658,34 +1402,44 @@ function buildRequestBody(
     instructions,
     hasImage
 ) {
+    const requestedTokens =
+        Number(
+            data.maxOutputTokens
+        );
 
     const maxTokens =
         Number.isFinite(
-            Number(
-                data.maxOutputTokens
-            )
+            requestedTokens
         )
             ? Math.min(
                 Math.max(
-                    Number(
-                        data.maxOutputTokens
-                    ),
+                    requestedTokens,
                     256
                 ),
                 8192
             )
             : 4000;
 
+    const webSearch =
+        data.webSearch !== false;
+
     /*
-     * Images use the Vision model.
-     *
-     * Text-only requests use Compound so
-     * WEURA can use built-in web search.
+     * Image -> Vision model
+     * Web search -> Compound
+     * Normal -> text model
      */
-    const model =
-        hasImage
-            ? VISION_MODEL
-            : MODEL;
+    let model;
+
+    if (hasImage) {
+        model =
+            GROQ_VISION_MODEL;
+    } else if (webSearch) {
+        model =
+            GROQ_MODEL;
+    } else {
+        model =
+            GROQ_TEXT_MODEL;
+    }
 
     const requestMessages =
         buildMessages(
@@ -1694,7 +1448,6 @@ function buildRequestBody(
         );
 
     const body = {
-
         model,
 
         messages:
@@ -1711,33 +1464,32 @@ function buildRequestBody(
     };
 
     /*
-     * Web search is handled by Compound.
+     * IMPORTANT:
      *
-     * We restrict the tools only when
-     * webSearch was explicitly disabled.
+     * DO NOT SEND:
+     * citation_options
+     *
+     * It caused:
+     * "model groq/compound does not support citations"
+     *
+     * Compound itself can execute web search.
      */
-    if (
-        model === MODEL &&
-        data.webSearch === false
-    ) {
-
-        body.compound_custom = {
-
-            tools: {
-                enabled_tools: []
-            }
-        };
-    }
 
     /*
-     * Citation support.
+     * Restrict Compound to web search.
      */
     if (
-        model === MODEL
+        !hasImage &&
+        webSearch &&
+        model === GROQ_MODEL
     ) {
-
-        body.citation_options =
-            'enabled';
+        body.compound_custom = {
+            tools: {
+                enabled_tools: [
+                    'web_search'
+                ]
+            }
+        };
     }
 
     return body;
@@ -1745,25 +1497,19 @@ function buildRequestBody(
 
 /* ========================================================
    CHAT
-======================================================== */
+========================================================= */
 
 async function chat(
     req,
     res,
     requestId
 ) {
-
-    /*
-     * GROQ KEY ONLY
-     */
-    if (!API_KEY) {
-
+    if (!GROQ_API_KEY) {
         return sendJSON(
             res,
             500,
             {
-                success:
-                    false,
+                success: false,
 
                 error:
                     'WEURA server is missing GROQ_API_KEY.',
@@ -1776,26 +1522,20 @@ async function chat(
     }
 
     /* ====================================================
-       READ BODY
+       BODY
     ==================================================== */
 
     let rawBody;
 
     try {
-
         rawBody =
-            await readBody(
-                req
-            );
-
+            await readBody(req);
     } catch {
-
         return sendJSON(
             res,
             413,
             {
-                success:
-                    false,
+                success: false,
 
                 error:
                     'Request body is too large.',
@@ -1808,26 +1548,22 @@ async function chat(
     }
 
     /* ====================================================
-       PARSE JSON
+       JSON
     ==================================================== */
 
     let data;
 
     try {
-
         data =
             JSON.parse(
                 rawBody
             );
-
     } catch {
-
         return sendJSON(
             res,
             400,
             {
-                success:
-                    false,
+                success: false,
 
                 error:
                     'Invalid JSON.',
@@ -1844,13 +1580,11 @@ async function chat(
         typeof data !== 'object' ||
         Array.isArray(data)
     ) {
-
         return sendJSON(
             res,
             400,
             {
-                success:
-                    false,
+                success: false,
 
                 error:
                     'Invalid request body.',
@@ -1869,14 +1603,12 @@ async function chat(
     const message =
         typeof data.message ===
             'string'
-
             ? data.message
                 .trim()
                 .slice(
                     0,
                     MAX_MESSAGE_LENGTH
                 )
-
             : '';
 
     /* ====================================================
@@ -1892,13 +1624,11 @@ async function chat(
         data.image &&
         !imageData
     ) {
-
         return sendJSON(
             res,
             400,
             {
-                success:
-                    false,
+                success: false,
 
                 error:
                     'Invalid or oversized image.',
@@ -1925,13 +1655,11 @@ async function chat(
         !message &&
         !imageData
     ) {
-
         return sendJSON(
             res,
             400,
             {
-                success:
-                    false,
+                success: false,
 
                 error:
                     'Message or image is required.',
@@ -1987,9 +1715,10 @@ async function chat(
     const stream =
         data.stream === true;
 
-    /*
-     * Build request.
-     */
+    /* ====================================================
+       BUILD REQUEST
+    ==================================================== */
+
     const requestBody =
         buildRequestBody(
             {
@@ -1998,24 +1727,8 @@ async function chat(
             },
             messages,
             instructions,
-            Boolean(
-                imageData
-            )
+            Boolean(imageData)
         );
-
-    /*
-     * Ensure image gets included correctly.
-     */
-    if (imageData) {
-
-        /*
-         * ensureCurrentMessage already
-         * inserted the image.
-         *
-         * We additionally validate that
-         * image content remains present.
-         */
-    }
 
     console.log(
         `[${requestId}] CHAT`,
@@ -2031,42 +1744,29 @@ async function chat(
             stream,
 
             image:
-                Boolean(
-                    imageData
-                ),
+                Boolean(imageData),
 
             history:
                 messages.length,
 
             memory:
-                Boolean(
-                    memoryId
-                )
+                Boolean(memoryId)
         }
     );
 
     /* ====================================================
-       STREAMING
+       STREAM
     ==================================================== */
 
     if (stream) {
-
         try {
-
-            /*
-             * For image requests we also support
-             * streaming if the model does.
-             */
             const response =
                 await callGroq(
                     requestBody,
                     REQUEST_TIMEOUT
                 );
 
-            if (
-                !response.ok
-            ) {
-
+            if (!response.ok) {
                 const result =
                     await parseGroqResponse(
                         response
@@ -2120,185 +1820,125 @@ async function chat(
             );
 
             const reader =
-                response.body
-                    .getReader();
+                response.body.getReader();
 
             const decoder =
                 new TextDecoder();
 
             let buffer = '';
 
-            try {
+            while (true) {
+                const {
+                    done,
+                    value
+                } =
+                    await reader.read();
 
-                while (true) {
-
-                    const {
-                        done,
-                        value
-                    } =
-                        await reader.read();
-
-                    if (done) {
-                        break;
-                    }
-
-                    buffer +=
-                        decoder.decode(
-                            value,
-                            {
-                                stream:
-                                    true
-                            }
-                        );
-
-                    const lines =
-                        buffer.split('\n');
-
-                    buffer =
-                        lines.pop() || '';
-
-                    for (
-                        const line of
-                        lines
-                    ) {
-
-                        if (
-                            !line.startsWith(
-                                'data:'
-                            )
-                        ) {
-                            continue;
-                        }
-
-                        const payload =
-                            line
-                                .slice(5)
-                                .trim();
-
-                        if (
-                            !payload
-                        ) {
-                            continue;
-                        }
-
-                        if (
-                            payload ===
-                            '[DONE]'
-                        ) {
-
-                            /*
-                             * Emit a compatibility
-                             * event for the frontend.
-                             */
-                            res.write(
-                                `event: done\ndata: ${JSON.stringify({
-                                    done: true
-                                })}\n\n`
-                            );
-
-                            continue;
-                        }
-
-                        let parsed;
-
-                        try {
-
-                            parsed =
-                                JSON.parse(
-                                    payload
-                                );
-
-                        } catch {
-
-                            continue;
-                        }
-
-                        /*
-                         * Groq stream:
-                         *
-                         * choices[0].delta.content
-                         *
-                         * Convert it to a frontend-friendly
-                         * event while also preserving the
-                         * original Groq object.
-                         */
-                        const delta =
-                            parsed
-                                ?.choices?.[0]
-                                ?.delta
-                                ?.content;
-
-                        if (
-                            typeof delta ===
-                            'string' &&
-                            delta.length
-                        ) {
-
-                            res.write(
-                                `data: ${JSON.stringify({
-                                    type:
-                                        'response.output_text.delta',
-
-                                    delta,
-
-                                    choices:
-                                        parsed.choices ||
-                                        [],
-
-                                    groq:
-                                        parsed
-                                })}\n\n`
-                            );
-
-                        } else {
-
-                            /*
-                             * Forward non-text events too.
-                             */
-                            res.write(
-                                `data: ${JSON.stringify(
-                                    parsed
-                                )}\n\n`
-                            );
-                        }
-                    }
+                if (done) {
+                    break;
                 }
 
-            } catch (error) {
-
-                console.error(
-                    `[${requestId}] STREAM READ ERROR:`,
-                    error
-                );
-
-                try {
-
-                    res.write(
-                        `event: error\ndata: ${JSON.stringify({
-                            success:
-                                false,
-
-                            error:
-                                'Streaming connection interrupted.',
-
-                            code:
-                                'STREAM_INTERRUPTED'
-                        })}\n\n`
+                buffer +=
+                    decoder.decode(
+                        value,
+                        {
+                            stream: true
+                        }
                     );
 
-                } catch {}
+                const lines =
+                    buffer.split('\n');
+
+                buffer =
+                    lines.pop() || '';
+
+                for (
+                    const line of lines
+                ) {
+                    if (
+                        !line.startsWith(
+                            'data:'
+                        )
+                    ) {
+                        continue;
+                    }
+
+                    const payload =
+                        line
+                            .slice(5)
+                            .trim();
+
+                    if (!payload) {
+                        continue;
+                    }
+
+                    if (
+                        payload ===
+                        '[DONE]'
+                    ) {
+                        res.write(
+                            `event: done\ndata: ${JSON.stringify({
+                                done: true
+                            })}\n\n`
+                        );
+
+                        continue;
+                    }
+
+                    let parsed;
+
+                    try {
+                        parsed =
+                            JSON.parse(
+                                payload
+                            );
+                    } catch {
+                        continue;
+                    }
+
+                    const delta =
+                        parsed
+                            ?.choices?.[0]
+                            ?.delta
+                            ?.content;
+
+                    if (
+                        typeof delta ===
+                            'string' &&
+                        delta.length
+                    ) {
+                        res.write(
+                            `data: ${JSON.stringify({
+                                type:
+                                    'response.output_text.delta',
+
+                                delta,
+
+                                choices:
+                                    parsed.choices ||
+                                    [],
+
+                                groq:
+                                    parsed
+                            })}\n\n`
+                        );
+                    } else {
+                        res.write(
+                            `data: ${JSON.stringify(
+                                parsed
+                            )}\n\n`
+                        );
+                    }
+                }
             }
 
-            try {
-                res.end();
-            } catch {}
+            res.end();
 
             return;
 
         } catch (error) {
-
             console.error(
-                `[${requestId}] STREAM SERVER ERROR:`,
+                `[${requestId}] STREAM ERROR:`,
                 error
             );
 
@@ -2306,7 +1946,6 @@ async function chat(
                 error?.name ===
                 'AbortError'
             ) {
-
                 return sendJSON(
                     res,
                     504,
@@ -2347,7 +1986,6 @@ async function chat(
     ==================================================== */
 
     try {
-
         const response =
             await callGroq(
                 requestBody,
@@ -2359,10 +1997,7 @@ async function chat(
                 response
             );
 
-        if (
-            !response.ok
-        ) {
-
+        if (!response.ok) {
             console.error(
                 `[${requestId}] GROQ API ERROR:`,
                 response.status,
@@ -2391,14 +2026,11 @@ async function chat(
         }
 
         const reply =
-            extractReply(
-                result
-            );
+            extractReply(result);
 
         if (!reply) {
-
             console.error(
-                `[${requestId}] EMPTY GROQ RESPONSE:`,
+                `[${requestId}] EMPTY RESPONSE:`,
                 result
             );
 
@@ -2419,16 +2051,10 @@ async function chat(
             );
         }
 
-        /*
-         * Sources only make sense when
-         * Compound was used.
-         */
         const sources =
             !imageData &&
             webSearch
-                ? extractSources(
-                    result
-                )
+                ? extractSources(result)
                 : [];
 
         return sendJSON(
@@ -2449,8 +2075,7 @@ async function chat(
                     'groq',
 
                 responseId:
-                    result.id ||
-                    null,
+                    result.id || null,
 
                 webSearchEnabled:
                     webSearch &&
@@ -2460,20 +2085,15 @@ async function chat(
                     sources.length,
 
                 imageAnalyzed:
-                    Boolean(
-                        imageData
-                    ),
+                    Boolean(imageData),
 
                 memoryEnabled:
-                    Boolean(
-                        memoryId
-                    )
+                    Boolean(memoryId)
             },
             requestId
         );
 
     } catch (error) {
-
         console.error(
             `[${requestId}] CHAT ERROR:`,
             error
@@ -2483,7 +2103,6 @@ async function chat(
             error?.name ===
             'AbortError'
         ) {
-
             return sendJSON(
                 res,
                 504,
@@ -2521,7 +2140,7 @@ async function chat(
 
 /* ========================================================
    MEMORY API
-======================================================== */
+========================================================= */
 
 async function handleMemory(
     req,
@@ -2530,7 +2149,6 @@ async function handleMemory(
     url,
     requestId
 ) {
-
     let memoryId =
         safeMemoryId(
             url.searchParams.get(
@@ -2546,21 +2164,14 @@ async function handleMemory(
     ==================================================== */
 
     if (
-        method ===
-        'POST'
+        method === 'POST'
     ) {
-
         let rawBody;
 
         try {
-
             rawBody =
-                await readBody(
-                    req
-                );
-
+                await readBody(req);
         } catch {
-
             return sendJSON(
                 res,
                 413,
@@ -2581,14 +2192,11 @@ async function handleMemory(
         let data;
 
         try {
-
             data =
                 JSON.parse(
                     rawBody
                 );
-
         } catch {
-
             return sendJSON(
                 res,
                 400,
@@ -2616,18 +2224,15 @@ async function handleMemory(
         const text =
             typeof data.text ===
                 'string'
-
                 ? data.text
                     .trim()
                     .slice(
                         0,
                         MAX_MEMORY_LENGTH
                     )
-
                 : '';
 
         if (!memoryId) {
-
             return sendJSON(
                 res,
                 400,
@@ -2646,7 +2251,6 @@ async function handleMemory(
         }
 
         if (!text) {
-
             return sendJSON(
                 res,
                 400,
@@ -2665,14 +2269,11 @@ async function handleMemory(
         }
 
         try {
-
             addMemory(
                 memoryId,
                 text
             );
-
         } catch (error) {
-
             console.error(
                 `[${requestId}] MEMORY SAVE ERROR:`,
                 error
@@ -2716,12 +2317,9 @@ async function handleMemory(
     ==================================================== */
 
     if (
-        method ===
-        'GET'
+        method === 'GET'
     ) {
-
         if (!memoryId) {
-
             return sendJSON(
                 res,
                 400,
@@ -2760,10 +2358,8 @@ async function handleMemory(
     ==================================================== */
 
     if (
-        method ===
-        'DELETE'
+        method === 'DELETE'
     ) {
-
         const indexParam =
             url.searchParams.get(
                 'index'
@@ -2772,9 +2368,7 @@ async function handleMemory(
         if (
             indexParam !== null
         ) {
-
             if (!memoryId) {
-
                 return sendJSON(
                     res,
                     400,
@@ -2798,11 +2392,8 @@ async function handleMemory(
                 );
 
             if (
-                !Number.isInteger(
-                    index
-                )
+                !Number.isInteger(index)
             ) {
-
                 return sendJSON(
                     res,
                     400,
@@ -2845,7 +2436,6 @@ async function handleMemory(
         }
 
         if (!memoryId) {
-
             return sendJSON(
                 res,
                 400,
@@ -2903,18 +2493,15 @@ async function handleMemory(
 
 /* ========================================================
    HEALTH
-======================================================== */
+========================================================= */
 
 function health(
     res,
     requestId
 ) {
-
     const memoryAvailable =
         (() => {
-
             try {
-
                 if (
                     fs.existsSync(
                         MEMORY_FILE
@@ -2929,12 +2516,9 @@ function health(
                 );
 
                 return true;
-
             } catch {
-
                 return false;
             }
-
         })();
 
     return sendJSON(
@@ -2957,14 +2541,17 @@ function health(
                 'online',
 
             model:
-                MODEL,
+                GROQ_MODEL,
+
+            textModel:
+                GROQ_TEXT_MODEL,
 
             visionModel:
-                VISION_MODEL,
+                GROQ_VISION_MODEL,
 
             apiKeyLoaded:
                 Boolean(
-                    API_KEY
+                    GROQ_API_KEY
                 ),
 
             memory:
@@ -2997,12 +2584,9 @@ function health(
 
 /* ========================================================
    INDEX
-======================================================== */
+========================================================= */
 
-function serveIndex(
-    res
-) {
-
+function serveIndex(res) {
     const file =
         path.join(
             ROOT,
@@ -3012,9 +2596,7 @@ function serveIndex(
     fs.readFile(
         file,
         (error, data) => {
-
             if (error) {
-
                 return sendJSON(
                     res,
                     500,
@@ -3042,16 +2624,14 @@ function serveIndex(
                 }
             );
 
-            res.end(
-                data
-            );
+            res.end(data);
         }
     );
 }
 
 /* ========================================================
    SERVER
-======================================================== */
+========================================================= */
 
 const server =
     http.createServer(
@@ -3059,12 +2639,10 @@ const server =
             req,
             res
         ) => {
-
             const requestId =
                 createRequestId();
 
             try {
-
                 /* =========================================
                    CORS
                 ========================================= */
@@ -3073,7 +2651,6 @@ const server =
                     req.method ===
                     'OPTIONS'
                 ) {
-
                     res.writeHead(
                         204,
                         {
@@ -3112,7 +2689,6 @@ const server =
                     url.pathname ===
                         '/api/health'
                 ) {
-
                     return health(
                         res,
                         requestId
@@ -3132,7 +2708,6 @@ const server =
                         req.method === 'DELETE'
                     )
                 ) {
-
                     return await handleMemory(
                         req,
                         res,
@@ -3151,7 +2726,6 @@ const server =
                     url.pathname ===
                         '/api/chat'
                 ) {
-
                     return await chat(
                         req,
                         res,
@@ -3170,10 +2744,7 @@ const server =
                         url.pathname === '/index.html'
                     )
                 ) {
-
-                    return serveIndex(
-                        res
-                    );
+                    return serveIndex(res);
                 }
 
                 /* =========================================
@@ -3197,7 +2768,6 @@ const server =
                 );
 
             } catch (error) {
-
                 console.error(
                     `[${requestId}] SERVER ERROR:`,
                     error
@@ -3206,7 +2776,6 @@ const server =
                 if (
                     !res.headersSent
                 ) {
-
                     return sendJSON(
                         res,
                         500,
@@ -3233,12 +2802,11 @@ const server =
 
 /* ========================================================
    SERVER ERROR
-======================================================== */
+========================================================= */
 
 server.on(
     'error',
     error => {
-
         console.error(
             'SERVER LISTEN ERROR:',
             error
@@ -3248,27 +2816,22 @@ server.on(
 
 /* ========================================================
    START
-======================================================== */
+========================================================= */
 
 server.listen(
     PORT,
     HOST,
     () => {
-
         console.log('');
-
         console.log(
             '======================================'
         );
-
         console.log(
             '             WEURA AI'
         );
-
         console.log(
             '======================================'
         );
-
         console.log('');
 
         console.log(
@@ -3276,20 +2839,24 @@ server.listen(
         );
 
         console.log(
-            `Provider: Groq`
+            'Provider: Groq'
         );
 
         console.log(
-            `Model: ${MODEL}`
+            `Web Model: ${GROQ_MODEL}`
         );
 
         console.log(
-            `Vision Model: ${VISION_MODEL}`
+            `Text Model: ${GROQ_TEXT_MODEL}`
+        );
+
+        console.log(
+            `Vision Model: ${GROQ_VISION_MODEL}`
         );
 
         console.log(
             `API Key: ${
-                API_KEY
+                GROQ_API_KEY
                     ? 'LOADED ✓'
                     : 'MISSING ✗'
             }`
