@@ -1,25 +1,46 @@
-<?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+package com.weura.ai;
 
-    <uses-permission android:name="android.permission.INTERNET" />
+import android.annotation.SuppressLint;
+import android.os.Bundle;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
 
-    <application
-        android:allowBackup="true"
-        android:label="WEURA AI"
-        android:theme="@style/Theme.AppCompat.DayNight.NoActionBar"
-        android:usesCleartextTraffic="false">
+import androidx.appcompat.app.AppCompatActivity;
 
-        <activity
-            android:name=".MainActivity"
-            android:exported="true">
+public class MainActivity extends AppCompatActivity {
 
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
+    private WebView webView;
 
-        </activity>
+    @SuppressLint("SetJavaScriptEnabled")
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
 
-    </application>
+        webView = new WebView(this);
+        setContentView(webView);
 
-</manifest>
+        WebSettings settings = webView.getSettings();
+
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+        settings.setDatabaseEnabled(true);
+        settings.setAllowFileAccess(true);
+        settings.setAllowContentAccess(true);
+
+        webView.setWebViewClient(new WebViewClient());
+
+        // سيتم تغيير هذا الرابط إلى رابط WEURA المنشور
+        // بعد تجهيز الـBackend.
+        webView.loadUrl("https://YOUR-WEURA-URL.com");
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (webView.canGoBack()) {
+            webView.goBack();
+        } else {
+            super.onBackPressed();
+        }
+    }
+}
