@@ -1,28 +1,426 @@
-<?xml version="1.0" encoding="utf-8"?>
+package com.weura.ai;
 
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+import android.Manifest;
+import android.app.Activity;
+import android.content.ActivityNotFoundException;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.net.Uri;
+import android.os.Bundle;
+import android.provider.MediaStore;
+import android.webkit.ConsoleMessage;
+import android.webkit.ValueCallback;
+import android.webkit.WebChromeClient;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceError;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
+import android.widget.Toast;
 
-    <uses-permission android:name="android.permission.INTERNET" />
+import androidx.annotation.NonNull;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 
-    <application
-        android:allowBackup="true"
-        android:label="WEURA AI"
-        android:icon="@drawable/weura_icon"
-        android:roundIcon="@drawable/weura_icon"
-        android:theme="@style/Theme.AppCompat.DayNight.NoActionBar"
-        android:usesCleartextTraffic="false">
+public class MainActivity extends AppCompatActivity {
 
-        <activity
-            android:name=".MainActivity"
-            android:exported="true">
+    private static final int FILE_CHOOSER_REQUEST = 1001;
+    private static final int CAMERA_PERMISSION_REQUEST = 1002;
 
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
+    private WebView webView;
 
-        </activity>
+    private ValueCallback<Uri[]> filePathCallback;
 
-    </application>
+    private final String[] CAMERA_PERMISSIONS = {
+            Manifest.permission.CAMERA
+    };
 
-</manifest>
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+
+        webView = new WebView(this);
+        setContentView(webView);
+
+        setupWebView();
+
+        /*
+         * IMPORTANT:
+         * This expects your WEURA web files to be placed in:
+         *
+         * android/app/src/main/assets/
+         *
+         * with index.html inside that folder.
+         */
+        webView.loadUrl("file:///android_asset/index.html");
+    }
+
+    private void setupWebView() {
+
+        WebSettings settings = webView.getSettings();
+
+        // JavaScript
+        settings.setJavaScriptEnabled(true);
+
+        // DOM storage / localStorage
+        settings.setDomStorageEnabled(true);
+
+        // Database/storage support
+        settings.setDatabaseEnabled(true);
+
+        // Allow file access
+        settings.setAllowFileAccess(true);
+        settings.setAllowContentAccess(true);
+
+        // Better WebView compatibility
+        settings.setJavaScriptCanOpenWindowsAutomatically(true);
+        settings.setSupportMultipleWindows(false);
+
+        // Zoom
+        settings.setSupportZoom(false);
+        settings.setBuiltInZoomControls(false);
+        settings.setDisplayZoomControls(false);
+
+        // Responsive viewport
+        settings.setLoadWithOverviewMode(false);
+        settings.setUseWideViewPort(false);
+
+        /*
+         * Media permissions:
+         * Needed for camera/microphone requests made
+         * by JavaScript APIs such as getUserMedia().
+         */
+        settings.setMediaPlaybackRequiresUserGesture(false);
+
+        /*
+         * Keep navigation inside the WebView.
+         */
+        webView.setWebViewClient(
+                new WebViewClient() {
+
+                    @Override
+                    public boolean shouldOverrideUrlLoading(
+                            WebView view,
+                            WebResourceRequest request
+                    ) {
+                        return false;
+                    }
+
+                    @Override
+                    public void onReceivedError(
+                            WebView view,
+                            WebResourceRequest request,
+                            WebResourceError error
+                    ) {
+                        super.onReceivedError(
+                                view,
+                                request,
+                                error
+                        );
+
+                        /*
+                         * Do not crash the application
+                         * when a web resource fails.
+                         */
+                    }
+                }
+        );
+
+        /*
+         * Chrome/Web APIs:
+         * - file chooser
+         * - camera permission requests
+         * - JavaScript console
+         */
+        webView.setWebChromeClient(
+                new WebChromeClient() {
+
+                    @Override
+                    public boolean onShowFileChooser(
+                            WebView webView,
+                            ValueCallback<Uri[]> filePathCallback,
+                            FileChooserParams fileChooserParams
+                    ) {
+
+                        MainActivity.this.filePathCallback =
+                                filePathCallback;
+
+                        openFileChooser(
+                                fileChooserParams
+                        );
+
+                        return true;
+                    }
+
+                    @Override
+                    public void onPermissionRequest(
+                            android.webkit.PermissionRequest request
+                    ) {
+
+                        runOnUiThread(() -> {
+
+                            String[] resources =
+                                    request.getResources();
+
+                            boolean wantsCamera = false;
+                            boolean wantsMicrophone = false;
+
+                            for (String resource : resources) {
+
+                                if (android.webkit.PermissionRequest
+                                        .RESOURCE_VIDEO_CAPTURE
+                                        .equals(resource)) {
+
+                                    wantsCamera = true;
+                                }
+
+                                if (android.webkit.PermissionRequest
+                                        .RESOURCE_AUDIO_CAPTURE
+                                        .equals(resource)) {
+
+                                    wantsMicrophone = true;
+                                }
+                            }
+
+                            if (
+                                    wantsCamera &&
+                                    ContextCompat.checkSelfPermission(
+                                            MainActivity.this,
+                                            Manifest.permission.CAMERA
+                                    ) != PackageManager.PERMISSION_GRANTED
+                            ) {
+
+                                ActivityCompat.requestPermissions(
+                                        MainActivity.this,
+                                        CAMERA_PERMISSIONS,
+                                        CAMERA_PERMISSION_REQUEST
+                                );
+
+                                /*
+                                 * The WebView request will be handled
+                                 * again after Android permission.
+                                 */
+                                return;
+                            }
+
+                            /*
+                             * Camera/microphone permissions requested
+                             * by the web page are granted only after
+                             * Android has granted the corresponding
+                             * native permission.
+                             */
+                            request.grant(resources);
+                        });
+                    }
+
+                    @Override
+                    public boolean onConsoleMessage(
+                            ConsoleMessage consoleMessage
+                    ) {
+
+                        android.util.Log.d(
+                                "WEURA_WEB",
+                                consoleMessage.message()
+                                        + " — line "
+                                        + consoleMessage.lineNumber()
+                        );
+
+                        return true;
+                    }
+                }
+        );
+
+        /*
+         * Hardware acceleration is normally enabled by default.
+         * This helps WebView rendering.
+         */
+        webView.setLayerType(
+                WebView.LAYER_TYPE_HARDWARE,
+                null
+        );
+    }
+
+    private void openFileChooser(
+            WebChromeClient.FileChooserParams params
+    ) {
+
+        Intent intent;
+
+        try {
+
+            intent =
+                    params.createIntent();
+
+        } catch (Exception e) {
+
+            intent =
+                    new Intent(Intent.ACTION_GET_CONTENT);
+
+            intent.setType("*/*");
+            intent.addCategory(
+                    Intent.CATEGORY_OPENABLE
+            );
+        }
+
+        try {
+
+            startActivityForResult(
+                    intent,
+                    FILE_CHOOSER_REQUEST
+            );
+
+        } catch (ActivityNotFoundException e) {
+
+            if (filePathCallback != null) {
+                filePathCallback.onReceiveValue(null);
+                filePathCallback = null;
+            }
+
+            Toast.makeText(
+                    this,
+                    "No file picker available",
+                    Toast.LENGTH_SHORT
+            ).show();
+        }
+    }
+
+    @Override
+    protected void onActivityResult(
+            int requestCode,
+            int resultCode,
+            Intent data
+    ) {
+        super.onActivityResult(
+                requestCode,
+                resultCode,
+                data
+        );
+
+        if (
+                requestCode ==
+                        FILE_CHOOSER_REQUEST
+        ) {
+
+            Uri[] results = null;
+
+            if (
+                    resultCode == Activity.RESULT_OK &&
+                    data != null
+            ) {
+
+                /*
+                 * Multiple file selection.
+                 */
+                if (data.getClipData() != null) {
+
+                    int count =
+                            data.getClipData()
+                                    .getItemCount();
+
+                    results =
+                            new Uri[count];
+
+                    for (
+                            int i = 0;
+                            i < count;
+                            i++
+                    ) {
+
+                        results[i] =
+                                data.getClipData()
+                                        .getItemAt(i)
+                                        .getUri();
+                    }
+
+                } else if (data.getData() != null) {
+
+                    results =
+                            new Uri[]{
+                                    data.getData()
+                            };
+                }
+            }
+
+            if (filePathCallback != null) {
+
+                filePathCallback.onReceiveValue(
+                        results
+                );
+
+                filePathCallback = null;
+            }
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(
+            int requestCode,
+            @NonNull String[] permissions,
+            @NonNull int[] grantResults
+    ) {
+        super.onRequestPermissionsResult(
+                requestCode,
+                permissions,
+                grantResults
+        );
+
+        if (
+                requestCode ==
+                        CAMERA_PERMISSION_REQUEST
+        ) {
+
+            boolean granted =
+                    grantResults.length > 0 &&
+                    grantResults[0] ==
+                            PackageManager.PERMISSION_GRANTED;
+
+            if (!granted) {
+
+                Toast.makeText(
+                        this,
+                        "Camera permission denied",
+                        Toast.LENGTH_SHORT
+                ).show();
+            }
+        }
+    }
+
+    @Override
+    public void onBackPressed() {
+
+        if (
+                webView != null &&
+                webView.canGoBack()
+        ) {
+
+            webView.goBack();
+
+        } else {
+
+            super.onBackPressed();
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+
+        if (webView != null) {
+
+            webView.loadUrl(
+                    "about:blank"
+            );
+
+            webView.stopLoading();
+
+            webView.setWebChromeClient(null);
+            webView.setWebViewClient(null);
+
+            webView.destroy();
+
+            webView = null;
+        }
+
+        super.onDestroy();
+    }
+}
