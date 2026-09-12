@@ -1,17 +1,25 @@
 "use strict";
 
 /* =========================================================
-   WEURA AI — CHAT.JS
-   Frontend controller
+   WEURA AI — Complete Frontend Controller
    Think Beyond.
+   Compatible with the current WEURA index.html + server.js
 ========================================================= */
 
-const WEURA = {
-  history: [],
-  conversations: [],
-  currentConversationId: null,
+(() => {
+  const $ = (id) => document.getElementById(id);
 
-  settings: {
+  const all = (selector) =>
+    Array.from(document.querySelectorAll(selector));
+
+  const STORAGE = {
+    settings: "weura_settings",
+    conversations: "weura_conversations",
+    current: "weura_current_conversation",
+    memory: "weura_memory"
+  };
+
+  const DEFAULT_SETTINGS = {
     theme: "dark",
     language: "auto",
     enterSend: true,
@@ -21,288 +29,190 @@ const WEURA = {
     protection: false,
     typingSpeed: 18,
     mode: "smart"
-  },
+  };
 
-  recognition: null,
-  mediaStream: null,
+  const W = {
+    initialized: false,
+    settings: { ...DEFAULT_SETTINGS },
 
-  lastPrompt: "",
-  lastAssistantMessage: "",
+    conversations: [],
+    currentConversationId: null,
 
-  isGenerating: false,
-  abortController: null,
-  generationToken: 0,
+    history: [],
 
-  userIsScrolling: false,
-  initialized: false
-};
+    isGenerating: false,
+    abortController: null,
+    generationToken: 0,
 
-/* =========================================================
-   STORAGE
-========================================================= */
+    recognition: null,
+    mediaStream: null,
 
-const STORAGE = {
-  history: "weura_history",
-  conversations: "weura_conversations",
-  settings: "weura_settings",
-  current: "weura_current_conversation",
-  memory: "weura_memory"
-};
+    lastPrompt: "",
+    lastAssistantMessage: ""
+  };
 
-/* =========================================================
-   ICONS
-========================================================= */
+  const D = {};
 
-const ICONS = {
-  copy: `
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <rect x="9" y="9" width="11" height="11" rx="2"
-        fill="none" stroke="currentColor" stroke-width="1.8"/>
-      <path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"
-        fill="none" stroke="currentColor" stroke-width="1.8"/>
-    </svg>
-  `,
+  /* =========================================================
+     DOM
+  ========================================================= */
 
-  copied: `
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="m5 12 4 4L19 6"
-        fill="none" stroke="currentColor" stroke-width="2"
-        stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>
-  `,
+  function cacheDOM() {
+    D.messages = $("messages");
+    D.input = $("messageInput");
+    D.send = $("sendBtn");
+    D.stop = $("stopBtn");
 
-  refresh: `
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M20 11a8.1 8.1 0 0 0-14.9-4L3 10"
-        fill="none" stroke="currentColor" stroke-width="1.8"
-        stroke-linecap="round"/>
-      <path d="M3 5v5h5"
-        fill="none" stroke="currentColor" stroke-width="1.8"
-        stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M4 13a8.1 8.1 0 0 0 14.9 4L21 14"
-        fill="none" stroke="currentColor" stroke-width="1.8"
-        stroke-linecap="round"/>
-      <path d="M21 19v-5h-5"
-        fill="none" stroke="currentColor" stroke-width="1.8"
-        stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>
-  `,
+    D.welcome = $("welcome");
 
-  stop: `
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <rect x="7" y="7" width="10" height="10" rx="2"
-        fill="currentColor"/>
-    </svg>
-  `,
+    D.sidebar = $("sidebar");
+    D.overlay = $("overlay");
 
-  send: `
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M21 3 10 14"
-        fill="none" stroke="currentColor" stroke-width="1.8"
-        stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="m21 3-7 18-4-7-7-4Z"
-        fill="none" stroke="currentColor" stroke-width="1.8"
-        stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>
-  `,
+    D.mode = $("modeSelect");
+    D.search = $("searchToggle");
 
-  mic: `
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <rect x="9" y="3" width="6" height="11" rx="3"
-        fill="none" stroke="currentColor" stroke-width="1.8"/>
-      <path d="M5 11a7 7 0 0 0 14 0"
-        fill="none" stroke="currentColor" stroke-width="1.8"
-        stroke-linecap="round"/>
-      <path d="M12 18v3M8 21h8"
-        fill="none" stroke="currentColor" stroke-width="1.8"
-        stroke-linecap="round"/>
-    </svg>
-  `,
+    D.fileInput = $("fileInput");
+    D.imageInput = $("imageInput");
+    D.cameraInput = $("cameraInput");
 
-  paperclip: `
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="m20 11-8.5 8.5a5 5 0 0 1-7-7L13 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L14 7"
-        fill="none" stroke="currentColor" stroke-width="1.8"
-        stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>
-  `,
+    D.historyList = $("historyList");
 
-  image: `
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <rect x="3" y="4" width="18" height="16" rx="2"
-        fill="none" stroke="currentColor" stroke-width="1.8"/>
-      <circle cx="8.5" cy="9" r="1.5"
-        fill="none" stroke="currentColor" stroke-width="1.6"/>
-      <path d="m4 17 5-5 3.5 3 2.5-2.5L20 17"
-        fill="none" stroke="currentColor" stroke-width="1.8"
-        stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>
-  `,
+    D.status = $("statusText");
 
-  camera: `
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M5 7h3l1.5-2h5L16 7h3a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Z"
-        fill="none" stroke="currentColor" stroke-width="1.8"
-        stroke-linejoin="round"/>
-      <circle cx="12" cy="13" r="4"
-        fill="none" stroke="currentColor" stroke-width="1.8"/>
-    </svg>
-  `
-};
+    D.menu = $("menuBtn");
+    D.newChat = $("newChatBtn");
+    D.settings = $("settingsBtn");
+    D.theme = $("themeBtn");
 
-/* =========================================================
-   DOM
-========================================================= */
-
-const $ = (selector, root = document) =>
-  root.querySelector(selector);
-
-const $$ = (selector, root = document) =>
-  Array.from(root.querySelectorAll(selector));
-
-const DOM = {
-  messages: null,
-  input: null,
-  send: null,
-  stop: null,
-  welcome: null,
-  sidebar: null,
-  overlay: null,
-  mode: null,
-  search: null,
-  fileInput: null,
-  imageInput: null,
-  cameraInput: null,
-  historyList: null,
-  statusText: null,
-  menu: null,
-  newChat: null,
-  settings: null,
-  theme: null,
-  voice: null,
-  camera: null,
-  file: null,
-  image: null
-};
-
-function cacheDOM() {
-  DOM.messages = $("#messages");
-  DOM.input = $("#messageInput");
-  DOM.send = $("#sendBtn");
-  DOM.stop = $("#stopBtn");
-  DOM.welcome = $("#welcome");
-
-  DOM.sidebar = $("#sidebar");
-  DOM.overlay = $("#overlay");
-
-  DOM.mode = $("#modeSelect");
-  DOM.search = $("#searchToggle");
-
-  DOM.fileInput = $("#fileInput");
-  DOM.imageInput = $("#imageInput");
-  DOM.cameraInput = $("#cameraInput");
-
-  DOM.historyList = $("#historyList");
-  DOM.statusText = $("#statusText");
-
-  DOM.menu = $("#menuBtn");
-  DOM.newChat = $("#newChatBtn");
-  DOM.settings = $("#settingsBtn");
-  DOM.theme = $("#themeBtn");
-
-  DOM.voice = $("#voiceBtn");
-  DOM.camera = $("#cameraBtn");
-  DOM.file = $("#fileBtn");
-  DOM.image = $("#imageBtn");
-}
-
-/* =========================================================
-   SAFE STORAGE
-========================================================= */
-
-function storageGet(key, fallback = null) {
-  try {
-    const value = localStorage.getItem(key);
-    return value === null ? fallback : JSON.parse(value);
-  } catch {
-    return fallback;
+    D.voice = $("voiceBtn");
+    D.camera = $("cameraBtn");
+    D.file = $("fileBtn");
+    D.image = $("imageBtn");
   }
-}
 
-function storageSet(key, value) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-    return true;
-  } catch {
-    return false;
+  /* =========================================================
+     STORAGE
+  ========================================================= */
+
+  function loadJSON(key, fallback) {
+    try {
+      const value = localStorage.getItem(key);
+      return value ? JSON.parse(value) : fallback;
+    } catch {
+      return fallback;
+    }
   }
-}
 
-function storageRemove(key) {
-  try {
-    localStorage.removeItem(key);
-  } catch {}
-}
-
-/* =========================================================
-   HELPERS
-========================================================= */
-
-function uid(prefix = "id") {
-  return `${prefix}_${Date.now()}_${Math.random()
-    .toString(36)
-    .slice(2, 9)}`;
-}
-
-function escapeHTML(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
-
-function normalizeText(value) {
-  return String(value ?? "")
-    .replace(/\r\n/g, "\n")
-    .trim();
-}
-
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-function isAbortError(error) {
-  return (
-    error?.name === "AbortError" ||
-    String(error?.message || "").toLowerCase().includes("aborted")
-  );
-}
-
-function setStatus(text) {
-  if (DOM.statusText) {
-    DOM.statusText.textContent = text;
+  function saveJSON(key, value) {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch {}
   }
-}
 
-/* =========================================================
-   THEME
-========================================================= */
+  function loadState() {
+    W.settings = {
+      ...DEFAULT_SETTINGS,
+      ...loadJSON(STORAGE.settings, {})
+    };
 
-function applyTheme() {
-  const theme = WEURA.settings.theme || "dark";
+    W.conversations = loadJSON(
+      STORAGE.conversations,
+      []
+    );
 
-  document.documentElement.dataset.theme = theme;
+    if (!Array.isArray(W.conversations)) {
+      W.conversations = [];
+    }
 
-  if (theme === "auto") {
-    const dark = window.matchMedia?.(
-      "(prefers-color-scheme: dark)"
-    ).matches;
+    W.currentConversationId =
+      localStorage.getItem(STORAGE.current) || null;
+  }
 
-    document.documentElement.classList.toggle("dark", dark);
-    document.documentElement.classList.toggle("light", !dark);
-  } else {
+  function saveState() {
+    saveJSON(STORAGE.settings, W.settings);
+    saveJSON(STORAGE.conversations, W.conversations);
+
+    if (W.currentConversationId) {
+      localStorage.setItem(
+        STORAGE.current,
+        W.currentConversationId
+      );
+    }
+  }
+
+  /* =========================================================
+     UTILITIES
+  ========================================================= */
+
+  function uid() {
+    return (
+      Date.now().toString(36) +
+      Math.random().toString(36).slice(2, 9)
+    );
+  }
+
+  function escapeHTML(text) {
+    return String(text ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  function setStatus(text) {
+    /*
+      index.html currently contains duplicate #statusText.
+      Update every matching element safely.
+    */
+    all('[id="statusText"]').forEach((el) => {
+      el.textContent = text;
+    });
+  }
+
+  function isRTL(text) {
+    return /[\u0590-\u08FF]/.test(text || "");
+  }
+
+  function applyDirection(text = "") {
+    if (!D.input) return;
+
+    if (W.settings.language === "ar") {
+      D.input.dir = "rtl";
+      document.documentElement.dir = "rtl";
+      return;
+    }
+
+    if (W.settings.language === "en") {
+      D.input.dir = "ltr";
+      document.documentElement.dir = "ltr";
+      return;
+    }
+
+    const rtl = isRTL(text);
+
+    D.input.dir = rtl ? "rtl" : "ltr";
+    document.documentElement.dir = rtl ? "rtl" : "ltr";
+  }
+
+  /* =========================================================
+     THEME
+  ========================================================= */
+
+  function applyTheme() {
+    let theme = W.settings.theme;
+
+    if (theme === "auto") {
+      theme = window.matchMedia(
+        "(prefers-color-scheme: dark)"
+      ).matches
+        ? "dark"
+        : "light";
+    }
+
+    document.documentElement.dataset.theme = theme;
+    document.body.dataset.theme = theme;
+
     document.documentElement.classList.toggle(
       "dark",
       theme === "dark"
@@ -312,1825 +222,1263 @@ function applyTheme() {
       "light",
       theme === "light"
     );
-  }
 
-  storageSet(STORAGE.settings, WEURA.settings);
-}
-
-function cycleTheme() {
-  const themes = ["dark", "light", "auto"];
-  const current = themes.indexOf(WEURA.settings.theme);
-  const next = themes[(current + 1) % themes.length];
-
-  WEURA.settings.theme = next;
-  applyTheme();
-
-  setStatus(
-    next === "dark"
-      ? "Dark mode"
-      : next === "light"
-        ? "Light mode"
-        : "System theme"
-  );
-}
-
-function listenSystemTheme() {
-  const media = window.matchMedia?.(
-    "(prefers-color-scheme: dark)"
-  );
-
-  if (!media) return;
-
-  const handler = () => {
-    if (WEURA.settings.theme === "auto") {
-      applyTheme();
+    if (D.theme) {
+      D.theme.title =
+        `Theme: ${W.settings.theme}`;
     }
-  };
-
-  if (media.addEventListener) {
-    media.addEventListener("change", handler);
-  } else if (media.addListener) {
-    media.addListener(handler);
-  }
-}
-
-/* =========================================================
-   LANGUAGE / DIRECTION
-========================================================= */
-
-function detectLanguage(text) {
-  const value = String(text || "");
-
-  if (/[\u0600-\u06FF]/.test(value)) {
-    return "ar";
   }
 
-  if (/[àâçéèêëîïôùûüÿœ]/i.test(value)) {
-    return "fr";
-  }
+  function cycleTheme() {
+    const modes = ["dark", "light", "auto"];
 
-  return "en";
-}
+    const current =
+      modes.indexOf(W.settings.theme);
 
-function applyDirection(text = "") {
-  if (!document.documentElement) return;
+    W.settings.theme =
+      modes[(current + 1) % modes.length];
 
-  const language =
-    WEURA.settings.language === "auto"
-      ? detectLanguage(text)
-      : WEURA.settings.language;
+    applyTheme();
+    saveState();
 
-  const rtl = language === "ar";
-
-  document.documentElement.dir = rtl ? "rtl" : "ltr";
-  document.documentElement.lang = language;
-}
-
-/* =========================================================
-   CONVERSATIONS
-========================================================= */
-
-function generateConversationTitle(text) {
-  const clean = normalizeText(text);
-
-  if (!clean) return "New conversation";
-
-  return clean
-    .replace(/\s+/g, " ")
-    .slice(0, 42);
-}
-
-function ensureConversation() {
-  if (WEURA.currentConversationId) {
-    const existing = WEURA.conversations.find(
-      c => c.id === WEURA.currentConversationId
-    );
-
-    if (existing) return existing;
-  }
-
-  const conversation = {
-    id: uid("conv"),
-    title: "New conversation",
-    messages: [],
-    createdAt: Date.now(),
-    updatedAt: Date.now()
-  };
-
-  WEURA.conversations.unshift(conversation);
-  WEURA.currentConversationId = conversation.id;
-
-  saveState();
-
-  return conversation;
-}
-
-function getCurrentConversation() {
-  return ensureConversation();
-}
-
-function syncConversation() {
-  const conversation = getCurrentConversation();
-
-  conversation.messages = WEURA.history.map(message => ({
-    role: message.role,
-    content: message.content,
-    timestamp: message.timestamp || Date.now()
-  }));
-
-  conversation.updatedAt = Date.now();
-
-  const firstUser = WEURA.history.find(
-    message => message.role === "user"
-  );
-
-  if (
-    firstUser &&
-    conversation.title === "New conversation"
-  ) {
-    conversation.title = generateConversationTitle(
-      firstUser.content
+    setStatus(
+      `Theme: ${W.settings.theme}`
     );
   }
 
-  WEURA.conversations = WEURA.conversations
-    .filter(c => c.id !== conversation.id);
+  /* =========================================================
+     CONVERSATIONS
+  ========================================================= */
 
-  WEURA.conversations.unshift(conversation);
+  function createConversation() {
+    const conversation = {
+      id: uid(),
+      title: "New conversation",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      messages: []
+    };
 
-  saveState();
-  renderConversationList();
-}
+    W.conversations.unshift(conversation);
 
-function loadConversation(id) {
-  const conversation = WEURA.conversations.find(
-    c => c.id === id
-  );
+    W.currentConversationId =
+      conversation.id;
 
-  if (!conversation) return;
+    W.history = conversation.messages;
 
-  stopGeneration(false);
+    saveState();
 
-  WEURA.currentConversationId = conversation.id;
-
-  WEURA.history = Array.isArray(conversation.messages)
-    ? conversation.messages.map(message => ({
-        role: message.role,
-        content: message.content,
-        timestamp: message.timestamp || Date.now()
-      }))
-    : [];
-
-  renderHistory(true);
-  renderConversationList();
-  saveState();
-
-  closeSidebar();
-  setStatus("Ready");
-
-  if (DOM.input) {
-    DOM.input.focus();
+    return conversation;
   }
-}
 
-function deleteConversation(id) {
-  WEURA.conversations =
-    WEURA.conversations.filter(c => c.id !== id);
+  function getCurrentConversation() {
+    return W.conversations.find(
+      c => c.id === W.currentConversationId
+    );
+  }
 
-  if (WEURA.currentConversationId === id) {
-    WEURA.currentConversationId = null;
-    WEURA.history = [];
-    ensureConversation();
+  function ensureConversation() {
+    let conversation =
+      getCurrentConversation();
+
+    if (!conversation) {
+      conversation = createConversation();
+    }
+
+    W.history = Array.isArray(
+      conversation.messages
+    )
+      ? conversation.messages
+      : [];
+
+    renderMessages();
     renderHistory();
   }
 
-  saveState();
-  renderConversationList();
-}
+  function updateConversation() {
+    const conversation =
+      getCurrentConversation();
 
-function renderConversationList() {
-  if (!DOM.historyList) return;
+    if (!conversation) return;
 
-  DOM.historyList.innerHTML = "";
+    conversation.messages = W.history;
+    conversation.updatedAt = Date.now();
 
-  const conversations = WEURA.conversations
-    .slice()
-    .sort((a, b) => b.updatedAt - a.updatedAt);
-
-  if (!conversations.length) {
-    DOM.historyList.innerHTML = `
-      <div class="history-empty">
-        No conversations yet
-      </div>
-    `;
-    return;
-  }
-
-  conversations.forEach(conversation => {
-    const item = document.createElement("div");
-
-    item.className =
-      "history-item" +
-      (
-        conversation.id === WEURA.currentConversationId
-          ? " active"
-          : ""
+    const firstUser =
+      W.history.find(
+        m => m.role === "user"
       );
 
-    item.dataset.id = conversation.id;
-
-    item.innerHTML = `
-      <button
-        class="history-main"
-        type="button"
-        aria-label="Open conversation"
-      >
-        <span class="history-title">
-          ${escapeHTML(conversation.title || "Conversation")}
-        </span>
-      </button>
-
-      <button
-        class="history-delete"
-        type="button"
-        aria-label="Delete conversation"
-        title="Delete"
-      >
-        ×
-      </button>
-    `;
-
-    const openButton = $(".history-main", item);
-    const deleteButton = $(".history-delete", item);
-
-    openButton?.addEventListener("click", () => {
-      loadConversation(conversation.id);
-    });
-
-    deleteButton?.addEventListener("click", event => {
-      event.stopPropagation();
-
-      if (
-        window.confirm(
-          "Delete this conversation?"
-        )
-      ) {
-        deleteConversation(conversation.id);
-      }
-    });
-
-    DOM.historyList.appendChild(item);
-  });
-}
-
-/* =========================================================
-   STATE
-========================================================= */
-
-function saveState() {
-  storageSet(STORAGE.history, WEURA.history);
-  storageSet(STORAGE.conversations, WEURA.conversations);
-  storageSet(STORAGE.settings, WEURA.settings);
-
-  if (WEURA.currentConversationId) {
-    storageSet(
-      STORAGE.current,
-      WEURA.currentConversationId
-    );
-  }
-}
-
-function loadState() {
-  const savedSettings = storageGet(
-    STORAGE.settings,
-    {}
-  );
-
-  WEURA.settings = {
-    ...WEURA.settings,
-    ...(savedSettings || {})
-  };
-
-  const savedHistory = storageGet(
-    STORAGE.history,
-    []
-  );
-
-  const savedConversations = storageGet(
-    STORAGE.conversations,
-    []
-  );
-
-  WEURA.history =
-    Array.isArray(savedHistory)
-      ? savedHistory
-      : [];
-
-  WEURA.conversations =
-    Array.isArray(savedConversations)
-      ? savedConversations
-      : [];
-
-  WEURA.currentConversationId =
-    storageGet(STORAGE.current, null);
-
-  if (
-    WEURA.currentConversationId &&
-    !WEURA.conversations.some(
-      c => c.id === WEURA.currentConversationId
-    )
-  ) {
-    WEURA.currentConversationId = null;
-  }
-}
-
-/* =========================================================
-   WELCOME
-========================================================= */
-
-function updateWelcome() {
-  if (!DOM.welcome) return;
-
-  DOM.welcome.style.display =
-    WEURA.history.length === 0
-      ? ""
-      : "none";
-}
-
-/* =========================================================
-   SCROLL
-========================================================= */
-
-function isNearBottom() {
-  if (!DOM.messages) return true;
-
-  const distance =
-    DOM.messages.scrollHeight -
-    DOM.messages.scrollTop -
-    DOM.messages.clientHeight;
-
-  return distance < 120;
-}
-
-function smartScroll(force = false) {
-  if (!DOM.messages) return;
-
-  if (force || !WEURA.userIsScrolling) {
-    DOM.messages.scrollTo({
-      top: DOM.messages.scrollHeight,
-      behavior: "smooth"
-    });
-  }
-}
-
-function handleScroll() {
-  WEURA.userIsScrolling = !isNearBottom();
-}
-
-/* =========================================================
-   MARKDOWN-LITE
-========================================================= */
-
-function formatAssistantText(text) {
-  let value = escapeHTML(text);
-
-  value = value.replace(
-    /```([\s\S]*?)```/g,
-    (_, code) => `
-      <pre class="code-block"><code>${code
-        .trim()
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")}</code></pre>
-    `
-  );
-
-  value = value.replace(
-    /`([^`]+)`/g,
-    "<code>$1</code>"
-  );
-
-  value = value.replace(
-    /\*\*(.*?)\*\*/g,
-    "<strong>$1</strong>"
-  );
-
-  value = value.replace(
-    /\n/g,
-    "<br>"
-  );
-
-  return value;
-}
-
-/* =========================================================
-   MESSAGE UI
-========================================================= */
-
-function createMessageElement(role, content, options = {}) {
-  const wrapper = document.createElement("article");
-
-  wrapper.className =
-    `message ${role}` +
-    (options.generating ? " generating" : "");
-
-  wrapper.dataset.role = role;
-
-  if (role === "assistant") {
-    wrapper.innerHTML = `
-      <div class="message-avatar" aria-hidden="true">
-        <div class="weura-mini-logo">W</div>
-      </div>
-
-      <div class="message-content">
-        <div class="message-body"></div>
-
-        <div class="message-actions">
-          <button
-            type="button"
-            class="message-action copy-btn"
-            title="Copy"
-            aria-label="Copy"
-          >
-            ${ICONS.copy}
-          </button>
-
-          <button
-            type="button"
-            class="message-action regenerate-btn"
-            title="Regenerate"
-            aria-label="Regenerate"
-          >
-            ${ICONS.refresh}
-          </button>
-        </div>
-      </div>
-    `;
-  } else {
-    wrapper.innerHTML = `
-      <div class="message-avatar user-avatar" aria-hidden="true">
-        U
-      </div>
-
-      <div class="message-content">
-        <div class="message-body"></div>
-      </div>
-    `;
-  }
-
-  const body = $(".message-body", wrapper);
-
-  if (body) {
-    if (role === "assistant") {
-      body.innerHTML = formatAssistantText(content);
-    } else {
-      body.textContent = content;
-    }
-  }
-
-  if (role === "assistant") {
-    const copyButton = $(".copy-btn", wrapper);
-    const regenerateButton =
-      $(".regenerate-btn", wrapper);
-
-    copyButton?.addEventListener(
-      "click",
-      () => {
-        copyText(
-          normalizeText(content),
-          copyButton
-        );
-      }
-    );
-
-    regenerateButton?.addEventListener(
-      "click",
-      () => regenerateLast()
-    );
-  }
-
-  return wrapper;
-}
-
-function addMessage(role, content, options = {}) {
-  if (!DOM.messages) return null;
-
-  const element = createMessageElement(
-    role,
-    content,
-    options
-  );
-
-  DOM.messages.appendChild(element);
-
-  updateWelcome();
-
-  /*
-    Do not force scroll when rendering old history.
-  */
-  if (!options.skipScroll) {
-    smartScroll(Boolean(options.forceScroll));
-  }
-
-  return element;
-}
-
-function createTypingMessage() {
-  if (!DOM.messages) return null;
-
-  const element = document.createElement("article");
-
-  element.className = "message assistant generating";
-
-  element.innerHTML = `
-    <div class="message-avatar" aria-hidden="true">
-      <div class="weura-mini-logo">W</div>
-    </div>
-
-    <div class="message-content">
-      <div class="message-body typing-indicator">
-        <span></span>
-        <span></span>
-        <span></span>
-      </div>
-    </div>
-  `;
-
-  DOM.messages.appendChild(element);
-
-  smartScroll(false);
-
-  return element;
-}
-
-/* =========================================================
-   TYPING
-========================================================= */
-
-async function typeResponse(
-  element,
-  text,
-  token
-) {
-  const body = $(".message-body", element);
-
-  if (!body) return false;
-
-  const value = String(text || "");
-
-  body.classList.remove("typing-indicator");
-
-  let current = "";
-
-  const speed = Math.max(
-    1,
-    Number(WEURA.settings.typingSpeed) || 18
-  );
-
-  const chunkSize =
-    value.length > 500
-      ? 5
-      : value.length > 200
-        ? 3
-        : 2;
-
-  for (
-    let index = 0;
-    index < value.length;
-    index += chunkSize
-  ) {
-    if (token !== WEURA.generationToken) {
-      return false;
+    if (firstUser) {
+      conversation.title =
+        firstUser.content
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, 42) ||
+        "New conversation";
     }
 
-    current += value.slice(
-      index,
-      index + chunkSize
-    );
-
-    body.innerHTML =
-      formatAssistantText(current);
-
-    /*
-      Follow the response only when the user
-      was already near the bottom.
-    */
-    if (!WEURA.userIsScrolling) {
-      DOM.messages?.scrollTo({
-        top: DOM.messages.scrollHeight,
-        behavior: "auto"
-      });
-    }
-
-    await sleep(speed);
+    saveState();
   }
 
-  body.innerHTML =
-    formatAssistantText(value);
+  function newChat() {
+    W.isGenerating = false;
 
-  return true;
-}
-
-/* =========================================================
-   FETCH HELPER
-========================================================= */
-
-async function apiFetch(
-  url,
-  options = {},
-  controller = null
-) {
-  const config = {
-    ...options,
-    headers: {
-      ...(options.body instanceof FormData
-        ? {}
-        : {
-            "Content-Type": "application/json"
-          }),
-      ...(options.headers || {})
-    }
-  };
-
-  if (controller) {
-    config.signal = controller.signal;
-  }
-
-  const response = await fetch(url, config);
-
-  let data = null;
-
-  try {
-    data = await response.json();
-  } catch {
-    data = {};
-  }
-
-  if (!response.ok) {
-    throw new Error(
-      data?.error ||
-      data?.message ||
-      `Request failed (${response.status})`
-    );
-  }
-
-  return data;
-}
-
-/* =========================================================
-   SEARCH
-========================================================= */
-
-function shouldSearch(text) {
-  if (!WEURA.settings.webSearch) {
-    return false;
-  }
-
-  const value = String(text || "").toLowerCase();
-
-  const keywords = [
-    "latest",
-    "today",
-    "yesterday",
-    "tomorrow",
-    "news",
-    "current",
-    "recent",
-    "price",
-    "weather",
-    "search",
-    "look up",
-    "who is",
-    "what happened",
-
-    "اليوم",
-    "أخبار",
-    "خبر",
-    "آخر",
-    "اخر",
-    "حاليا",
-    "حاليًا",
-    "الآن",
-    "الان",
-    "ابحث",
-    "بحث",
-    "السعر",
-    "الطقس",
-    "من هو",
-    "ماذا حدث",
-    "آخر الأخبار",
-    "اخر الاخبار"
-  ];
-
-  return keywords.some(
-    keyword => value.includes(keyword)
-  );
-}
-
-async function performSearch(query) {
-  const data = await apiFetch(
-    "/api/search",
-    {
-      method: "POST",
-      body: JSON.stringify({
-        query
-      })
-    },
-    null
-  );
-
-  if (!data?.ok) {
-    return [];
-  }
-
-  return Array.isArray(data.results)
-    ? data.results
-    : [];
-}
-
-/* =========================================================
-   MEMORY
-========================================================= */
-
-function getMemoryContext() {
-  if (!WEURA.settings.memory) {
-    return "";
-  }
-
-  try {
-    return localStorage.getItem(
-      STORAGE.memory
-    ) || "";
-  } catch {
-    return "";
-  }
-}
-
-async function considerMemory(text) {
-  if (!WEURA.settings.memory) return;
-
-  if (!text || text.length < 15) return;
-
-  try {
-    const data = await apiFetch(
-      "/api/memory",
-      {
-        method: "POST",
-        body: JSON.stringify({
-          text
-        })
-      }
-    );
-
-    if (
-      data?.ok &&
-      data.save &&
-      data.memory
-    ) {
-      const existing =
-        getMemoryContext();
-
-      const memories = existing
-        ? `${existing}\n${data.memory}`
-        : data.memory;
-
-      localStorage.setItem(
-        STORAGE.memory,
-        memories.slice(-20000)
-      );
-    }
-  } catch (error) {
-    console.warn(
-      "Memory classification failed:",
-      error
-    );
-  }
-}
-
-/* =========================================================
-   CHAT
-========================================================= */
-
-async function sendMessage(prompt = null) {
-  if (WEURA.isGenerating) return;
-
-  const text = normalizeText(
-    prompt !== null
-      ? prompt
-      : DOM.input?.value
-  );
-
-  if (!text) return;
-
-  WEURA.lastPrompt = text;
-  WEURA.isGenerating = true;
-
-  const token =
-    ++WEURA.generationToken;
-
-  WEURA.abortController =
-    new AbortController();
-
-  applyDirection(text);
-
-  const conversation =
-    getCurrentConversation();
-
-  /*
-    User message
-  */
-  WEURA.history.push({
-    role: "user",
-    content: text,
-    timestamp: Date.now()
-  });
-
-  conversation.title =
-    conversation.title === "New conversation"
-      ? generateConversationTitle(text)
-      : conversation.title;
-
-  if (DOM.input) {
-    DOM.input.value = "";
-    autoResize();
-  }
-
-  addMessage(
-    "user",
-    text,
-    {
-      forceScroll: true
-    }
-  );
-
-  syncConversation();
-
-  setGeneratingUI(true);
-  setStatus("Thinking…");
-
-  const typingElement =
-    createTypingMessage();
-
-  try {
-    let searchResults = [];
-
-    /*
-      Unified smart search
-    */
-    if (shouldSearch(text)) {
-      setStatus("Searching…");
-
+    if (W.abortController) {
       try {
-        searchResults =
-          await performSearch(text);
-      } catch (searchError) {
-        console.warn(
-          "Search unavailable:",
-          searchError
-        );
-      }
-    }
-
-    if (
-      token !== WEURA.generationToken
-    ) {
-      return;
-    }
-
-    setStatus(
-      searchResults.length
-        ? "Thinking with sources…"
-        : "Thinking…"
-    );
-
-    const messages = WEURA.history
-      .slice(-24)
-      .map(message => ({
-        role: message.role,
-        content: message.content
-      }));
-
-    const data = await apiFetch(
-      "/api/chat",
-      {
-        method: "POST",
-        body: JSON.stringify({
-          message: text,
-          messages,
-          mode:
-            DOM.mode?.value ||
-            WEURA.settings.mode ||
-            "smart",
-          memory:
-            getMemoryContext(),
-          searchResults
-        })
-      },
-      WEURA.abortController
-    );
-
-    if (
-      token !== WEURA.generationToken
-    ) {
-      return;
-    }
-
-    const answer =
-      normalizeText(data?.answer);
-
-    if (!answer) {
-      throw new Error(
-        "WEURA returned an empty response."
-      );
-    }
-
-    typingElement?.remove();
-
-    const assistantElement =
-      addMessage(
-        "assistant",
-        "",
-        {
-          skipScroll: true
-        }
-      );
-
-    if (!assistantElement) {
-      throw new Error(
-        "Could not create assistant message."
-      );
-    }
-
-    const completed =
-      await typeResponse(
-        assistantElement,
-        answer,
-        token
-      );
-
-    if (!completed) {
-      return;
-    }
-
-    WEURA.lastAssistantMessage =
-      answer;
-
-    WEURA.history.push({
-      role: "assistant",
-      content: answer,
-      timestamp: Date.now()
-    });
-
-    syncConversation();
-
-    setStatus("Ready");
-
-    /*
-      Memory runs after the response,
-      without blocking the UI.
-    */
-    considerMemory(text).catch(() => {});
-
-  } catch (error) {
-    typingElement?.remove();
-
-    if (
-      isAbortError(error) ||
-      token !== WEURA.generationToken
-    ) {
-      setStatus("Stopped");
-      return;
-    }
-
-    console.error(
-      "WEURA CHAT ERROR:",
-      error
-    );
-
-    const message =
-      error?.message ||
-      "Something went wrong while contacting WEURA.";
-
-    addMessage(
-      "assistant",
-      `⚠️ ${message}`,
-      {
-        skipScroll: false
-      }
-    );
-
-    setStatus("Connection error");
-
-  } finally {
-    if (
-      token === WEURA.generationToken
-    ) {
-      WEURA.isGenerating = false;
-      WEURA.abortController = null;
-      setGeneratingUI(false);
-    }
-  }
-}
-
-/* =========================================================
-   GENERATION UI
-========================================================= */
-
-function setGeneratingUI(generating) {
-  if (DOM.send) {
-    DOM.send.disabled = generating;
-  }
-
-  if (DOM.stop) {
-    DOM.stop.style.display =
-      generating
-        ? "inline-flex"
-        : "none";
-  }
-
-  if (DOM.input) {
-    DOM.input.disabled = false;
-  }
-
-  if (DOM.voice) {
-    DOM.voice.disabled = generating;
-  }
-}
-
-/* =========================================================
-   STOP
-========================================================= */
-
-function stopGeneration(updateStatus = true) {
-  if (!WEURA.isGenerating) {
-    if (updateStatus) {
-      setStatus("Ready");
-    }
-    return;
-  }
-
-  WEURA.generationToken++;
-
-  if (WEURA.abortController) {
-    try {
-      WEURA.abortController.abort();
-    } catch {}
-  }
-
-  WEURA.abortController = null;
-  WEURA.isGenerating = false;
-
-  $$(".message.generating").forEach(
-    element => element.remove()
-  );
-
-  setGeneratingUI(false);
-
-  if (updateStatus) {
-    setStatus("Stopped");
-  }
-}
-
-/* =========================================================
-   REGENERATE
-========================================================= */
-
-async function regenerateLast() {
-  if (WEURA.isGenerating) return;
-
-  let assistantIndex = -1;
-
-  for (
-    let i = WEURA.history.length - 1;
-    i >= 0;
-    i--
-  ) {
-    if (
-      WEURA.history[i].role === "assistant"
-    ) {
-      assistantIndex = i;
-      break;
-    }
-  }
-
-  if (assistantIndex !== -1) {
-    WEURA.history.splice(
-      assistantIndex,
-      1
-    );
-  }
-
-  let userIndex = -1;
-
-  for (
-    let i = WEURA.history.length - 1;
-    i >= 0;
-    i--
-  ) {
-    if (
-      WEURA.history[i].role === "user"
-    ) {
-      userIndex = i;
-      break;
-    }
-  }
-
-  if (userIndex === -1) {
-    return;
-  }
-
-  const prompt =
-    WEURA.history[userIndex].content;
-
-  /*
-    Re-render without duplicating
-    the user's message in history.
-  */
-  renderHistory(true);
-
-  WEURA.lastPrompt = prompt;
-
-  await generateFromExistingUser(prompt);
-}
-
-async function generateFromExistingUser(prompt) {
-  if (WEURA.isGenerating) return;
-
-  WEURA.isGenerating = true;
-
-  const token =
-    ++WEURA.generationToken;
-
-  WEURA.abortController =
-    new AbortController();
-
-  setGeneratingUI(true);
-  setStatus("Thinking…");
-
-  const typingElement =
-    createTypingMessage();
-
-  try {
-    let searchResults = [];
-
-    if (shouldSearch(prompt)) {
-      setStatus("Searching…");
-
-      try {
-        searchResults =
-          await performSearch(prompt);
+        W.abortController.abort();
       } catch {}
     }
 
-    const messages = WEURA.history
-      .slice(-24)
-      .map(message => ({
-        role: message.role,
-        content: message.content
-      }));
+    W.abortController = null;
 
-    const data = await apiFetch(
-      "/api/chat",
-      {
-        method: "POST",
-        body: JSON.stringify({
-          message: prompt,
-          messages,
-          mode:
-            DOM.mode?.value ||
-            WEURA.settings.mode ||
-            "smart",
-          memory:
-            getMemoryContext(),
-          searchResults
-        })
-      },
-      WEURA.abortController
-    );
+    createConversation();
+
+    renderMessages();
+    renderHistory();
+
+    closeSidebar();
+
+    setStatus("Ready");
+
+    setTimeout(() => {
+      D.input?.focus();
+    }, 50);
+  }
+
+  function switchConversation(id) {
+    const conversation =
+      W.conversations.find(
+        c => c.id === id
+      );
+
+    if (!conversation) return;
+
+    W.currentConversationId = id;
+
+    W.history =
+      Array.isArray(conversation.messages)
+        ? conversation.messages
+        : [];
+
+    saveState();
+
+    renderMessages();
+    renderHistory();
+
+    closeSidebar();
+  }
+
+  function deleteConversation(id) {
+    W.conversations =
+      W.conversations.filter(
+        c => c.id !== id
+      );
 
     if (
-      token !== WEURA.generationToken
+      W.currentConversationId === id
     ) {
+      W.currentConversationId = null;
+      W.history = [];
+      ensureConversation();
+    }
+
+    saveState();
+    renderHistory();
+  }
+
+  /* =========================================================
+     MESSAGE RENDERING
+  ========================================================= */
+
+  function renderMessages() {
+    if (!D.messages) return;
+
+    D.messages.innerHTML = "";
+
+    if (!W.history.length) {
+      if (D.welcome) {
+        D.welcome.style.display = "";
+      }
       return;
     }
 
-    const answer =
-      normalizeText(data?.answer);
-
-    if (!answer) {
-      throw new Error(
-        "WEURA returned an empty response."
-      );
+    if (D.welcome) {
+      D.welcome.style.display = "none";
     }
 
-    typingElement?.remove();
-
-    const element =
-      addMessage(
-        "assistant",
-        "",
-        {
-          skipScroll: true
-        }
+    W.history.forEach(message => {
+      appendMessage(
+        message.role,
+        message.content,
+        false
       );
-
-    const completed =
-      await typeResponse(
-        element,
-        answer,
-        token
-      );
-
-    if (!completed) return;
-
-    WEURA.lastAssistantMessage =
-      answer;
-
-    WEURA.history.push({
-      role: "assistant",
-      content: answer,
-      timestamp: Date.now()
     });
 
-    syncConversation();
-    setStatus("Ready");
-
-  } catch (error) {
-    typingElement?.remove();
-
-    if (isAbortError(error)) {
-      setStatus("Stopped");
-    } else {
-      console.error(
-        "REGENERATE ERROR:",
-        error
-      );
-
-      addMessage(
-        "assistant",
-        `⚠️ ${
-          error?.message ||
-          "Regeneration failed."
-        }`
-      );
-
-      setStatus("Connection error");
-    }
-
-  } finally {
-    if (
-      token === WEURA.generationToken
-    ) {
-      WEURA.isGenerating = false;
-      WEURA.abortController = null;
-      setGeneratingUI(false);
-    }
-  }
-}
-
-/* =========================================================
-   HISTORY RENDER
-========================================================= */
-
-function renderHistory(forceBottom = false) {
-  if (!DOM.messages) return;
-
-  DOM.messages.innerHTML = "";
-
-  if (!WEURA.history.length) {
-    updateWelcome();
-    return;
+    scrollToBottom();
   }
 
-  WEURA.history.forEach(message => {
-    addMessage(
-      message.role,
-      message.content,
-      {
-        skipScroll: true
-      }
+  function appendMessage(
+    role,
+    content,
+    scroll = true
+  ) {
+    if (!D.messages) return null;
+
+    const wrapper =
+      document.createElement("div");
+
+    wrapper.className =
+      `weura-message ${role}`;
+
+    wrapper.dataset.role = role;
+
+    const bubble =
+      document.createElement("div");
+
+    bubble.className =
+      "weura-message-content";
+
+    bubble.innerHTML =
+      formatMessage(content);
+
+    wrapper.appendChild(bubble);
+
+    if (role === "assistant") {
+      const actions =
+        document.createElement("div");
+
+      actions.className =
+        "weura-message-actions";
+
+      actions.innerHTML = `
+        <button type="button" data-copy-message>
+          Copy
+        </button>
+      `;
+
+      wrapper.appendChild(actions);
+    }
+
+    D.messages.appendChild(wrapper);
+
+    if (scroll) {
+      scrollToBottom();
+    }
+
+    return bubble;
+  }
+
+  function formatMessage(text) {
+    let html = escapeHTML(text);
+
+    /*
+      Basic Markdown-like rendering.
+      This intentionally avoids injecting raw HTML.
+    */
+
+    html = html.replace(
+      /```([\s\S]*?)```/g,
+      (_, code) =>
+        `<pre><code>${code.trim()}</code></pre>`
     );
-  });
 
-  updateWelcome();
+    html = html.replace(
+      /`([^`]+)`/g,
+      "<code>$1</code>"
+    );
 
-  if (forceBottom) {
+    html = html.replace(
+      /\*\*([^*]+)\*\*/g,
+      "<strong>$1</strong>"
+    );
+
+    html = html.replace(
+      /\n/g,
+      "<br>"
+    );
+
+    return html;
+  }
+
+  function scrollToBottom() {
+    if (!D.messages) return;
+
     requestAnimationFrame(() => {
-      DOM.messages.scrollTo({
-        top: DOM.messages.scrollHeight,
-        behavior: "auto"
-      });
-
-      WEURA.userIsScrolling = false;
+      D.messages.scrollTop =
+        D.messages.scrollHeight;
     });
   }
-}
 
-/* =========================================================
-   NEW CHAT
-========================================================= */
+  async function typeMessage(
+    bubble,
+    text,
+    token
+  ) {
+    if (!bubble) return;
 
-function newChat() {
-  stopGeneration(false);
+    const speed =
+      Math.max(
+        0,
+        Number(W.settings.typingSpeed) || 0
+      );
 
-  WEURA.history = [];
-  WEURA.lastPrompt = "";
-  WEURA.lastAssistantMessage = "";
+    if (
+      speed === 0 ||
+      token !== W.generationToken
+    ) {
+      bubble.innerHTML =
+        formatMessage(text);
 
-  WEURA.currentConversationId = null;
+      return;
+    }
 
-  ensureConversation();
-
-  renderHistory();
-  renderConversationList();
-  saveState();
-
-  closeSidebar();
-
-  setStatus("Ready");
-
-  if (DOM.input) {
-    DOM.input.value = "";
-    autoResize();
-    DOM.input.focus();
-  }
-}
-
-/* =========================================================
-   COPY
-========================================================= */
-
-async function copyText(text, button = null) {
-  const value = String(text || "");
-
-  try {
-    await navigator.clipboard.writeText(value);
-  } catch {
-    const textarea =
-      document.createElement("textarea");
-
-    textarea.value = value;
-    textarea.style.position = "fixed";
-    textarea.style.opacity = "0";
-
-    document.body.appendChild(textarea);
-    textarea.select();
-
-    try {
-      document.execCommand("copy");
-    } catch {}
-
-    textarea.remove();
-  }
-
-  if (button) {
-    const oldHTML = button.innerHTML;
-
-    button.innerHTML = ICONS.copied;
-
-    setTimeout(() => {
-      button.innerHTML = oldHTML;
-    }, 1200);
-  }
-}
-
-/* =========================================================
-   VOICE INPUT
-========================================================= */
-
-function startVoice() {
-  if (WEURA.isGenerating) return;
-
-  const SpeechRecognition =
-    window.SpeechRecognition ||
-    window.webkitSpeechRecognition;
-
-  if (!SpeechRecognition) {
-    setStatus(
-      "Voice input is not supported by this browser."
-    );
-    return;
-  }
-
-  if (WEURA.recognition) {
-    try {
-      WEURA.recognition.stop();
-    } catch {}
-
-    WEURA.recognition = null;
-
-    setStatus("Ready");
-    return;
-  }
-
-  const recognition =
-    new SpeechRecognition();
-
-  recognition.continuous = false;
-  recognition.interimResults = true;
-
-  const language =
-    document.documentElement.dir === "rtl"
-      ? "ar-DZ"
-      : "en-US";
-
-  recognition.lang = language;
-
-  recognition.onstart = () => {
-    setStatus("Listening…");
-
-    DOM.voice?.classList.add(
-      "active"
-    );
-  };
-
-  recognition.onresult = event => {
-    let finalText = "";
-    let interimText = "";
+    bubble.innerHTML = "";
 
     for (
-      let i = event.resultIndex;
-      i < event.results.length;
+      let i = 0;
+      i < text.length;
       i++
     ) {
-      const transcript =
-        event.results[i][0].transcript;
+      if (
+        token !== W.generationToken ||
+        !W.isGenerating
+      ) {
+        bubble.innerHTML =
+          formatMessage(text);
 
-      if (event.results[i].isFinal) {
-        finalText += transcript;
-      } else {
-        interimText += transcript;
+        return;
+      }
+
+      bubble.textContent += text[i];
+
+      if (
+        i % 3 === 0
+      ) {
+        scrollToBottom();
+        await new Promise(
+          resolve =>
+            setTimeout(
+              resolve,
+              speed
+            )
+        );
       }
     }
 
-    const text =
-      finalText || interimText;
+    bubble.innerHTML =
+      formatMessage(text);
+  }
 
-    if (DOM.input && text) {
-      DOM.input.value = text;
+  /* =========================================================
+     HISTORY UI
+  ========================================================= */
+
+  function renderHistory() {
+    if (!D.historyList) return;
+
+    D.historyList.innerHTML = "";
+
+    W.conversations.forEach(
+      conversation => {
+        const item =
+          document.createElement("div");
+
+        item.className =
+          "weura-history-item";
+
+        if (
+          conversation.id ===
+          W.currentConversationId
+        ) {
+          item.classList.add("active");
+        }
+
+        const button =
+          document.createElement("button");
+
+        button.type = "button";
+        button.className =
+          "weura-history-open";
+
+        button.textContent =
+          conversation.title ||
+          "New conversation";
+
+        button.addEventListener(
+          "click",
+          () =>
+            switchConversation(
+              conversation.id
+            )
+        );
+
+        const del =
+          document.createElement("button");
+
+        del.type = "button";
+        del.className =
+          "weura-history-delete";
+
+        del.textContent = "×";
+
+        del.addEventListener(
+          "click",
+          event => {
+            event.preventDefault();
+            event.stopPropagation();
+
+            deleteConversation(
+              conversation.id
+            );
+          }
+        );
+
+        item.append(
+          button,
+          del
+        );
+
+        D.historyList.appendChild(item);
+      }
+    );
+  }
+
+  /* =========================================================
+     API
+  ========================================================= */
+
+  async function apiFetch(
+    url,
+    options = {}
+  ) {
+    const response =
+      await fetch(url, {
+        ...options,
+        headers: {
+          ...(options.body instanceof FormData
+            ? {}
+            : {
+                "Content-Type":
+                  "application/json"
+              }),
+          ...(options.headers || {})
+        }
+      });
+
+    const contentType =
+      response.headers.get(
+        "content-type"
+      ) || "";
+
+    let data;
+
+    if (
+      contentType.includes(
+        "application/json"
+      )
+    ) {
+      data = await response.json();
+    } else {
+      data = await response.text();
+    }
+
+    if (!response.ok) {
+      throw new Error(
+        typeof data === "object"
+          ? data.error ||
+            data.message ||
+            `HTTP ${response.status}`
+          : data ||
+            `HTTP ${response.status}`
+      );
+    }
+
+    return data;
+  }
+
+  /* =========================================================
+     CHAT
+  ========================================================= */
+
+  async function sendMessage(
+    forcedText = null
+  ) {
+    if (W.isGenerating) return;
+
+    const text =
+      forcedText ??
+      D.input?.value?.trim() ??
+      "";
+
+    if (!text) return;
+
+    W.lastPrompt = text;
+
+    if (D.input) {
+      D.input.value = "";
       autoResize();
     }
 
-    if (finalText) {
-      applyDirection(finalText);
-    }
-  };
+    applyDirection(text);
 
-  recognition.onerror = event => {
-    console.warn(
-      "Speech recognition:",
-      event.error
+    W.history.push({
+      role: "user",
+      content: text,
+      timestamp: Date.now()
+    });
+
+    appendMessage(
+      "user",
+      text
     );
 
-    setStatus(
-      event.error === "not-allowed"
-        ? "Microphone permission denied"
-        : "Voice input error"
-    );
-  };
+    updateConversation();
 
-  recognition.onend = () => {
-    WEURA.recognition = null;
+    W.isGenerating = true;
+    W.generationToken++;
 
-    DOM.voice?.classList.remove(
-      "active"
-    );
+    const token =
+      W.generationToken;
 
-    if (
-      !WEURA.isGenerating
-    ) {
+    setGeneratingUI(true);
+
+    setStatus("Thinking…");
+
+    const assistantBubble =
+      appendMessage(
+        "assistant",
+        "…"
+      );
+
+    try {
+      let messages =
+        W.history.map(m => ({
+          role: m.role,
+          content: m.content
+        }));
+
+      /*
+        Optional unified search.
+        The backend handles Tavily if configured.
+      */
+
+      let searchResults = null;
+
+      if (
+        W.settings.webSearch &&
+        D.search?.checked
+      ) {
+        try {
+          searchResults =
+            await performSearch(
+              text
+            );
+        } catch {
+          searchResults = null;
+        }
+      }
+
+      if (searchResults) {
+        messages.push({
+          role: "system",
+          content:
+            "Use these web search results when relevant:\n" +
+            JSON.stringify(
+              searchResults
+            )
+        });
+      }
+
+      W.abortController =
+        new AbortController();
+
+      const response =
+        await fetch(
+          "/api/chat",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type":
+                "application/json"
+            },
+            body: JSON.stringify({
+              messages,
+              mode:
+                W.settings.mode ||
+                D.mode?.value ||
+                "smart",
+              language:
+                W.settings.language,
+              memory:
+                W.settings.memory
+            }),
+            signal:
+              W.abortController.signal
+          }
+        );
+
+      const contentType =
+        response.headers.get(
+          "content-type"
+        ) || "";
+
+      let data;
+
+      if (
+        contentType.includes(
+          "application/json"
+        )
+      ) {
+        data =
+          await response.json();
+      } else {
+        data =
+          await response.text();
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          typeof data === "object"
+            ? data.error ||
+              data.message ||
+              "Server error"
+            : data ||
+              "Server error"
+        );
+      }
+
+      const answer =
+        typeof data === "string"
+          ? data
+          : data.answer ||
+            data.response ||
+            data.message ||
+            data.content ||
+            "I couldn't generate a response.";
+
+      if (
+        token !== W.generationToken
+      ) {
+        return;
+      }
+
+      W.lastAssistantMessage =
+        answer;
+
+      W.history.push({
+        role: "assistant",
+        content: answer,
+        timestamp: Date.now()
+      });
+
+      if (assistantBubble) {
+        await typeMessage(
+          assistantBubble,
+          answer,
+          token
+        );
+      }
+
+      updateConversation();
+
       setStatus("Ready");
+
+      speakIfEnabled(answer);
+    } catch (error) {
+      if (
+        error.name ===
+        "AbortError"
+      ) {
+        if (assistantBubble) {
+          assistantBubble.innerHTML =
+            "<em>Generation stopped.</em>";
+        }
+
+        setStatus("Ready");
+        return;
+      }
+
+      console.error(
+        "WEURA chat error:",
+        error
+      );
+
+      if (assistantBubble) {
+        assistantBubble.innerHTML =
+          `<strong>WEURA error</strong><br>${escapeHTML(
+            error.message
+          )}`;
+      }
+
+      setStatus("Connection error");
+    } finally {
+      W.isGenerating = false;
+      W.abortController = null;
+
+      setGeneratingUI(false);
     }
-  };
-
-  WEURA.recognition = recognition;
-
-  try {
-    recognition.start();
-  } catch {
-    WEURA.recognition = null;
-    setStatus("Could not start voice input.");
   }
-}
 
-/* =========================================================
-   SPEECH OUTPUT
-========================================================= */
+  /* =========================================================
+     SEARCH
+  ========================================================= */
 
-function speak(text) {
-  if (!WEURA.settings.sound) return;
-
-  if (
-    !("speechSynthesis" in window)
+  async function performSearch(
+    query
   ) {
-    return;
-  }
+    try {
+      const result =
+        await apiFetch(
+          "/api/search",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              query
+            })
+          }
+        );
 
-  window.speechSynthesis.cancel();
+      return result;
+    } catch (error) {
+      console.warn(
+        "Search unavailable:",
+        error
+      );
 
-  const utterance =
-    new SpeechSynthesisUtterance(
-      String(text || "")
-    );
-
-  utterance.lang =
-    detectLanguage(text) === "ar"
-      ? "ar-DZ"
-      : "en-US";
-
-  utterance.rate = 1;
-  utterance.pitch = 1;
-
-  window.speechSynthesis.speak(
-    utterance
-  );
-}
-
-/* =========================================================
-   FILE ANALYSIS
-========================================================= */
-
-async function analyzeFile(file) {
-  if (!file) return;
-
-  if (WEURA.isGenerating) {
-    setStatus("Finish the current response first.");
-    return;
-  }
-
-  WEURA.isGenerating = true;
-
-  const token =
-    ++WEURA.generationToken;
-
-  setGeneratingUI(true);
-  setStatus("Analyzing file…");
-
-  const question =
-    normalizeText(
-      DOM.input?.value
-    ) ||
-    "Analyze this file and summarize the important information.";
-
-  if (DOM.input) {
-    DOM.input.value = "";
-    autoResize();
-  }
-
-  addMessage(
-    "user",
-    `📎 ${file.name}`,
-    {
-      forceScroll: true
+      return null;
     }
-  );
+  }
 
-  const typingElement =
-    createTypingMessage();
+  /* =========================================================
+     GENERATION UI
+  ========================================================= */
 
-  try {
-    const formData =
+  function setGeneratingUI(
+    generating
+  ) {
+    W.isGenerating =
+      generating;
+
+    if (D.send) {
+      D.send.disabled =
+        generating;
+    }
+
+    if (D.stop) {
+      D.stop.style.display =
+        generating
+          ? ""
+          : "none";
+    }
+
+    if (D.input) {
+      D.input.disabled =
+        false;
+    }
+  }
+
+  function stopGeneration() {
+    W.generationToken++;
+
+    if (W.abortController) {
+      try {
+        W.abortController.abort();
+      } catch {}
+    }
+
+    W.abortController = null;
+    W.isGenerating = false;
+
+    setGeneratingUI(false);
+    setStatus("Ready");
+  }
+
+  /* =========================================================
+     FILE ANALYSIS
+  ========================================================= */
+
+  async function analyzeFile(
+    file
+  ) {
+    if (!file) return;
+
+    setStatus("Analyzing file…");
+
+    const form =
       new FormData();
 
-    formData.append(
+    form.append(
       "file",
       file
     );
 
-    formData.append(
-      "question",
-      question
-    );
+    try {
+      const result =
+        await apiFetch(
+          "/api/file",
+          {
+            method: "POST",
+            body: form
+          }
+        );
 
-    const data =
-      await apiFetch(
-        "/api/file",
-        {
-          method: "POST",
-          body: formData
-        },
-        null
+      const answer =
+        result.answer ||
+        result.text ||
+        result.content ||
+        JSON.stringify(
+          result
+        );
+
+      W.history.push({
+        role: "user",
+        content:
+          `[File: ${file.name}]`,
+        timestamp: Date.now()
+      });
+
+      appendMessage(
+        "user",
+        `[File: ${file.name}]`
       );
 
-    if (
-      token !== WEURA.generationToken
-    ) {
-      return;
-    }
+      W.history.push({
+        role: "assistant",
+        content: answer,
+        timestamp: Date.now()
+      });
 
-    const answer =
-      normalizeText(data?.answer);
-
-    typingElement?.remove();
-
-    if (!answer) {
-      throw new Error(
-        "The file analysis returned an empty response."
-      );
-    }
-
-    addMessage(
-      "assistant",
-      answer,
-      {
-        forceScroll: true
-      }
-    );
-
-    setStatus("Ready");
-
-  } catch (error) {
-    typingElement?.remove();
-
-    if (token === WEURA.generationToken) {
-      addMessage(
+      appendMessage(
         "assistant",
-        `⚠️ ${
-          error?.message ||
-          "File analysis failed."
-        }`
+        answer
       );
 
-      setStatus("File analysis error");
+      updateConversation();
+
+      setStatus("Ready");
+    } catch (error) {
+      console.error(error);
+      setStatus(
+        "File analysis failed"
+      );
+
+      alert(
+        `WEURA: ${error.message}`
+      );
     }
-
-  } finally {
-    WEURA.isGenerating = false;
-    setGeneratingUI(false);
-  }
-}
-
-/* =========================================================
-   IMAGE / VISION
-========================================================= */
-
-async function analyzeImage(
-  file,
-  prompt = ""
-) {
-  if (!file) return;
-
-  if (WEURA.isGenerating) {
-    setStatus("Finish the current response first.");
-    return;
   }
 
-  WEURA.isGenerating = true;
+  /* =========================================================
+     IMAGE / VISION
+  ========================================================= */
 
-  const token =
-    ++WEURA.generationToken;
+  async function analyzeImage(
+    file
+  ) {
+    if (!file) return;
 
-  setGeneratingUI(true);
-  setStatus("Analyzing image…");
+    setStatus(
+      "Analyzing image…"
+    );
 
-  const userPrompt =
-    normalizeText(prompt) ||
-    "Analyze this image carefully and explain what you can see.";
-
-  addMessage(
-    "user",
-    `🖼️ ${file.name || "Image"}`,
-    {
-      forceScroll: true
-    }
-  );
-
-  const typingElement =
-    createTypingMessage();
-
-  try {
-    const formData =
+    const form =
       new FormData();
 
-    formData.append(
+    form.append(
       "image",
       file
     );
 
-    formData.append(
-      "prompt",
-      userPrompt
-    );
+    try {
+      const result =
+        await apiFetch(
+          "/api/vision",
+          {
+            method: "POST",
+            body: form
+          }
+        );
 
-    const data =
-      await apiFetch(
-        "/api/vision",
-        {
-          method: "POST",
-          body: formData
-        },
-        null
+      const answer =
+        result.answer ||
+        result.description ||
+        result.content ||
+        JSON.stringify(
+          result
+        );
+
+      appendMessage(
+        "user",
+        `[Image: ${file.name}]`
       );
 
+      W.history.push({
+        role: "user",
+        content:
+          `[Image: ${file.name}]`,
+        timestamp: Date.now()
+      });
+
+      appendMessage(
+        "assistant",
+        answer
+      );
+
+      W.history.push({
+        role: "assistant",
+        content: answer,
+        timestamp: Date.now()
+      });
+
+      updateConversation();
+
+      setStatus("Ready");
+    } catch (error) {
+      console.error(error);
+
+      setStatus(
+        "Image analysis failed"
+      );
+
+      alert(
+        `WEURA: ${error.message}`
+      );
+    }
+  }
+
+  /* =========================================================
+     VOICE INPUT
+  ========================================================= */
+
+  function startVoice() {
+    const Recognition =
+      window.SpeechRecognition ||
+      window.webkitSpeechRecognition;
+
+    if (!Recognition) {
+      alert(
+        "Voice input is not supported by this browser."
+      );
+      return;
+    }
+
+    if (W.recognition) {
+      try {
+        W.recognition.stop();
+      } catch {}
+
+      W.recognition = null;
+
+      setStatus("Ready");
+      return;
+    }
+
+    const recognition =
+      new Recognition();
+
+    recognition.lang =
+      W.settings.language === "ar"
+        ? "ar-DZ"
+        : "en-US";
+
+    recognition.continuous = false;
+    recognition.interimResults = true;
+
+    recognition.onstart = () => {
+      setStatus("Listening…");
+    };
+
+    recognition.onresult = event => {
+      let finalText = "";
+
+      for (
+        let i = event.resultIndex;
+        i < event.results.length;
+        i++
+      ) {
+        finalText +=
+          event.results[i][0]
+            .transcript;
+      }
+
+      if (D.input) {
+        D.input.value =
+          finalText;
+
+        autoResize();
+        applyDirection(
+          finalText
+        );
+      }
+    };
+
+    recognition.onerror = error => {
+      console.warn(
+        "Voice:",
+        error
+      );
+
+      setStatus("Voice error");
+    };
+
+    recognition.onend = () => {
+      W.recognition = null;
+      setStatus("Ready");
+    };
+
+    W.recognition =
+      recognition;
+
+    recognition.start();
+  }
+
+  /* =========================================================
+     SPEECH OUTPUT
+  ========================================================= */
+
+  function speakIfEnabled(text) {
     if (
-      token !== WEURA.generationToken
+      !W.settings.sound ||
+      !("speechSynthesis" in window)
     ) {
       return;
     }
 
-    const answer =
-      normalizeText(data?.answer);
+    /*
+      Keep automatic speech disabled for long answers.
+      User can still use browser controls if desired.
+    */
+  }
 
-    typingElement?.remove();
+  /* =========================================================
+     CAMERA
+  ========================================================= */
 
-    if (!answer) {
-      throw new Error(
-        "The image analysis returned an empty response."
-      );
+  async function openCamera() {
+    /*
+      If the current page/browser doesn't allow
+      getUserMedia, use the existing camera input.
+    */
+
+    if (
+      !navigator.mediaDevices ||
+      !navigator.mediaDevices.getUserMedia
+    ) {
+      D.cameraInput?.click();
+      return;
     }
 
-    addMessage(
-      "assistant",
-      answer,
-      {
-        forceScroll: true
-      }
-    );
+    try {
+      const stream =
+        await navigator.mediaDevices.getUserMedia({
+          video: true
+        });
 
-    setStatus("Ready");
+      W.mediaStream = stream;
 
-  } catch (error) {
-    typingElement?.remove();
+      /*
+        We don't create a separate camera UI here.
+        The stream permission is requested and then
+        the existing image picker is used.
+      */
 
-    addMessage(
-      "assistant",
-      `⚠️ ${
-        error?.message ||
-        "Image analysis failed."
-      }`
-    );
+      stream
+        .getTracks()
+        .forEach(track =>
+          track.stop()
+        );
 
-    setStatus("Vision error");
+      W.mediaStream = null;
 
-  } finally {
-    WEURA.isGenerating = false;
-    setGeneratingUI(false);
-  }
-}
+      D.cameraInput?.click();
+    } catch (error) {
+      console.warn(
+        "Camera unavailable:",
+        error
+      );
 
-/* =========================================================
-   CAMERA
-========================================================= */
-
-async function openCamera() {
-  if (WEURA.isGenerating) return;
-
-  if (
-    !navigator.mediaDevices ||
-    !navigator.mediaDevices.getUserMedia
-  ) {
-    /*
-      Fallback to file picker.
-    */
-    DOM.cameraInput?.click();
-    return;
+      D.cameraInput?.click();
+    }
   }
 
-  try {
-    WEURA.mediaStream =
-      await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: {
-            ideal: "environment"
-          }
-        },
-        audio: false
-      });
+  /* =========================================================
+     SIDEBAR
+  ========================================================= */
 
-    const modal =
-      document.createElement("div");
+  function openSidebar() {
+    D.sidebar?.classList.add(
+      "open",
+      "active"
+    );
 
-    modal.className =
-      "weura-camera-modal";
+    D.overlay?.classList.add(
+      "open",
+      "active"
+    );
+  }
+
+  function closeSidebar() {
+    D.sidebar?.classList.remove(
+      "open",
+      "active"
+    );
+
+    D.overlay?.classList.remove(
+      "open",
+      "active"
+    );
+  }
+
+  function toggleSidebar() {
+    if (
+      D.sidebar?.classList.contains(
+        "open"
+      ) ||
+      D.sidebar?.classList.contains(
+        "active"
+      )
+    ) {
+      closeSidebar();
+    } else {
+      openSidebar();
+    }
+  }
+
+  /* =========================================================
+     AUTO RESIZE
+  ========================================================= */
+
+  function autoResize() {
+    if (!D.input) return;
+
+    D.input.style.height =
+      "auto";
+
+    D.input.style.height =
+      Math.min(
+        D.input.scrollHeight,
+        180
+      ) + "px";
+  }
+
+  /* =========================================================
+     SETTINGS
+  ========================================================= */
+
+  function openSettings() {
+    let modal =
+      $("weuraSettingsModal");
+
+    if (modal) {
+      modal.remove();
+      return;
+    }
+
+    modal =
+      document.createElement(
+        "div"
+      );
+
+    modal.id =
+      "weuraSettingsModal";
 
     modal.innerHTML = `
-      <div class="weura-camera-backdrop"></div>
+      <div class="weura-settings-backdrop"></div>
 
-      <div class="weura-camera-panel">
-        <div class="weura-camera-header">
-          <strong>WEURA Vision</strong>
+      <div class="weura-settings">
+        <div class="weura-settings-header">
+          <div>
+            <strong>WEURA Settings</strong>
+            <small>Think Beyond.</small>
+          </div>
 
           <button
             type="button"
-            class="weura-camera-close"
-            aria-label="Close"
+            data-close-settings
           >
             ×
           </button>
         </div>
 
-        <video
-          class="weura-camera-video"
-          autoplay
-          playsinline
-          muted
-        ></video>
+        <label>
+          Theme
+          <select data-setting="theme">
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+            <option value="auto">System</option>
+          </select>
+        </label>
 
-        <div class="weura-camera-actions">
+        <label>
+          Language
+          <select data-setting="language">
+            <option value="auto">Auto</option>
+            <option value="ar">Arabic</option>
+            <option value="en">English</option>
+          </select>
+        </label>
+
+        <label>
+          Mode
+          <select data-setting="mode">
+            <option value="smart">Smart</option>
+            <option value="research">Research</option>
+            <option value="code">Code</option>
+            <option value="creative">Creative</option>
+            <option value="vision">Vision</option>
+            <option value="fast">Fast</option>
+          </select>
+        </label>
+
+        <label>
+          <span>Web search</span>
+          <input
+            type="checkbox"
+            data-setting="webSearch"
+          >
+        </label>
+
+        <label>
+          <span>Memory</span>
+          <input
+            type="checkbox"
+            data-setting="memory"
+          >
+        </label>
+
+        <label>
+          <span>Enter sends message</span>
+          <input
+            type="checkbox"
+            data-setting="enterSend"
+          >
+        </label>
+
+        <label>
+          Typing speed
+          <input
+            type="range"
+            min="0"
+            max="80"
+            step="1"
+            data-setting="typingSpeed"
+          >
+        </label>
+
+        <div class="weura-settings-actions">
           <button
             type="button"
-            class="weura-camera-capture"
+            data-clear-history
           >
-            Capture
+            Clear conversations
+          </button>
+
+          <button
+            type="button"
+            data-close-settings
+          >
+            Done
           </button>
         </div>
       </div>
@@ -2138,918 +1486,770 @@ async function openCamera() {
 
     document.body.appendChild(modal);
 
-    const video =
-      $(".weura-camera-video", modal);
+    const set =
+      (key, value) => {
+        W.settings[key] =
+          value;
 
-    const closeButton =
-      $(".weura-camera-close", modal);
+        saveState();
 
-    const backdrop =
-      $(".weura-camera-backdrop", modal);
-
-    const captureButton =
-      $(".weura-camera-capture", modal);
-
-    video.srcObject =
-      WEURA.mediaStream;
-
-    const close = () => {
-      if (WEURA.mediaStream) {
-        WEURA.mediaStream
-          .getTracks()
-          .forEach(track => track.stop());
-
-        WEURA.mediaStream = null;
-      }
-
-      modal.remove();
-    };
-
-    closeButton.addEventListener(
-      "click",
-      close
-    );
-
-    backdrop.addEventListener(
-      "click",
-      close
-    );
-
-    captureButton.addEventListener(
-      "click",
-      async () => {
-        if (!video.videoWidth) {
-          setStatus("Camera is not ready.");
-          return;
+        if (key === "theme") {
+          applyTheme();
         }
 
-        const canvas =
-          document.createElement("canvas");
+        if (key === "mode" && D.mode) {
+          D.mode.value = value;
+        }
 
-        canvas.width =
-          video.videoWidth;
+        if (
+          key === "language" &&
+          D.input
+        ) {
+          applyDirection(
+            D.input.value
+          );
+        }
+      };
 
-        canvas.height =
-          video.videoHeight;
+    modal
+      .querySelectorAll(
+        "[data-setting]"
+      )
+      .forEach(control => {
+        const key =
+          control.dataset.setting;
 
-        const context =
-          canvas.getContext("2d");
+        const current =
+          W.settings[key];
 
-        context.drawImage(
-          video,
-          0,
-          0,
-          canvas.width,
-          canvas.height
-        );
+        if (
+          control.type ===
+          "checkbox"
+        ) {
+          control.checked =
+            Boolean(current);
+        } else {
+          control.value =
+            current;
+        }
 
-        canvas.toBlob(
-          async blob => {
-            if (!blob) {
-              setStatus(
-                "Could not capture image."
-              );
-              return;
+        control.addEventListener(
+          "change",
+          () => {
+            let value;
+
+            if (
+              control.type ===
+              "checkbox"
+            ) {
+              value =
+                control.checked;
+            } else if (
+              control.type ===
+              "range"
+            ) {
+              value =
+                Number(
+                  control.value
+                );
+            } else {
+              value =
+                control.value;
             }
 
-            const file =
-              new File(
-                [blob],
-                "weura-camera.jpg",
-                {
-                  type: "image/jpeg"
-                }
-              );
-
-            close();
-
-            await analyzeImage(
-              file,
-              DOM.input?.value || ""
-            );
-          },
-          "image/jpeg",
-          0.92
+            set(key, value);
+          }
         );
-      }
-    );
+      });
 
-  } catch (error) {
-    console.error(
-      "CAMERA ERROR:",
-      error
-    );
-
-    setStatus(
-      "Camera permission was denied or unavailable."
-    );
-
-    /*
-      Useful fallback on mobile.
-    */
-    DOM.cameraInput?.click();
-  }
-}
-
-/* =========================================================
-   SIDEBAR
-========================================================= */
-
-function openSidebar() {
-  DOM.sidebar?.classList.add("open");
-  DOM.overlay?.classList.add("show");
-}
-
-function closeSidebar() {
-  DOM.sidebar?.classList.remove("open");
-  DOM.overlay?.classList.remove("show");
-}
-
-/* =========================================================
-   AUTO RESIZE
-========================================================= */
-
-function autoResize() {
-  if (!DOM.input) return;
-
-  DOM.input.style.height = "auto";
-
-  DOM.input.style.height =
-    Math.min(
-      DOM.input.scrollHeight,
-      180
-    ) + "px";
-}
-
-/* =========================================================
-   SETTINGS
-========================================================= */
-
-function openSettings() {
-  /*
-    If a settings panel already exists in index.html,
-    use it.
-  */
-  const existing =
-    document.querySelector(
-      "#settingsModal, .settings-modal, [data-settings-modal]"
-    );
-
-  if (existing) {
-    existing.classList.add("open");
-    existing.style.display = "";
-    return;
-  }
-
-  /*
-    Lightweight built-in settings panel.
-    This means the Settings button works even if
-    the current HTML does not contain a settings modal.
-  */
-  const modal =
-    document.createElement("div");
-
-  modal.className =
-    "weura-settings-modal";
-
-  modal.innerHTML = `
-    <div class="weura-settings-backdrop"></div>
-
-    <div class="weura-settings-panel">
-      <div class="weura-settings-header">
-        <div>
-          <strong>WEURA Settings</strong>
-          <small>Think Beyond.</small>
-        </div>
-
-        <button
-          type="button"
-          class="weura-settings-close"
-          aria-label="Close settings"
-        >
-          ×
-        </button>
-      </div>
-
-      <div class="weura-settings-body">
-
-        <label class="setting-row">
-          <span>Theme</span>
-          <select data-weura-setting="theme">
-            <option value="dark">Dark</option>
-            <option value="light">Light</option>
-            <option value="auto">System</option>
-          </select>
-        </label>
-
-        <label class="setting-row">
-          <span>Language</span>
-          <select data-weura-setting="language">
-            <option value="auto">Auto</option>
-            <option value="ar">العربية</option>
-            <option value="fr">Français</option>
-            <option value="en">English</option>
-          </select>
-        </label>
-
-        <label class="setting-row">
-          <span>Enter to send</span>
-          <input
-            type="checkbox"
-            data-weura-setting="enterSend"
-          />
-        </label>
-
-        <label class="setting-row">
-          <span>Web search</span>
-          <input
-            type="checkbox"
-            data-weura-setting="webSearch"
-          />
-        </label>
-
-        <label class="setting-row">
-          <span>Memory</span>
-          <input
-            type="checkbox"
-            data-weura-setting="memory"
-          />
-        </label>
-
-        <label class="setting-row">
-          <span>Sound</span>
-          <input
-            type="checkbox"
-            data-weura-setting="sound"
-          />
-        </label>
-
-        <label class="setting-row">
-          <span>Typing speed</span>
-          <input
-            type="range"
-            min="1"
-            max="50"
-            data-weura-setting="typingSpeed"
-          />
-        </label>
-
-        <button
-          type="button"
-          class="weura-settings-danger"
-          data-clear-memory
-        >
-          Clear saved memory
-        </button>
-
-      </div>
-    </div>
-  `;
-
-  document.body.appendChild(modal);
-
-  const close = () => {
-    modal.remove();
-  };
-
-  $(".weura-settings-close", modal)
-    ?.addEventListener(
-      "click",
-      close
-    );
-
-  $(".weura-settings-backdrop", modal)
-    ?.addEventListener(
-      "click",
-      close
-    );
-
-  const theme =
-    $('[data-weura-setting="theme"]', modal);
-
-  const language =
-    $('[data-weura-setting="language"]', modal);
-
-  const enterSend =
-    $('[data-weura-setting="enterSend"]', modal);
-
-  const webSearch =
-    $('[data-weura-setting="webSearch"]', modal);
-
-  const memory =
-    $('[data-weura-setting="memory"]', modal);
-
-  const sound =
-    $('[data-weura-setting="sound"]', modal);
-
-  const typingSpeed =
-    $('[data-weura-setting="typingSpeed"]', modal);
-
-  if (theme) {
-    theme.value =
-      WEURA.settings.theme;
-  }
-
-  if (language) {
-    language.value =
-      WEURA.settings.language;
-  }
-
-  if (enterSend) {
-    enterSend.checked =
-      Boolean(
-        WEURA.settings.enterSend
-      );
-  }
-
-  if (webSearch) {
-    webSearch.checked =
-      Boolean(
-        WEURA.settings.webSearch
-      );
-  }
-
-  if (memory) {
-    memory.checked =
-      Boolean(
-        WEURA.settings.memory
-      );
-  }
-
-  if (sound) {
-    sound.checked =
-      Boolean(
-        WEURA.settings.sound
-      );
-  }
-
-  if (typingSpeed) {
-    typingSpeed.value =
-      WEURA.settings.typingSpeed;
-  }
-
-  theme?.addEventListener(
-    "change",
-    () => {
-      WEURA.settings.theme =
-        theme.value;
-
-      applyTheme();
-      saveState();
-    }
-  );
-
-  language?.addEventListener(
-    "change",
-    () => {
-      WEURA.settings.language =
-        language.value;
-
-      if (DOM.input?.value) {
-        applyDirection(
-          DOM.input.value
-        );
-      }
-
-      saveState();
-    }
-  );
-
-  enterSend?.addEventListener(
-    "change",
-    () => {
-      WEURA.settings.enterSend =
-        enterSend.checked;
-
-      saveState();
-    }
-  );
-
-  webSearch?.addEventListener(
-    "change",
-    () => {
-      WEURA.settings.webSearch =
-        webSearch.checked;
-
-      if (DOM.search) {
-        DOM.search.checked =
-          WEURA.settings.webSearch;
-      }
-
-      saveState();
-    }
-  );
-
-  memory?.addEventListener(
-    "change",
-    () => {
-      WEURA.settings.memory =
-        memory.checked;
-
-      saveState();
-    }
-  );
-
-  sound?.addEventListener(
-    "change",
-    () => {
-      WEURA.settings.sound =
-        sound.checked;
-
-      saveState();
-    }
-  );
-
-  typingSpeed?.addEventListener(
-    "input",
-    () => {
-      WEURA.settings.typingSpeed =
-        Number(
-          typingSpeed.value
-        );
-
-      saveState();
-    }
-  );
-
-  $(
-    "[data-clear-memory]",
     modal
-  )?.addEventListener(
-    "click",
-    () => {
-      storageRemove(
-        STORAGE.memory
+      .querySelectorAll(
+        "[data-close-settings]"
+      )
+      .forEach(button => {
+        button.addEventListener(
+          "click",
+          () => modal.remove()
+        );
+      });
+
+    modal
+      .querySelector(
+        ".weura-settings-backdrop"
+      )
+      ?.addEventListener(
+        "click",
+        () => modal.remove()
       );
 
-      setStatus(
-        "Saved memory cleared"
-      );
-    }
-  );
-}
-
-/* =========================================================
-   QUICK ACTIONS
-========================================================= */
-
-function handleQuickAction(button) {
-  const prompt =
-    normalizeText(
-      button?.dataset?.prompt
-    );
-
-  if (!prompt) return;
-
-  /*
-    Fill the composer instead of silently
-    sending unexpected messages.
-  */
-  if (DOM.input) {
-    DOM.input.value = prompt;
-
-    applyDirection(prompt);
-    autoResize();
-
-    DOM.input.focus();
-
-    /*
-      If explicitly marked auto-send,
-      execute immediately.
-    */
-    if (
-      button.dataset.autosend === "true"
-    ) {
-      sendMessage(prompt);
-    }
-  }
-}
-
-/* =========================================================
-   SETTINGS BINDINGS
-========================================================= */
-
-function bindExistingSettings() {
-  $$("[data-theme]").forEach(
-    button => {
-      button.addEventListener(
+    modal
+      .querySelector(
+        "[data-clear-history]"
+      )
+      ?.addEventListener(
         "click",
         () => {
-          const theme =
-            button.dataset.theme;
+          const ok =
+            confirm(
+              "Delete all WEURA conversations?"
+            );
 
-          if (
-            ["dark", "light", "auto"]
-              .includes(theme)
-          ) {
-            WEURA.settings.theme =
-              theme;
+          if (!ok) return;
 
-            applyTheme();
-          }
+          W.conversations = [];
+          W.currentConversationId =
+            null;
+          W.history = [];
+
+          saveState();
+          ensureConversation();
+
+          modal.remove();
         }
       );
-    }
-  );
+  }
 
-  $$("[data-setting]").forEach(
-    element => {
-      const setting =
-        element.dataset.setting;
+  /* =========================================================
+     QUICK ACTIONS
+  ========================================================= */
 
-      if (!(setting in WEURA.settings)) {
+  function bindQuickActions() {
+    all(
+      "[data-prompt]"
+    ).forEach(button => {
+      if (
+        button.dataset.weuraBound
+      ) {
         return;
       }
 
-      if (
-        element.type === "checkbox"
-      ) {
-        element.checked =
-          Boolean(
-            WEURA.settings[setting]
-          );
-      } else {
-        element.value =
-          WEURA.settings[setting];
-      }
+      button.dataset.weuraBound =
+        "1";
 
-      element.addEventListener(
-        "change",
-        () => {
-          let value;
-
-          if (
-            element.type === "checkbox"
-          ) {
-            value = element.checked;
-          } else if (
-            element.type === "number" ||
-            element.type === "range"
-          ) {
-            value = Number(
-              element.value
-            );
-          } else {
-            value = element.value;
-          }
-
-          WEURA.settings[setting] =
-            value;
-
-          if (setting === "theme") {
-            applyTheme();
-          }
-
-          saveState();
-        }
-      );
-    }
-  );
-}
-
-/* =========================================================
-   PROTECTION
-========================================================= */
-
-function enableProtection() {
-  if (!WEURA.settings.protection) {
-    return;
-  }
-
-  document.addEventListener(
-    "contextmenu",
-    event => {
-      event.preventDefault();
-    }
-  );
-}
-
-/* =========================================================
-   EVENT BINDINGS
-========================================================= */
-
-function bindEvents() {
-  DOM.send?.addEventListener(
-    "click",
-    () => sendMessage()
-  );
-
-  DOM.stop?.addEventListener(
-    "click",
-    () => stopGeneration()
-  );
-
-  DOM.input?.addEventListener(
-    "input",
-    () => {
-      autoResize();
-
-      if (DOM.input.value) {
-        applyDirection(
-          DOM.input.value
-        );
-      }
-    }
-  );
-
-  DOM.input?.addEventListener(
-    "keydown",
-    event => {
-      if (
-        event.key === "Enter" &&
-        !event.shiftKey
-      ) {
-        if (
-          WEURA.settings.enterSend
-        ) {
-          event.preventDefault();
-
-          if (!WEURA.isGenerating) {
-            sendMessage();
-          }
-        }
-      }
-    }
-  );
-
-  DOM.messages?.addEventListener(
-    "scroll",
-    handleScroll,
-    {
-      passive: true
-    }
-  );
-
-  DOM.menu?.addEventListener(
-    "click",
-    openSidebar
-  );
-
-  DOM.overlay?.addEventListener(
-    "click",
-    closeSidebar
-  );
-
-  DOM.newChat?.addEventListener(
-    "click",
-    newChat
-  );
-
-  DOM.settings?.addEventListener(
-    "click",
-    openSettings
-  );
-
-  DOM.theme?.addEventListener(
-    "click",
-    cycleTheme
-  );
-
-  DOM.voice?.addEventListener(
-    "click",
-    startVoice
-  );
-
-  DOM.camera?.addEventListener(
-    "click",
-    openCamera
-  );
-
-  DOM.file?.addEventListener(
-    "click",
-    () => {
-      DOM.fileInput?.click();
-    }
-  );
-
-  DOM.image?.addEventListener(
-    "click",
-    () => {
-      DOM.imageInput?.click();
-    }
-  );
-
-  DOM.fileInput?.addEventListener(
-    "change",
-    event => {
-      const file =
-        event.target.files?.[0];
-
-      if (file) {
-        analyzeFile(file);
-      }
-
-      event.target.value = "";
-    }
-  );
-
-  DOM.imageInput?.addEventListener(
-    "change",
-    event => {
-      const file =
-        event.target.files?.[0];
-
-      if (file) {
-        analyzeImage(
-          file,
-          DOM.input?.value || ""
-        );
-      }
-
-      event.target.value = "";
-    }
-  );
-
-  DOM.cameraInput?.addEventListener(
-    "change",
-    event => {
-      const file =
-        event.target.files?.[0];
-
-      if (file) {
-        analyzeImage(
-          file,
-          DOM.input?.value || ""
-        );
-      }
-
-      event.target.value = "";
-    }
-  );
-
-  DOM.search?.addEventListener(
-    "change",
-    () => {
-      WEURA.settings.webSearch =
-        DOM.search.checked;
-
-      saveState();
-    }
-  );
-
-  DOM.mode?.addEventListener(
-    "change",
-    () => {
-      WEURA.settings.mode =
-        DOM.mode.value;
-
-      saveState();
-    }
-  );
-
-  $$("[data-prompt]").forEach(
-    button => {
       button.addEventListener(
         "click",
-        () => {
-          handleQuickAction(button);
+        event => {
+          event.preventDefault();
+
+          const prompt =
+            button.dataset.prompt ||
+            button.getAttribute(
+              "data-prompt"
+            ) ||
+            "";
+
+          if (!prompt) return;
+
+          if (D.input) {
+            D.input.value =
+              prompt;
+
+            autoResize();
+            applyDirection(
+              prompt
+            );
+
+            D.input.focus();
+          }
+
+          if (
+            button.dataset.autosend ===
+            "true"
+          ) {
+            sendMessage(
+              prompt
+            );
+          }
         }
       );
-    }
-  );
-
-  bindExistingSettings();
-}
-
-/* =========================================================
-   INITIALIZATION
-========================================================= */
-
-function migrateOldHistory() {
-  if (
-    WEURA.history.length &&
-    !WEURA.conversations.length
-  ) {
-    const conversation = {
-      id: uid("conv"),
-      title: "Previous conversation",
-      messages: WEURA.history,
-      createdAt: Date.now(),
-      updatedAt: Date.now()
-    };
-
-    WEURA.conversations = [
-      conversation
-    ];
-
-    WEURA.currentConversationId =
-      conversation.id;
-
-    saveState();
-  }
-}
-
-function init() {
-  if (WEURA.initialized) {
-    return;
+    });
   }
 
-  WEURA.initialized = true;
+  /* =========================================================
+     COPY
+  ========================================================= */
 
-  cacheDOM();
-  loadState();
-  migrateOldHistory();
-
-  applyTheme();
-  listenSystemTheme();
-
-  ensureConversation();
-
-  renderHistory(true);
-  renderConversationList();
-
-  if (DOM.search) {
-    DOM.search.checked =
-      Boolean(
-        WEURA.settings.webSearch
+  async function copyText(text) {
+    try {
+      await navigator.clipboard.writeText(
+        text
       );
+
+      setStatus(
+        "Copied"
+      );
+
+      setTimeout(
+        () =>
+          setStatus(
+            "Ready"
+          ),
+        1200
+      );
+    } catch {
+      setStatus(
+        "Copy failed"
+      );
+    }
   }
 
-  if (
-    DOM.mode &&
-    WEURA.settings.mode
-  ) {
+  /* =========================================================
+     EVENT BINDING
+  ========================================================= */
+
+  function bindEvents() {
     /*
-      Only assign if the option exists.
+      SEND
     */
-    const optionExists =
-      Array.from(
-        DOM.mode.options || []
-      ).some(
-        option =>
-          option.value ===
-          WEURA.settings.mode
+
+    D.send?.addEventListener(
+      "click",
+      event => {
+        event.preventDefault();
+        sendMessage();
+      }
+    );
+
+    /*
+      STOP
+    */
+
+    D.stop?.addEventListener(
+      "click",
+      event => {
+        event.preventDefault();
+        stopGeneration();
+      }
+    );
+
+    /*
+      ENTER
+    */
+
+    D.input?.addEventListener(
+      "keydown",
+      event => {
+        if (
+          event.key !==
+          "Enter"
+        ) {
+          return;
+        }
+
+        if (
+          event.shiftKey
+        ) {
+          return;
+        }
+
+        if (
+          !W.settings.enterSend
+        ) {
+          return;
+        }
+
+        event.preventDefault();
+
+        sendMessage();
+      }
+    );
+
+    D.input?.addEventListener(
+      "input",
+      () => {
+        autoResize();
+        applyDirection(
+          D.input.value
+        );
+      }
+    );
+
+    /*
+      SIDEBAR
+    */
+
+    D.menu?.addEventListener(
+      "click",
+      event => {
+        event.preventDefault();
+        toggleSidebar();
+      }
+    );
+
+    D.overlay?.addEventListener(
+      "click",
+      closeSidebar
+    );
+
+    /*
+      NEW CHAT
+    */
+
+    D.newChat?.addEventListener(
+      "click",
+      event => {
+        event.preventDefault();
+        newChat();
+      }
+    );
+
+    /*
+      SETTINGS
+    */
+
+    D.settings?.addEventListener(
+      "click",
+      event => {
+        event.preventDefault();
+        openSettings();
+      }
+    );
+
+    /*
+      THEME
+    */
+
+    D.theme?.addEventListener(
+      "click",
+      event => {
+        event.preventDefault();
+        cycleTheme();
+      }
+    );
+
+    /*
+      VOICE
+    */
+
+    D.voice?.addEventListener(
+      "click",
+      event => {
+        event.preventDefault();
+        startVoice();
+      }
+    );
+
+    /*
+      CAMERA
+    */
+
+    D.camera?.addEventListener(
+      "click",
+      event => {
+        event.preventDefault();
+        openCamera();
+      }
+    );
+
+    /*
+      FILE
+    */
+
+    D.file?.addEventListener(
+      "click",
+      event => {
+        event.preventDefault();
+        D.fileInput?.click();
+      }
+    );
+
+    /*
+      IMAGE
+    */
+
+    D.image?.addEventListener(
+      "click",
+      event => {
+        event.preventDefault();
+        D.imageInput?.click();
+      }
+    );
+
+    /*
+      FILE INPUT
+    */
+
+    D.fileInput?.addEventListener(
+      "change",
+      async () => {
+        const file =
+          D.fileInput.files?.[0];
+
+        if (file) {
+          await analyzeFile(file);
+        }
+
+        D.fileInput.value = "";
+      }
+    );
+
+    /*
+      IMAGE INPUT
+    */
+
+    D.imageInput?.addEventListener(
+      "change",
+      async () => {
+        const file =
+          D.imageInput.files?.[0];
+
+        if (file) {
+          await analyzeImage(file);
+        }
+
+        D.imageInput.value = "";
+      }
+    );
+
+    /*
+      CAMERA INPUT
+    */
+
+    D.cameraInput?.addEventListener(
+      "change",
+      async () => {
+        const file =
+          D.cameraInput.files?.[0];
+
+        if (file) {
+          await analyzeImage(file);
+        }
+
+        D.cameraInput.value = "";
+      }
+    );
+
+    /*
+      MODE
+    */
+
+    D.mode?.addEventListener(
+      "change",
+      () => {
+        W.settings.mode =
+          D.mode.value;
+
+        saveState();
+      }
+    );
+
+    /*
+      SEARCH
+    */
+
+    D.search?.addEventListener(
+      "change",
+      () => {
+        W.settings.webSearch =
+          Boolean(
+            D.search.checked
+          );
+
+        saveState();
+      }
+    );
+
+    /*
+      FORM SUBMIT FALLBACK
+    */
+
+    const form =
+      D.input?.closest(
+        "form"
       );
 
-    if (optionExists) {
-      DOM.mode.value =
-        WEURA.settings.mode;
+    form?.addEventListener(
+      "submit",
+      event => {
+        event.preventDefault();
+        sendMessage();
+      }
+    );
+
+    /*
+      MESSAGE COPY
+    */
+
+    D.messages?.addEventListener(
+      "click",
+      event => {
+        const button =
+          event.target.closest(
+            "[data-copy-message]"
+          );
+
+        if (!button) return;
+
+        const wrapper =
+          button.closest(
+            ".weura-message"
+          );
+
+        const content =
+          wrapper?.querySelector(
+            ".weura-message-content"
+          );
+
+        if (content) {
+          copyText(
+            content.innerText
+          );
+        }
+      }
+    );
+
+    /*
+      QUICK ACTIONS
+    */
+
+    bindQuickActions();
+
+    /*
+      ESC
+    */
+
+    document.addEventListener(
+      "keydown",
+      event => {
+        if (
+          event.key === "Escape"
+        ) {
+          closeSidebar();
+        }
+      }
+    );
+  }
+
+  /* =========================================================
+     SYSTEM THEME
+  ========================================================= */
+
+  function listenSystemTheme() {
+    const media =
+      window.matchMedia(
+        "(prefers-color-scheme: dark)"
+      );
+
+    media.addEventListener?.(
+      "change",
+      () => {
+        if (
+          W.settings.theme ===
+          "auto"
+        ) {
+          applyTheme();
+        }
+      }
+    );
+  }
+
+  /* =========================================================
+     ERROR HANDLING
+  ========================================================= */
+
+  function installErrorHandlers() {
+    window.addEventListener(
+      "error",
+      event => {
+        console.error(
+          "WEURA frontend error:",
+          event.error ||
+            event.message
+        );
+      }
+    );
+
+    window.addEventListener(
+      "unhandledrejection",
+      event => {
+        console.error(
+          "WEURA promise error:",
+          event.reason
+        );
+      }
+    );
+  }
+
+  /* =========================================================
+     HEALTH
+  ========================================================= */
+
+  async function checkBackend() {
+    try {
+      const result =
+        await apiFetch(
+          "/api/health"
+        );
+
+      if (
+        result?.ok === false
+      ) {
+        setStatus(
+          "Backend unavailable"
+        );
+        return;
+      }
+
+      setStatus("Ready");
+    } catch {
+      /*
+        Don't break the UI if backend
+        is temporarily unavailable.
+      */
+      setStatus(
+        "Ready"
+      );
     }
   }
 
-  bindEvents();
-  enableProtection();
+  /* =========================================================
+     INITIALIZATION
+  ========================================================= */
 
-  autoResize();
+  function init() {
+    /*
+      IMPORTANT:
+      initialized is set ONLY after
+      successful initialization.
+      This fixes the old situation where
+      one initialization error could leave
+      every button dead forever.
+    */
 
-  applyDirection(
-    WEURA.history
-      .filter(m => m.role === "user")
-      .at(-1)?.content || ""
-  );
-
-  setGeneratingUI(false);
-  setStatus("Ready");
-
-  requestAnimationFrame(() => {
-    if (DOM.input) {
-      DOM.input.focus();
+    if (W.initialized) {
+      return;
     }
-  });
 
-  console.log(
-    "%cWEURA AI%c initialized — Think Beyond.",
-    "font-weight:bold;font-size:16px;",
-    "font-weight:normal;"
-  );
-}
-
-/* =========================================================
-   PUBLIC API
-========================================================= */
-
-window.WEURA = WEURA;
-
-window.WEURA_API = {
-  sendMessage,
-  newChat,
-  startVoice,
-  openCamera,
-  speak,
-  regenerate: regenerateLast,
-  stopGeneration,
-  loadConversation,
-  deleteConversation,
-  analyzeFile,
-  analyzeImage,
-  openSettings,
-  cycleTheme
-};
-
-/* =========================================================
-   START
-========================================================= */
-
-if (
-  document.readyState === "loading"
-) {
-  document.addEventListener(
-    "DOMContentLoaded",
-    init,
-    {
-      once: true
+    if (W.booting) {
+      return;
     }
-  );
-} else {
-  init();
-}
+
+    W.booting = true;
+
+    try {
+      cacheDOM();
+
+      loadState();
+
+      applyTheme();
+      listenSystemTheme();
+
+      ensureConversation();
+
+      if (
+        D.search
+      ) {
+        D.search.checked =
+          Boolean(
+            W.settings.webSearch
+          );
+      }
+
+      if (
+        D.mode &&
+        W.settings.mode
+      ) {
+        const exists =
+          Array.from(
+            D.mode.options || []
+          ).some(
+            option =>
+              option.value ===
+              W.settings.mode
+          );
+
+        if (exists) {
+          D.mode.value =
+            W.settings.mode;
+        }
+      }
+
+      bindEvents();
+
+      autoResize();
+
+      applyDirection(
+        D.input?.value || ""
+      );
+
+      setStatus("Ready");
+
+      installErrorHandlers();
+
+      W.initialized = true;
+      W.booting = false;
+
+      requestAnimationFrame(
+        () => {
+          D.input?.focus();
+        }
+      );
+
+      console.log(
+        "%cWEURA AI%c initialized — Think Beyond.",
+        "font-weight:bold;font-size:16px",
+        "font-weight:normal"
+      );
+
+      checkBackend();
+
+    } catch (error) {
+      W.booting = false;
+
+      console.error(
+        "WEURA initialization failed:",
+        error
+      );
+
+      setStatus(
+        "Initialization error"
+      );
+
+      /*
+        Do NOT set initialized=true here.
+        That allows a later retry.
+      */
+    }
+  }
+
+  /* =========================================================
+     PUBLIC API
+  ========================================================= */
+
+  window.WEURA = {
+    send: sendMessage,
+    newChat,
+    openSettings,
+    toggleTheme: cycleTheme,
+    openSidebar,
+    closeSidebar,
+    search: performSearch,
+    stop: stopGeneration,
+    analyzeFile,
+    analyzeImage,
+    startVoice,
+    getState: () => ({
+      ...W
+    })
+  };
+
+  window.WEURA_API =
+    window.WEURA;
+
+  /* =========================================================
+     START
+  ========================================================= */
+
+  if (
+    document.readyState ===
+    "loading"
+  ) {
+    document.addEventListener(
+      "DOMContentLoaded",
+      init,
+      { once: true }
+    );
+  } else {
+    init();
+  }
+})();
