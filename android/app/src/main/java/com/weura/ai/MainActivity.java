@@ -22,17 +22,25 @@ public class MainActivity extends AppCompatActivity {
 
         WebSettings settings = webView.getSettings();
 
+        // JavaScript
         settings.setJavaScriptEnabled(true);
+
+        // Local storage
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
+
+        // Web content
         settings.setAllowFileAccess(true);
         settings.setAllowContentAccess(true);
 
+        // تحسين تجربة WebView
+        settings.setLoadWithOverviewMode(true);
+        settings.setUseWideViewPort(true);
+
         webView.setWebViewClient(new WebViewClient());
 
-        // سيتم تغيير هذا الرابط إلى رابط WEURA المنشور
-        // بعد تجهيز الـBackend.
-        webView.loadUrl("https://YOUR-WEURA-URL.com");
+        // رابط WEURA AI الحقيقي
+        webView.loadUrl("https://ai-chat-nine-gamma.vercel.app");
     }
 
     @Override
