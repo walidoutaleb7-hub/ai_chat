@@ -1,103 +1,50 @@
 "use strict";
 
-/* =========================================================
-   WEURA AI — Complete Frontend Controller
-   Think Beyond.
-   Compatible with the current WEURA index.html + server.js
-========================================================= */
-
 (() => {
-  const $ = (id) => document.getElementById(id);
 
-  const all = (selector) =>
-    Array.from(document.querySelectorAll(selector));
+  const $ = id =>
+    document.getElementById(id);
 
   const STORAGE = {
-    settings: "weura_settings",
-    conversations: "weura_conversations",
-    current: "weura_current_conversation",
-    memory: "weura_memory"
+    settings: "weura_settings_v2",
+    chats: "weura_chats_v2",
+    memory: "weura_memory_v2"
   };
 
   const DEFAULT_SETTINGS = {
-    theme: "dark",
+    theme: "auto",
     language: "auto",
-    enterSend: true,
-    memory: true,
-    webSearch: true,
-    sound: true,
-    protection: false,
-    typingSpeed: 18,
-    mode: "smart"
+    direction: "auto",
+    detail: "auto",
+    mode: "auto"
   };
 
-  const W = {
+  const state = {
     initialized: false,
-    settings: { ...DEFAULT_SETTINGS },
-
-    conversations: [],
-    currentConversationId: null,
-
-    history: [],
-
-    isGenerating: false,
+    busy: false,
     abortController: null,
-    generationToken: 0,
-
-    recognition: null,
-    mediaStream: null,
-
-    lastPrompt: "",
-    lastAssistantMessage: ""
+    searchEnabled: false,
+    currentChatId: null,
+    chats: [],
+    memory: [],
+    settings: {
+      ...DEFAULT_SETTINGS
+    }
   };
 
-  const D = {};
-
-  /* =========================================================
-     DOM
-  ========================================================= */
-
-  function cacheDOM() {
-    D.messages = $("messages");
-    D.input = $("messageInput");
-    D.send = $("sendBtn");
-    D.stop = $("stopBtn");
-
-    D.welcome = $("welcome");
-
-    D.sidebar = $("sidebar");
-    D.overlay = $("overlay");
-
-    D.mode = $("modeSelect");
-    D.search = $("searchToggle");
-
-    D.fileInput = $("fileInput");
-    D.imageInput = $("imageInput");
-    D.cameraInput = $("cameraInput");
-
-    D.historyList = $("historyList");
-
-    D.status = $("statusText");
-
-    D.menu = $("menuBtn");
-    D.newChat = $("newChatBtn");
-    D.settings = $("settingsBtn");
-    D.theme = $("themeBtn");
-
-    D.voice = $("voiceBtn");
-    D.camera = $("cameraBtn");
-    D.file = $("fileBtn");
-    D.image = $("imageBtn");
-  }
-
-  /* =========================================================
+  /* =========================
      STORAGE
-  ========================================================= */
+  ========================= */
 
   function loadJSON(key, fallback) {
     try {
-      const value = localStorage.getItem(key);
-      return value ? JSON.parse(value) : fallback;
+      const value =
+        localStorage.getItem(key);
+
+      return value
+        ? JSON.parse(value)
+        : fallback;
+
     } catch {
       return fallback;
     }
@@ -105,905 +52,806 @@
 
   function saveJSON(key, value) {
     try {
-      localStorage.setItem(key, JSON.stringify(value));
+      localStorage.setItem(
+        key,
+        JSON.stringify(value)
+      );
     } catch {}
   }
 
   function loadState() {
-    W.settings = {
+    state.settings = {
       ...DEFAULT_SETTINGS,
-      ...loadJSON(STORAGE.settings, {})
+      ...loadJSON(
+        STORAGE.settings,
+        {}
+      )
     };
 
-    W.conversations = loadJSON(
-      STORAGE.conversations,
-      []
-    );
+    state.chats =
+      loadJSON(
+        STORAGE.chats,
+        []
+      );
 
-    if (!Array.isArray(W.conversations)) {
-      W.conversations = [];
-    }
-
-    W.currentConversationId =
-      localStorage.getItem(STORAGE.current) || null;
+    state.memory =
+      loadJSON(
+        STORAGE.memory,
+        []
+      );
   }
 
   function saveState() {
-    saveJSON(STORAGE.settings, W.settings);
-    saveJSON(STORAGE.conversations, W.conversations);
+    saveJSON(
+      STORAGE.settings,
+      state.settings
+    );
 
-    if (W.currentConversationId) {
-      localStorage.setItem(
-        STORAGE.current,
-        W.currentConversationId
-      );
-    }
-  }
+    saveJSON(
+      STORAGE.chats,
+      state.chats
+    );
 
-  /* =========================================================
-     UTILITIES
-  ========================================================= */
-
-  function uid() {
-    return (
-      Date.now().toString(36) +
-      Math.random().toString(36).slice(2, 9)
+    saveJSON(
+      STORAGE.memory,
+      state.memory
     );
   }
 
-  function escapeHTML(text) {
-    return String(text ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
-  }
-
-  function setStatus(text) {
-    /*
-      index.html currently contains duplicate #statusText.
-      Update every matching element safely.
-    */
-    all('[id="statusText"]').forEach((el) => {
-      el.textContent = text;
-    });
-  }
-
-  function isRTL(text) {
-    return /[\u0590-\u08FF]/.test(text || "");
-  }
-
-  function applyDirection(text = "") {
-    if (!D.input) return;
-
-    if (W.settings.language === "ar") {
-      D.input.dir = "rtl";
-      document.documentElement.dir = "rtl";
-      return;
-    }
-
-    if (W.settings.language === "en") {
-      D.input.dir = "ltr";
-      document.documentElement.dir = "ltr";
-      return;
-    }
-
-    const rtl = isRTL(text);
-
-    D.input.dir = rtl ? "rtl" : "ltr";
-    document.documentElement.dir = rtl ? "rtl" : "ltr";
-  }
-
-  /* =========================================================
+  /* =========================
      THEME
-  ========================================================= */
+  ========================= */
 
   function applyTheme() {
-    let theme = W.settings.theme;
+
+    const theme =
+      state.settings.theme;
+
+    let light = false;
+
+    if (theme === "light") {
+      light = true;
+    }
 
     if (theme === "auto") {
-      theme = window.matchMedia(
-        "(prefers-color-scheme: dark)"
-      ).matches
-        ? "dark"
-        : "light";
+      light =
+        window.matchMedia &&
+        window.matchMedia(
+          "(prefers-color-scheme: light)"
+        ).matches;
     }
 
-    document.documentElement.dataset.theme = theme;
-    document.body.dataset.theme = theme;
-
-    document.documentElement.classList.toggle(
-      "dark",
-      theme === "dark"
-    );
-
-    document.documentElement.classList.toggle(
+    document.body.classList.toggle(
       "light",
-      theme === "light"
+      light
     );
+  }
 
-    if (D.theme) {
-      D.theme.title =
-        `Theme: ${W.settings.theme}`;
+  /* =========================
+     DIRECTION
+  ========================= */
+
+  function detectDirection() {
+
+    if (
+      state.settings.direction ===
+      "rtl"
+    ) {
+      return "rtl";
     }
+
+    if (
+      state.settings.direction ===
+      "ltr"
+    ) {
+      return "ltr";
+    }
+
+    if (
+      state.settings.language ===
+      "ar"
+    ) {
+      return "rtl";
+    }
+
+    return "rtl";
   }
 
-  function cycleTheme() {
-    const modes = ["dark", "light", "auto"];
+  function applyDirection() {
 
-    const current =
-      modes.indexOf(W.settings.theme);
+    const direction =
+      detectDirection();
 
-    W.settings.theme =
-      modes[(current + 1) % modes.length];
+    document.documentElement.dir =
+      direction;
 
-    applyTheme();
-    saveState();
-
-    setStatus(
-      `Theme: ${W.settings.theme}`
-    );
+    document.documentElement.lang =
+      state.settings.language ===
+      "en"
+        ? "en"
+        : state.settings.language ===
+          "fr"
+          ? "fr"
+          : "ar";
   }
 
-  /* =========================================================
-     CONVERSATIONS
-  ========================================================= */
+  /* =========================
+     CHAT HELPERS
+  ========================= */
 
-  function createConversation() {
-    const conversation = {
-      id: uid(),
-      title: "New conversation",
+  function createChat() {
+
+    const id =
+      "chat_" +
+      Date.now() +
+      "_" +
+      Math.random()
+        .toString(36)
+        .slice(2);
+
+    const chat = {
+      id,
+      title: "محادثة جديدة",
+      messages: [],
       createdAt: Date.now(),
-      updatedAt: Date.now(),
-      messages: []
+      updatedAt: Date.now()
     };
 
-    W.conversations.unshift(conversation);
+    state.chats.unshift(chat);
 
-    W.currentConversationId =
-      conversation.id;
-
-    W.history = conversation.messages;
+    state.currentChatId = id;
 
     saveState();
 
-    return conversation;
-  }
-
-  function getCurrentConversation() {
-    return W.conversations.find(
-      c => c.id === W.currentConversationId
-    );
-  }
-
-  function ensureConversation() {
-    let conversation =
-      getCurrentConversation();
-
-    if (!conversation) {
-      conversation = createConversation();
-    }
-
-    W.history = Array.isArray(
-      conversation.messages
-    )
-      ? conversation.messages
-      : [];
-
-    renderMessages();
-    renderHistory();
-  }
-
-  function updateConversation() {
-    const conversation =
-      getCurrentConversation();
-
-    if (!conversation) return;
-
-    conversation.messages = W.history;
-    conversation.updatedAt = Date.now();
-
-    const firstUser =
-      W.history.find(
-        m => m.role === "user"
-      );
-
-    if (firstUser) {
-      conversation.title =
-        firstUser.content
-          .replace(/\s+/g, " ")
-          .trim()
-          .slice(0, 42) ||
-        "New conversation";
-    }
-
-    saveState();
-  }
-
-  function newChat() {
-    W.isGenerating = false;
-
-    if (W.abortController) {
-      try {
-        W.abortController.abort();
-      } catch {}
-    }
-
-    W.abortController = null;
-
-    createConversation();
-
-    renderMessages();
     renderHistory();
 
-    closeSidebar();
-
-    setStatus("Ready");
-
-    setTimeout(() => {
-      D.input?.focus();
-    }, 50);
+    return chat;
   }
 
-  function switchConversation(id) {
-    const conversation =
-      W.conversations.find(
-        c => c.id === id
-      );
+  function getCurrentChat() {
 
-    if (!conversation) return;
-
-    W.currentConversationId = id;
-
-    W.history =
-      Array.isArray(conversation.messages)
-        ? conversation.messages
-        : [];
-
-    saveState();
-
-    renderMessages();
-    renderHistory();
-
-    closeSidebar();
-  }
-
-  function deleteConversation(id) {
-    W.conversations =
-      W.conversations.filter(
-        c => c.id !== id
-      );
-
-    if (
-      W.currentConversationId === id
-    ) {
-      W.currentConversationId = null;
-      W.history = [];
-      ensureConversation();
-    }
-
-    saveState();
-    renderHistory();
-  }
-
-  /* =========================================================
-     MESSAGE RENDERING
-  ========================================================= */
-
-  function renderMessages() {
-    if (!D.messages) return;
-
-    D.messages.innerHTML = "";
-
-    if (!W.history.length) {
-      if (D.welcome) {
-        D.welcome.style.display = "";
-      }
-      return;
-    }
-
-    if (D.welcome) {
-      D.welcome.style.display = "none";
-    }
-
-    W.history.forEach(message => {
-      appendMessage(
-        message.role,
-        message.content,
-        false
-      );
-    });
-
-    scrollToBottom();
-  }
-
-  function appendMessage(
-    role,
-    content,
-    scroll = true
-  ) {
-    if (!D.messages) return null;
-
-    const wrapper =
-      document.createElement("div");
-
-    wrapper.className =
-      `weura-message ${role}`;
-
-    wrapper.dataset.role = role;
-
-    const bubble =
-      document.createElement("div");
-
-    bubble.className =
-      "weura-message-content";
-
-    bubble.innerHTML =
-      formatMessage(content);
-
-    wrapper.appendChild(bubble);
-
-    if (role === "assistant") {
-      const actions =
-        document.createElement("div");
-
-      actions.className =
-        "weura-message-actions";
-
-      actions.innerHTML = `
-        <button type="button" data-copy-message>
-          Copy
-        </button>
-      `;
-
-      wrapper.appendChild(actions);
-    }
-
-    D.messages.appendChild(wrapper);
-
-    if (scroll) {
-      scrollToBottom();
-    }
-
-    return bubble;
-  }
-
-  function formatMessage(text) {
-    let html = escapeHTML(text);
-
-    /*
-      Basic Markdown-like rendering.
-      This intentionally avoids injecting raw HTML.
-    */
-
-    html = html.replace(
-      /```([\s\S]*?)```/g,
-      (_, code) =>
-        `<pre><code>${code.trim()}</code></pre>`
+    return state.chats.find(
+      chat =>
+        chat.id ===
+        state.currentChatId
     );
-
-    html = html.replace(
-      /`([^`]+)`/g,
-      "<code>$1</code>"
-    );
-
-    html = html.replace(
-      /\*\*([^*]+)\*\*/g,
-      "<strong>$1</strong>"
-    );
-
-    html = html.replace(
-      /\n/g,
-      "<br>"
-    );
-
-    return html;
   }
 
-  function scrollToBottom() {
-    if (!D.messages) return;
+  function ensureChat() {
 
-    requestAnimationFrame(() => {
-      D.messages.scrollTop =
-        D.messages.scrollHeight;
-    });
-  }
+    let chat =
+      getCurrentChat();
 
-  async function typeMessage(
-    bubble,
-    text,
-    token
-  ) {
-    if (!bubble) return;
-
-    const speed =
-      Math.max(
-        0,
-        Number(W.settings.typingSpeed) || 0
-      );
-
-    if (
-      speed === 0 ||
-      token !== W.generationToken
-    ) {
-      bubble.innerHTML =
-        formatMessage(text);
-
-      return;
+    if (!chat) {
+      chat = createChat();
     }
 
-    bubble.innerHTML = "";
-
-    for (
-      let i = 0;
-      i < text.length;
-      i++
-    ) {
-      if (
-        token !== W.generationToken ||
-        !W.isGenerating
-      ) {
-        bubble.innerHTML =
-          formatMessage(text);
-
-        return;
-      }
-
-      bubble.textContent += text[i];
-
-      if (
-        i % 3 === 0
-      ) {
-        scrollToBottom();
-        await new Promise(
-          resolve =>
-            setTimeout(
-              resolve,
-              speed
-            )
-        );
-      }
-    }
-
-    bubble.innerHTML =
-      formatMessage(text);
+    return chat;
   }
 
-  /* =========================================================
-     HISTORY UI
-  ========================================================= */
+  function makeTitle(text) {
+
+    const clean =
+      String(text || "")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    if (!clean) {
+      return "محادثة جديدة";
+    }
+
+    return clean.length > 40
+      ? clean.slice(0, 40) + "…"
+      : clean;
+  }
+
+  /* =========================
+     HISTORY
+  ========================= */
 
   function renderHistory() {
-    if (!D.historyList) return;
 
-    D.historyList.innerHTML = "";
+    const list =
+      $("historyList");
 
-    W.conversations.forEach(
-      conversation => {
+    if (!list) return;
+
+    list.innerHTML = "";
+
+    state.chats
+      .slice()
+      .sort(
+        (a, b) =>
+          b.updatedAt -
+          a.updatedAt
+      )
+      .forEach(chat => {
+
         const item =
-          document.createElement("div");
+          document.createElement(
+            "div"
+          );
 
         item.className =
-          "weura-history-item";
+          "history-item" +
+          (
+            chat.id ===
+            state.currentChatId
+              ? " active"
+              : ""
+          );
 
-        if (
-          conversation.id ===
-          W.currentConversationId
-        ) {
-          item.classList.add("active");
-        }
+        item.textContent =
+          chat.title ||
+          "محادثة جديدة";
 
-        const button =
-          document.createElement("button");
+        item.onclick = () => {
 
-        button.type = "button";
-        button.className =
-          "weura-history-open";
+          state.currentChatId =
+            chat.id;
 
-        button.textContent =
-          conversation.title ||
-          "New conversation";
+          renderHistory();
+          renderMessages();
+          closeSidebar();
+        };
 
-        button.addEventListener(
-          "click",
-          () =>
-            switchConversation(
-              conversation.id
-            )
-        );
-
-        const del =
-          document.createElement("button");
-
-        del.type = "button";
-        del.className =
-          "weura-history-delete";
-
-        del.textContent = "×";
-
-        del.addEventListener(
-          "click",
-          event => {
-            event.preventDefault();
-            event.stopPropagation();
-
-            deleteConversation(
-              conversation.id
-            );
-          }
-        );
-
-        item.append(
-          button,
-          del
-        );
-
-        D.historyList.appendChild(item);
-      }
-    );
+        list.appendChild(item);
+      });
   }
 
-  /* =========================================================
-     API
-  ========================================================= */
+  /* =========================
+     MESSAGES
+  ========================= */
 
-  async function apiFetch(
-    url,
-    options = {}
-  ) {
-    const response =
-      await fetch(url, {
-        ...options,
-        headers: {
-          ...(options.body instanceof FormData
-            ? {}
-            : {
-                "Content-Type":
-                  "application/json"
-              }),
-          ...(options.headers || {})
-        }
-      });
+  function renderMessages() {
 
-    const contentType =
-      response.headers.get(
-        "content-type"
-      ) || "";
+    const container =
+      $("messages");
 
-    let data;
+    if (!container) return;
+
+    const inner =
+      document.createElement(
+        "div"
+      );
+
+    inner.className =
+      "chat-inner";
+
+    const chat =
+      getCurrentChat();
 
     if (
-      contentType.includes(
-        "application/json"
-      )
+      !chat ||
+      !chat.messages.length
     ) {
-      data = await response.json();
-    } else {
-      data = await response.text();
+
+      const welcome =
+        document
+          .querySelector(
+            "#welcome"
+          );
+
+      if (welcome) {
+        inner.appendChild(
+          welcome
+        );
+      }
+
+      container.innerHTML = "";
+
+      container.appendChild(
+        inner
+      );
+
+      return;
     }
+
+    chat.messages.forEach(
+      message => {
+
+        inner.appendChild(
+          createMessageElement(
+            message
+          )
+        );
+
+      }
+    );
+
+    container.innerHTML = "";
+
+    container.appendChild(
+      inner
+    );
+
+    scrollBottom();
+  }
+
+  function createMessageElement(
+    message
+  ) {
+
+    const wrapper =
+      document.createElement(
+        "div"
+      );
+
+    wrapper.className =
+      `message ${message.role}`;
+
+    const avatar =
+      document.createElement(
+        "div"
+      );
+
+    avatar.className =
+      "avatar";
+
+    avatar.textContent =
+      message.role ===
+      "assistant"
+        ? "W"
+        : "U";
+
+    const body =
+      document.createElement(
+        "div"
+      );
+
+    body.className =
+      "message-body";
+
+    const content =
+      document.createElement(
+        "div"
+      );
+
+    content.className =
+      "message-content";
+
+    content.textContent =
+      message.content || "";
+
+    body.appendChild(
+      content
+    );
+
+    if (
+      message.role ===
+      "assistant"
+    ) {
+
+      const actions =
+        document.createElement(
+          "div"
+        );
+
+      actions.className =
+        "message-actions";
+
+      const copy =
+        document.createElement(
+          "button"
+        );
+
+      copy.textContent =
+        "نسخ";
+
+      copy.onclick = async () => {
+
+        try {
+
+          await navigator.clipboard
+            .writeText(
+              message.content
+            );
+
+          copy.textContent =
+            "تم النسخ";
+
+          setTimeout(() => {
+            copy.textContent =
+              "نسخ";
+          }, 1200);
+
+        } catch {}
+
+      };
+
+      actions.appendChild(
+        copy
+      );
+
+      body.appendChild(
+        actions
+      );
+    }
+
+    wrapper.appendChild(
+      avatar
+    );
+
+    wrapper.appendChild(
+      body
+    );
+
+    return wrapper;
+  }
+
+  function addMessage(
+    role,
+    content
+  ) {
+
+    const chat =
+      ensureChat();
+
+    chat.messages.push({
+      role,
+      content: String(
+        content || ""
+      )
+    });
+
+    chat.updatedAt =
+      Date.now();
+
+    if (
+      role === "user" &&
+      chat.messages.length === 1
+    ) {
+      chat.title =
+        makeTitle(content);
+    }
+
+    saveState();
+
+    renderMessages();
+    renderHistory();
+  }
+
+  function scrollBottom() {
+
+    const el =
+      $("messages");
+
+    if (!el) return;
+
+    requestAnimationFrame(() => {
+
+      el.scrollTop =
+        el.scrollHeight;
+
+    });
+  }
+
+  /* =========================
+     UI STATUS
+  ========================= */
+
+  function setStatus(
+    text,
+    type = ""
+  ) {
+
+    document
+      .querySelectorAll(
+        ".status"
+      )
+      .forEach(el => {
+
+        el.textContent =
+          text;
+
+        el.className =
+          "status " +
+          type;
+
+      });
+
+    const composer =
+      $("composerStatus");
+
+    if (composer) {
+      composer.textContent =
+        text;
+    }
+  }
+
+  /* =========================
+     BACKEND HEALTH
+  ========================= */
+
+  async function checkHealth() {
+
+    try {
+
+      const response =
+        await fetch(
+          "/api/health"
+        );
+
+      const data =
+        await response.json();
+
+      if (data.ok) {
+
+        setStatus(
+          data.groq
+            ? "WEURA متصل"
+            : "WEURA متصل — API غير مضبوط",
+          data.groq
+            ? "online"
+            : "offline"
+        );
+
+      } else {
+        throw new Error();
+      }
+
+    } catch {
+
+      setStatus(
+        "الخادم غير متصل",
+        "offline"
+      );
+    }
+  }
+
+  /* =========================
+     SEARCH
+  ========================= */
+
+  async function performSearch(
+    query
+  ) {
+
+    const response =
+      await fetch(
+        "/api/search",
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json"
+          },
+
+          body: JSON.stringify({
+            query
+          })
+        }
+      );
+
+    const data =
+      await response.json();
 
     if (!response.ok) {
       throw new Error(
-        typeof data === "object"
-          ? data.error ||
-            data.message ||
-            `HTTP ${response.status}`
-          : data ||
-            `HTTP ${response.status}`
+        data.error ||
+        "فشل البحث"
       );
     }
 
     return data;
   }
 
-  /* =========================================================
-     CHAT
-  ========================================================= */
+  /* =========================
+     SEND
+  ========================= */
 
-  async function sendMessage(
-    forcedText = null
-  ) {
-    if (W.isGenerating) return;
+  async function sendMessage() {
+
+    if (state.busy) return;
+
+    const input =
+      $("messageInput");
+
+    if (!input) return;
 
     const text =
-      forcedText ??
-      D.input?.value?.trim() ??
-      "";
+      input.value.trim();
 
     if (!text) return;
 
-    W.lastPrompt = text;
+    input.value = "";
 
-    if (D.input) {
-      D.input.value = "";
-      autoResize();
-    }
+    resizeTextarea();
 
-    applyDirection(text);
+    ensureChat();
 
-    W.history.push({
-      role: "user",
-      content: text,
-      timestamp: Date.now()
-    });
-
-    appendMessage(
+    addMessage(
       "user",
       text
     );
 
-    updateConversation();
+    state.busy = true;
 
-    W.isGenerating = true;
-    W.generationToken++;
+    state.abortController =
+      new AbortController();
 
-    const token =
-      W.generationToken;
-
-    setGeneratingUI(true);
-
-    setStatus("Thinking…");
-
-    const assistantBubble =
-      appendMessage(
-        "assistant",
-        "…"
-      );
+    toggleBusy(true);
 
     try {
-      let messages =
-        W.history.map(m => ({
-          role: m.role,
-          content: m.content
-        }));
 
-      /*
-        Optional unified search.
-        The backend handles Tavily if configured.
-      */
-
-      let searchResults = null;
+      let webResults = [];
 
       if (
-        W.settings.webSearch &&
-        D.search?.checked
+        state.searchEnabled
       ) {
-        try {
-          searchResults =
-            await performSearch(
-              text
-            );
-        } catch {
-          searchResults = null;
-        }
+
+        setStatus(
+          "جاري البحث..."
+        );
+
+        const search =
+          await performSearch(
+            text
+          );
+
+        webResults =
+          search.results || [];
       }
 
-      if (searchResults) {
-        messages.push({
-          role: "system",
-          content:
-            "Use these web search results when relevant:\n" +
-            JSON.stringify(
-              searchResults
-            )
-        });
-      }
+      setStatus(
+        "WEURA يفكر..."
+      );
 
-      W.abortController =
-        new AbortController();
+      const chat =
+        getCurrentChat();
 
       const response =
         await fetch(
           "/api/chat",
           {
             method: "POST",
+
             headers: {
               "Content-Type":
                 "application/json"
             },
-            body: JSON.stringify({
-              messages,
-              mode:
-                W.settings.mode ||
-                D.mode?.value ||
-                "smart",
-              language:
-                W.settings.language,
-              memory:
-                W.settings.memory
-            }),
+
             signal:
-              W.abortController.signal
-          }
-        );
+              state
+                .abortController
+                .signal,
 
-      const contentType =
-        response.headers.get(
-          "content-type"
-        ) || "";
-
-      let data;
-
-      if (
-        contentType.includes(
-          "application/json"
-        )
-      ) {
-        data =
-          await response.json();
-      } else {
-        data =
-          await response.text();
-      }
-
-      if (!response.ok) {
-        throw new Error(
-          typeof data === "object"
-            ? data.error ||
-              data.message ||
-              "Server error"
-            : data ||
-              "Server error"
-        );
-      }
-
-      const answer =
-        typeof data === "string"
-          ? data
-          : data.answer ||
-            data.response ||
-            data.message ||
-            data.content ||
-            "I couldn't generate a response.";
-
-      if (
-        token !== W.generationToken
-      ) {
-        return;
-      }
-
-      W.lastAssistantMessage =
-        answer;
-
-      W.history.push({
-        role: "assistant",
-        content: answer,
-        timestamp: Date.now()
-      });
-
-      if (assistantBubble) {
-        await typeMessage(
-          assistantBubble,
-          answer,
-          token
-        );
-      }
-
-      updateConversation();
-
-      setStatus("Ready");
-
-      speakIfEnabled(answer);
-    } catch (error) {
-      if (
-        error.name ===
-        "AbortError"
-      ) {
-        if (assistantBubble) {
-          assistantBubble.innerHTML =
-            "<em>Generation stopped.</em>";
-        }
-
-        setStatus("Ready");
-        return;
-      }
-
-      console.error(
-        "WEURA chat error:",
-        error
-      );
-
-      if (assistantBubble) {
-        assistantBubble.innerHTML =
-          `<strong>WEURA error</strong><br>${escapeHTML(
-            error.message
-          )}`;
-      }
-
-      setStatus("Connection error");
-    } finally {
-      W.isGenerating = false;
-      W.abortController = null;
-
-      setGeneratingUI(false);
-    }
-  }
-
-  /* =========================================================
-     SEARCH
-  ========================================================= */
-
-  async function performSearch(
-    query
-  ) {
-    try {
-      const result =
-        await apiFetch(
-          "/api/search",
-          {
-            method: "POST",
             body: JSON.stringify({
-              query
+
+              messages:
+                chat.messages,
+
+              mode:
+                state.settings.mode,
+
+              language:
+                state.settings.language,
+
+              memory:
+                state.memory,
+
+              webResults
+
             })
           }
         );
 
-      return result;
-    } catch (error) {
-      console.warn(
-        "Search unavailable:",
-        error
+      const data =
+        await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+          "حدث خطأ في WEURA."
+        );
+      }
+
+      addMessage(
+        "assistant",
+        data.answer ||
+        "لم يتم الحصول على إجابة."
       );
 
-      return null;
+      setStatus(
+        "WEURA جاهز."
+      );
+
+    } catch (error) {
+
+      if (
+        error.name ===
+        "AbortError"
+      ) {
+
+        setStatus(
+          "تم إيقاف الطلب."
+        );
+
+        return;
+      }
+
+      console.error(error);
+
+      addMessage(
+        "assistant",
+        "حدث خطأ: " +
+        (
+          error.message ||
+          "تعذر الاتصال بالخادم."
+        )
+      );
+
+      setStatus(
+        "حدث خطأ.",
+        "offline"
+      );
+
+    } finally {
+
+      state.busy = false;
+
+      state.abortController =
+        null;
+
+      toggleBusy(false);
+
     }
   }
 
-  /* =========================================================
-     GENERATION UI
-  ========================================================= */
+  /* =========================
+     BUSY
+  ========================= */
 
-  function setGeneratingUI(
-    generating
+  function toggleBusy(
+    busy
   ) {
-    W.isGenerating =
-      generating;
 
-    if (D.send) {
-      D.send.disabled =
-        generating;
+    const send =
+      $("sendBtn");
+
+    const stop =
+      $("stopBtn");
+
+    if (send) {
+      send.style.display =
+        busy
+          ? "none"
+          : "grid";
     }
 
-    if (D.stop) {
-      D.stop.style.display =
-        generating
-          ? ""
+    if (stop) {
+      stop.style.display =
+        busy
+          ? "grid"
           : "none";
-    }
-
-    if (D.input) {
-      D.input.disabled =
-        false;
     }
   }
 
   function stopGeneration() {
-    W.generationToken++;
 
-    if (W.abortController) {
-      try {
-        W.abortController.abort();
-      } catch {}
+    if (
+      state.abortController
+    ) {
+      state
+        .abortController
+        .abort();
     }
-
-    W.abortController = null;
-    W.isGenerating = false;
-
-    setGeneratingUI(false);
-    setStatus("Ready");
   }
 
-  /* =========================================================
-     FILE ANALYSIS
-  ========================================================= */
+  /* =========================
+     FILE
+  ========================= */
 
   async function analyzeFile(
     file
   ) {
+
     if (!file) return;
 
-    setStatus("Analyzing file…");
+    setStatus(
+      "جاري تحليل الملف..."
+    );
 
     const form =
       new FormData();
@@ -1013,9 +861,15 @@
       file
     );
 
+    form.append(
+      "prompt",
+      "حلل هذا الملف وقدم لي ملخصاً واضحاً وأهم النقاط والملاحظات."
+    );
+
     try {
-      const result =
-        await apiFetch(
+
+      const response =
+        await fetch(
           "/api/file",
           {
             method: "POST",
@@ -1023,63 +877,58 @@
           }
         );
 
-      const answer =
-        result.answer ||
-        result.text ||
-        result.content ||
-        JSON.stringify(
-          result
+      const data =
+        await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+          "فشل تحليل الملف."
         );
+      }
 
-      W.history.push({
-        role: "user",
-        content:
-          `[File: ${file.name}]`,
-        timestamp: Date.now()
-      });
-
-      appendMessage(
+      addMessage(
         "user",
-        `[File: ${file.name}]`
+        `📎 ملف: ${file.name}`
       );
 
-      W.history.push({
-        role: "assistant",
-        content: answer,
-        timestamp: Date.now()
-      });
-
-      appendMessage(
+      addMessage(
         "assistant",
-        answer
+        data.answer ||
+        "تم تحليل الملف."
       );
 
-      updateConversation();
-
-      setStatus("Ready");
-    } catch (error) {
-      console.error(error);
       setStatus(
-        "File analysis failed"
+        "تم تحليل الملف."
       );
 
-      alert(
-        `WEURA: ${error.message}`
+    } catch (error) {
+
+      addMessage(
+        "assistant",
+        "تعذر تحليل الملف: " +
+        error.message
+      );
+
+      setStatus(
+        "فشل تحليل الملف.",
+        "offline"
       );
     }
   }
 
-  /* =========================================================
-     IMAGE / VISION
-  ========================================================= */
+  /* =========================
+     IMAGE
+  ========================= */
 
   async function analyzeImage(
     file
   ) {
+
     if (!file) return;
 
     setStatus(
-      "Analyzing image…"
+      "جاري تحليل الصورة..."
     );
 
     const form =
@@ -1090,9 +939,15 @@
       file
     );
 
+    form.append(
+      "prompt",
+      "حلل هذه الصورة بدقة واشرح أهم المعلومات المرئية فيها."
+    );
+
     try {
-      const result =
-        await apiFetch(
+
+      const response =
+        await fetch(
           "/api/vision",
           {
             method: "POST",
@@ -1100,1156 +955,679 @@
           }
         );
 
-      const answer =
-        result.answer ||
-        result.description ||
-        result.content ||
-        JSON.stringify(
-          result
+      const data =
+        await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+          "فشل تحليل الصورة."
         );
+      }
 
-      appendMessage(
+      addMessage(
         "user",
-        `[Image: ${file.name}]`
+        `🖼️ صورة: ${file.name}`
       );
 
-      W.history.push({
-        role: "user",
-        content:
-          `[Image: ${file.name}]`,
-        timestamp: Date.now()
-      });
-
-      appendMessage(
+      addMessage(
         "assistant",
-        answer
+        data.answer ||
+        "تم تحليل الصورة."
       );
-
-      W.history.push({
-        role: "assistant",
-        content: answer,
-        timestamp: Date.now()
-      });
-
-      updateConversation();
-
-      setStatus("Ready");
-    } catch (error) {
-      console.error(error);
 
       setStatus(
-        "Image analysis failed"
+        "تم تحليل الصورة."
       );
 
-      alert(
-        `WEURA: ${error.message}`
+    } catch (error) {
+
+      addMessage(
+        "assistant",
+        "تعذر تحليل الصورة: " +
+        error.message
+      );
+
+      setStatus(
+        "فشل تحليل الصورة.",
+        "offline"
       );
     }
   }
 
-  /* =========================================================
-     VOICE INPUT
-  ========================================================= */
+  /* =========================
+     VOICE
+  ========================= */
 
   function startVoice() {
-    const Recognition =
+
+    const SpeechRecognition =
       window.SpeechRecognition ||
       window.webkitSpeechRecognition;
 
-    if (!Recognition) {
-      alert(
-        "Voice input is not supported by this browser."
+    if (!SpeechRecognition) {
+
+      setStatus(
+        "التعرف الصوتي غير مدعوم في هذا المتصفح."
       );
-      return;
-    }
 
-    if (W.recognition) {
-      try {
-        W.recognition.stop();
-      } catch {}
-
-      W.recognition = null;
-
-      setStatus("Ready");
       return;
     }
 
     const recognition =
-      new Recognition();
+      new SpeechRecognition();
 
     recognition.lang =
-      W.settings.language === "ar"
-        ? "ar-DZ"
-        : "en-US";
+      state.settings.language ===
+      "en"
+        ? "en-US"
+        : state.settings.language ===
+          "fr"
+          ? "fr-FR"
+          : "ar-DZ";
 
-    recognition.continuous = false;
-    recognition.interimResults = true;
+    recognition.interimResults =
+      false;
 
-    recognition.onstart = () => {
-      setStatus("Listening…");
-    };
+    recognition.continuous =
+      false;
 
-    recognition.onresult = event => {
-      let finalText = "";
+    recognition.onstart =
+      () => {
 
-      for (
-        let i = event.resultIndex;
-        i < event.results.length;
-        i++
-      ) {
-        finalText +=
-          event.results[i][0]
-            .transcript;
-      }
-
-      if (D.input) {
-        D.input.value =
-          finalText;
-
-        autoResize();
-        applyDirection(
-          finalText
+        setStatus(
+          "أستمع إليك..."
         );
-      }
-    };
 
-    recognition.onerror = error => {
-      console.warn(
-        "Voice:",
-        error
-      );
+      };
 
-      setStatus("Voice error");
-    };
+    recognition.onresult =
+      event => {
 
-    recognition.onend = () => {
-      W.recognition = null;
-      setStatus("Ready");
-    };
+        const result =
+          event.results?.[0]?.[0]
+            ?.transcript || "";
 
-    W.recognition =
-      recognition;
+        const input =
+          $("messageInput");
+
+        if (input) {
+
+          input.value =
+            (
+              input.value
+                ? input.value +
+                  " "
+                : ""
+            ) + result;
+
+          resizeTextarea();
+        }
+
+      };
+
+    recognition.onerror =
+      () => {
+
+        setStatus(
+          "تعذر استخدام الميكروفون."
+        );
+
+      };
+
+    recognition.onend =
+      () => {
+
+        if (!state.busy) {
+          setStatus(
+            "WEURA جاهز."
+          );
+        }
+
+      };
 
     recognition.start();
   }
 
-  /* =========================================================
-     SPEECH OUTPUT
-  ========================================================= */
+  /* =========================
+     TEXTAREA
+  ========================= */
 
-  function speakIfEnabled(text) {
-    if (
-      !W.settings.sound ||
-      !("speechSynthesis" in window)
-    ) {
-      return;
-    }
+  function resizeTextarea() {
 
-    /*
-      Keep automatic speech disabled for long answers.
-      User can still use browser controls if desired.
-    */
-  }
+    const input =
+      $("messageInput");
 
-  /* =========================================================
-     CAMERA
-  ========================================================= */
+    if (!input) return;
 
-  async function openCamera() {
-    /*
-      If the current page/browser doesn't allow
-      getUserMedia, use the existing camera input.
-    */
-
-    if (
-      !navigator.mediaDevices ||
-      !navigator.mediaDevices.getUserMedia
-    ) {
-      D.cameraInput?.click();
-      return;
-    }
-
-    try {
-      const stream =
-        await navigator.mediaDevices.getUserMedia({
-          video: true
-        });
-
-      W.mediaStream = stream;
-
-      /*
-        We don't create a separate camera UI here.
-        The stream permission is requested and then
-        the existing image picker is used.
-      */
-
-      stream
-        .getTracks()
-        .forEach(track =>
-          track.stop()
-        );
-
-      W.mediaStream = null;
-
-      D.cameraInput?.click();
-    } catch (error) {
-      console.warn(
-        "Camera unavailable:",
-        error
-      );
-
-      D.cameraInput?.click();
-    }
-  }
-
-  /* =========================================================
-     SIDEBAR
-  ========================================================= */
-
-  function openSidebar() {
-    D.sidebar?.classList.add(
-      "open",
-      "active"
-    );
-
-    D.overlay?.classList.add(
-      "open",
-      "active"
-    );
-  }
-
-  function closeSidebar() {
-    D.sidebar?.classList.remove(
-      "open",
-      "active"
-    );
-
-    D.overlay?.classList.remove(
-      "open",
-      "active"
-    );
-  }
-
-  function toggleSidebar() {
-    if (
-      D.sidebar?.classList.contains(
-        "open"
-      ) ||
-      D.sidebar?.classList.contains(
-        "active"
-      )
-    ) {
-      closeSidebar();
-    } else {
-      openSidebar();
-    }
-  }
-
-  /* =========================================================
-     AUTO RESIZE
-  ========================================================= */
-
-  function autoResize() {
-    if (!D.input) return;
-
-    D.input.style.height =
+    input.style.height =
       "auto";
 
-    D.input.style.height =
+    input.style.height =
       Math.min(
-        D.input.scrollHeight,
-        180
+        input.scrollHeight,
+        190
       ) + "px";
   }
 
-  /* =========================================================
+  /* =========================
+     SIDEBAR
+  ========================= */
+
+  function openSidebar() {
+
+    $("sidebar")
+      ?.classList
+      .add("open");
+
+    $("overlay")
+      ?.classList
+      .add("show");
+  }
+
+  function closeSidebar() {
+
+    $("sidebar")
+      ?.classList
+      .remove("open");
+
+    $("overlay")
+      ?.classList
+      .remove("show");
+  }
+
+  /* =========================
      SETTINGS
-  ========================================================= */
+  ========================= */
 
   function openSettings() {
-    let modal =
-      $("weuraSettingsModal");
 
-    if (modal) {
-      modal.remove();
-      return;
-    }
+    $("settingsModal")
+      ?.classList
+      .add("show");
 
-    modal =
-      document.createElement(
-        "div"
-      );
+    $("overlay")
+      ?.classList
+      .add("show");
 
-    modal.id =
-      "weuraSettingsModal";
+    syncSettingsUI();
+  }
 
-    modal.innerHTML = `
-      <div class="weura-settings-backdrop"></div>
+  function closeSettings() {
 
-      <div class="weura-settings">
-        <div class="weura-settings-header">
-          <div>
-            <strong>WEURA Settings</strong>
-            <small>Think Beyond.</small>
-          </div>
+    $("settingsModal")
+      ?.classList
+      .remove("show");
 
-          <button
-            type="button"
-            data-close-settings
-          >
-            ×
-          </button>
-        </div>
+    $("overlay")
+      ?.classList
+      .remove("show");
+  }
 
-        <label>
-          Theme
-          <select data-setting="theme">
-            <option value="dark">Dark</option>
-            <option value="light">Light</option>
-            <option value="auto">System</option>
-          </select>
-        </label>
+  function syncSettingsUI() {
 
-        <label>
-          Language
-          <select data-setting="language">
-            <option value="auto">Auto</option>
-            <option value="ar">Arabic</option>
-            <option value="en">English</option>
-          </select>
-        </label>
+    const fields = {
+      languageSetting:
+        state.settings.language,
 
-        <label>
-          Mode
-          <select data-setting="mode">
-            <option value="smart">Smart</option>
-            <option value="research">Research</option>
-            <option value="code">Code</option>
-            <option value="creative">Creative</option>
-            <option value="vision">Vision</option>
-            <option value="fast">Fast</option>
-          </select>
-        </label>
+      directionSetting:
+        state.settings.direction,
 
-        <label>
-          <span>Web search</span>
-          <input
-            type="checkbox"
-            data-setting="webSearch"
-          >
-        </label>
+      themeSetting:
+        state.settings.theme,
 
-        <label>
-          <span>Memory</span>
-          <input
-            type="checkbox"
-            data-setting="memory"
-          >
-        </label>
+      detailSetting:
+        state.settings.detail
+    };
 
-        <label>
-          <span>Enter sends message</span>
-          <input
-            type="checkbox"
-            data-setting="enterSend"
-          >
-        </label>
+    Object.entries(fields)
+      .forEach(
+        ([id, value]) => {
 
-        <label>
-          Typing speed
-          <input
-            type="range"
-            min="0"
-            max="80"
-            step="1"
-            data-setting="typingSpeed"
-          >
-        </label>
+          const element =
+            $(id);
 
-        <div class="weura-settings-actions">
-          <button
-            type="button"
-            data-clear-history
-          >
-            Clear conversations
-          </button>
-
-          <button
-            type="button"
-            data-close-settings
-          >
-            Done
-          </button>
-        </div>
-      </div>
-    `;
-
-    document.body.appendChild(modal);
-
-    const set =
-      (key, value) => {
-        W.settings[key] =
-          value;
-
-        saveState();
-
-        if (key === "theme") {
-          applyTheme();
-        }
-
-        if (key === "mode" && D.mode) {
-          D.mode.value = value;
-        }
-
-        if (
-          key === "language" &&
-          D.input
-        ) {
-          applyDirection(
-            D.input.value
-          );
-        }
-      };
-
-    modal
-      .querySelectorAll(
-        "[data-setting]"
-      )
-      .forEach(control => {
-        const key =
-          control.dataset.setting;
-
-        const current =
-          W.settings[key];
-
-        if (
-          control.type ===
-          "checkbox"
-        ) {
-          control.checked =
-            Boolean(current);
-        } else {
-          control.value =
-            current;
-        }
-
-        control.addEventListener(
-          "change",
-          () => {
-            let value;
-
-            if (
-              control.type ===
-              "checkbox"
-            ) {
-              value =
-                control.checked;
-            } else if (
-              control.type ===
-              "range"
-            ) {
-              value =
-                Number(
-                  control.value
-                );
-            } else {
-              value =
-                control.value;
-            }
-
-            set(key, value);
+          if (element) {
+            element.value =
+              value;
           }
-        );
-      });
 
-    modal
-      .querySelectorAll(
-        "[data-close-settings]"
-      )
-      .forEach(button => {
-        button.addEventListener(
-          "click",
-          () => modal.remove()
-        );
-      });
-
-    modal
-      .querySelector(
-        ".weura-settings-backdrop"
-      )
-      ?.addEventListener(
-        "click",
-        () => modal.remove()
-      );
-
-    modal
-      .querySelector(
-        "[data-clear-history]"
-      )
-      ?.addEventListener(
-        "click",
-        () => {
-          const ok =
-            confirm(
-              "Delete all WEURA conversations?"
-            );
-
-          if (!ok) return;
-
-          W.conversations = [];
-          W.currentConversationId =
-            null;
-          W.history = [];
-
-          saveState();
-          ensureConversation();
-
-          modal.remove();
         }
       );
   }
 
-  /* =========================================================
-     QUICK ACTIONS
-  ========================================================= */
+  /* =========================
+     NEW CHAT
+  ========================= */
 
-  function bindQuickActions() {
-    all(
-      "[data-prompt]"
-    ).forEach(button => {
-      if (
-        button.dataset.weuraBound
-      ) {
-        return;
-      }
+  function newChat() {
 
-      button.dataset.weuraBound =
-        "1";
+    createChat();
 
-      button.addEventListener(
-        "click",
-        event => {
-          event.preventDefault();
+    renderMessages();
+    renderHistory();
 
-          const prompt =
-            button.dataset.prompt ||
-            button.getAttribute(
-              "data-prompt"
-            ) ||
-            "";
-
-          if (!prompt) return;
-
-          if (D.input) {
-            D.input.value =
-              prompt;
-
-            autoResize();
-            applyDirection(
-              prompt
-            );
-
-            D.input.focus();
-          }
-
-          if (
-            button.dataset.autosend ===
-            "true"
-          ) {
-            sendMessage(
-              prompt
-            );
-          }
-        }
-      );
-    });
+    setStatus(
+      "محادثة جديدة."
+    );
   }
 
-  /* =========================================================
-     COPY
-  ========================================================= */
+  /* =========================
+     THEME BUTTON
+  ========================= */
 
-  async function copyText(text) {
-    try {
-      await navigator.clipboard.writeText(
-        text
+  function cycleTheme() {
+
+    const themes =
+      [
+        "dark",
+        "light",
+        "auto"
+      ];
+
+    const current =
+      state.settings.theme;
+
+    const index =
+      themes.indexOf(
+        current
       );
 
-      setStatus(
-        "Copied"
-      );
+    state.settings.theme =
+      themes[
+        (index + 1) %
+        themes.length
+      ];
 
-      setTimeout(
-        () =>
-          setStatus(
-            "Ready"
-          ),
-        1200
-      );
-    } catch {
-      setStatus(
-        "Copy failed"
-      );
-    }
+    saveState();
+
+    applyTheme();
+
+    syncSettingsUI();
   }
 
-  /* =========================================================
-     EVENT BINDING
-  ========================================================= */
+  /* =========================
+     EVENTS
+  ========================= */
 
   function bindEvents() {
-    /*
-      SEND
-    */
 
-    D.send?.addEventListener(
-      "click",
-      event => {
-        event.preventDefault();
-        sendMessage();
-      }
-    );
-
-    /*
-      STOP
-    */
-
-    D.stop?.addEventListener(
-      "click",
-      event => {
-        event.preventDefault();
-        stopGeneration();
-      }
-    );
-
-    /*
-      ENTER
-    */
-
-    D.input?.addEventListener(
-      "keydown",
-      event => {
-        if (
-          event.key !==
-          "Enter"
-        ) {
-          return;
-        }
-
-        if (
-          event.shiftKey
-        ) {
-          return;
-        }
-
-        if (
-          !W.settings.enterSend
-        ) {
-          return;
-        }
-
-        event.preventDefault();
-
-        sendMessage();
-      }
-    );
-
-    D.input?.addEventListener(
-      "input",
-      () => {
-        autoResize();
-        applyDirection(
-          D.input.value
-        );
-      }
-    );
-
-    /*
-      SIDEBAR
-    */
-
-    D.menu?.addEventListener(
-      "click",
-      event => {
-        event.preventDefault();
-        toggleSidebar();
-      }
-    );
-
-    D.overlay?.addEventListener(
-      "click",
-      closeSidebar
-    );
-
-    /*
-      NEW CHAT
-    */
-
-    D.newChat?.addEventListener(
-      "click",
-      event => {
-        event.preventDefault();
-        newChat();
-      }
-    );
-
-    /*
-      SETTINGS
-    */
-
-    D.settings?.addEventListener(
-      "click",
-      event => {
-        event.preventDefault();
-        openSettings();
-      }
-    );
-
-    /*
-      THEME
-    */
-
-    D.theme?.addEventListener(
-      "click",
-      event => {
-        event.preventDefault();
-        cycleTheme();
-      }
-    );
-
-    /*
-      VOICE
-    */
-
-    D.voice?.addEventListener(
-      "click",
-      event => {
-        event.preventDefault();
-        startVoice();
-      }
-    );
-
-    /*
-      CAMERA
-    */
-
-    D.camera?.addEventListener(
-      "click",
-      event => {
-        event.preventDefault();
-        openCamera();
-      }
-    );
-
-    /*
-      FILE
-    */
-
-    D.file?.addEventListener(
-      "click",
-      event => {
-        event.preventDefault();
-        D.fileInput?.click();
-      }
-    );
-
-    /*
-      IMAGE
-    */
-
-    D.image?.addEventListener(
-      "click",
-      event => {
-        event.preventDefault();
-        D.imageInput?.click();
-      }
-    );
-
-    /*
-      FILE INPUT
-    */
-
-    D.fileInput?.addEventListener(
-      "change",
-      async () => {
-        const file =
-          D.fileInput.files?.[0];
-
-        if (file) {
-          await analyzeFile(file);
-        }
-
-        D.fileInput.value = "";
-      }
-    );
-
-    /*
-      IMAGE INPUT
-    */
-
-    D.imageInput?.addEventListener(
-      "change",
-      async () => {
-        const file =
-          D.imageInput.files?.[0];
-
-        if (file) {
-          await analyzeImage(file);
-        }
-
-        D.imageInput.value = "";
-      }
-    );
-
-    /*
-      CAMERA INPUT
-    */
-
-    D.cameraInput?.addEventListener(
-      "change",
-      async () => {
-        const file =
-          D.cameraInput.files?.[0];
-
-        if (file) {
-          await analyzeImage(file);
-        }
-
-        D.cameraInput.value = "";
-      }
-    );
-
-    /*
-      MODE
-    */
-
-    D.mode?.addEventListener(
-      "change",
-      () => {
-        W.settings.mode =
-          D.mode.value;
-
-        saveState();
-      }
-    );
-
-    /*
-      SEARCH
-    */
-
-    D.search?.addEventListener(
-      "change",
-      () => {
-        W.settings.webSearch =
-          Boolean(
-            D.search.checked
-          );
-
-        saveState();
-      }
-    );
-
-    /*
-      FORM SUBMIT FALLBACK
-    */
-
-    const form =
-      D.input?.closest(
-        "form"
+    $("sendBtn")
+      ?.addEventListener(
+        "click",
+        sendMessage
       );
 
-    form?.addEventListener(
-      "submit",
-      event => {
-        event.preventDefault();
-        sendMessage();
-      }
-    );
-
-    /*
-      MESSAGE COPY
-    */
-
-    D.messages?.addEventListener(
-      "click",
-      event => {
-        const button =
-          event.target.closest(
-            "[data-copy-message]"
-          );
-
-        if (!button) return;
-
-        const wrapper =
-          button.closest(
-            ".weura-message"
-          );
-
-        const content =
-          wrapper?.querySelector(
-            ".weura-message-content"
-          );
-
-        if (content) {
-          copyText(
-            content.innerText
-          );
-        }
-      }
-    );
-
-    /*
-      QUICK ACTIONS
-    */
-
-    bindQuickActions();
-
-    /*
-      ESC
-    */
-
-    document.addEventListener(
-      "keydown",
-      event => {
-        if (
-          event.key === "Escape"
-        ) {
-          closeSidebar();
-        }
-      }
-    );
-  }
-
-  /* =========================================================
-     SYSTEM THEME
-  ========================================================= */
-
-  function listenSystemTheme() {
-    const media =
-      window.matchMedia(
-        "(prefers-color-scheme: dark)"
+    $("stopBtn")
+      ?.addEventListener(
+        "click",
+        stopGeneration
       );
 
-    media.addEventListener?.(
-      "change",
-      () => {
-        if (
-          W.settings.theme ===
-          "auto"
-        ) {
-          applyTheme();
-        }
-      }
-    );
-  }
-
-  /* =========================================================
-     ERROR HANDLING
-  ========================================================= */
-
-  function installErrorHandlers() {
-    window.addEventListener(
-      "error",
-      event => {
-        console.error(
-          "WEURA frontend error:",
-          event.error ||
-            event.message
-        );
-      }
-    );
-
-    window.addEventListener(
-      "unhandledrejection",
-      event => {
-        console.error(
-          "WEURA promise error:",
-          event.reason
-        );
-      }
-    );
-  }
-
-  /* =========================================================
-     HEALTH
-  ========================================================= */
-
-  async function checkBackend() {
-    try {
-      const result =
-        await apiFetch(
-          "/api/health"
-        );
-
-      if (
-        result?.ok === false
-      ) {
-        setStatus(
-          "Backend unavailable"
-        );
-        return;
-      }
-
-      setStatus("Ready");
-    } catch {
-      /*
-        Don't break the UI if backend
-        is temporarily unavailable.
-      */
-      setStatus(
-        "Ready"
-      );
-    }
-  }
-
-  /* =========================================================
-     INITIALIZATION
-  ========================================================= */
-
-  function init() {
-    /*
-      IMPORTANT:
-      initialized is set ONLY after
-      successful initialization.
-      This fixes the old situation where
-      one initialization error could leave
-      every button dead forever.
-    */
-
-    if (W.initialized) {
-      return;
-    }
-
-    if (W.booting) {
-      return;
-    }
-
-    W.booting = true;
-
-    try {
-      cacheDOM();
-
-      loadState();
-
-      applyTheme();
-      listenSystemTheme();
-
-      ensureConversation();
-
-      if (
-        D.search
-      ) {
-        D.search.checked =
-          Boolean(
-            W.settings.webSearch
-          );
-      }
-
-      if (
-        D.mode &&
-        W.settings.mode
-      ) {
-        const exists =
-          Array.from(
-            D.mode.options || []
-          ).some(
-            option =>
-              option.value ===
-              W.settings.mode
-          );
-
-        if (exists) {
-          D.mode.value =
-            W.settings.mode;
-        }
-      }
-
-      bindEvents();
-
-      autoResize();
-
-      applyDirection(
-        D.input?.value || ""
+    $("messageInput")
+      ?.addEventListener(
+        "input",
+        resizeTextarea
       );
 
-      setStatus("Ready");
+    $("messageInput")
+      ?.addEventListener(
+        "keydown",
+        event => {
 
-      installErrorHandlers();
+          if (
+            event.key ===
+              "Enter" &&
+            !event.shiftKey
+          ) {
 
-      W.initialized = true;
-      W.booting = false;
+            event.preventDefault();
 
-      requestAnimationFrame(
+            sendMessage();
+          }
+
+        }
+      );
+
+    $("newChatBtn")
+      ?.addEventListener(
+        "click",
+        newChat
+      );
+
+    $("menuBtn")
+      ?.addEventListener(
+        "click",
+        openSidebar
+      );
+
+    $("overlay")
+      ?.addEventListener(
+        "click",
         () => {
-          D.input?.focus();
+
+          closeSidebar();
+          closeSettings();
+
         }
       );
 
-      console.log(
-        "%cWEURA AI%c initialized — Think Beyond.",
-        "font-weight:bold;font-size:16px",
-        "font-weight:normal"
+    $("settingsBtn")
+      ?.addEventListener(
+        "click",
+        openSettings
       );
 
-      checkBackend();
-
-    } catch (error) {
-      W.booting = false;
-
-      console.error(
-        "WEURA initialization failed:",
-        error
+    $("closeSettings")
+      ?.addEventListener(
+        "click",
+        closeSettings
       );
 
-      setStatus(
-        "Initialization error"
+    $("themeBtn")
+      ?.addEventListener(
+        "click",
+        cycleTheme
       );
 
-      /*
-        Do NOT set initialized=true here.
-        That allows a later retry.
-      */
-    }
+    $("themeTopBtn")
+      ?.addEventListener(
+        "click",
+        cycleTheme
+      );
+
+    $("searchToggle")
+      ?.addEventListener(
+        "click",
+        () => {
+
+          state.searchEnabled =
+            !state.searchEnabled;
+
+          $("searchToggle")
+            ?.classList
+            .toggle(
+              "active",
+              state.searchEnabled
+            );
+
+          setStatus(
+            state.searchEnabled
+              ? "البحث الذكي مفعّل."
+              : "البحث الذكي متوقف."
+          );
+
+        }
+      );
+
+    $("modeSelect")
+      ?.addEventListener(
+        "change",
+        event => {
+
+          state.settings.mode =
+            event.target.value;
+
+          saveState();
+
+        }
+      );
+
+    $("fileBtn")
+      ?.addEventListener(
+        "click",
+        () => {
+          $("fileInput")?.click();
+        }
+      );
+
+    $("imageBtn")
+      ?.addEventListener(
+        "click",
+        () => {
+          $("imageInput")?.click();
+        }
+      );
+
+    $("cameraBtn")
+      ?.addEventListener(
+        "click",
+        () => {
+          $("cameraInput")?.click();
+        }
+      );
+
+    $("voiceBtn")
+      ?.addEventListener(
+        "click",
+        startVoice
+      );
+
+    $("fileInput")
+      ?.addEventListener(
+        "change",
+        event => {
+
+          analyzeFile(
+            event.target.files?.[0]
+          );
+
+          event.target.value =
+            "";
+        }
+      );
+
+    $("imageInput")
+      ?.addEventListener(
+        "change",
+        event => {
+
+          analyzeImage(
+            event.target.files?.[0]
+          );
+
+          event.target.value =
+            "";
+        }
+      );
+
+    $("cameraInput")
+      ?.addEventListener(
+        "change",
+        event => {
+
+          analyzeImage(
+            event.target.files?.[0]
+          );
+
+          event.target.value =
+            "";
+        }
+      );
+
+    $("languageSetting")
+      ?.addEventListener(
+        "change",
+        event => {
+
+          state.settings.language =
+            event.target.value;
+
+          applyDirection();
+
+          saveState();
+
+        }
+      );
+
+    $("directionSetting")
+      ?.addEventListener(
+        "change",
+        event => {
+
+          state.settings.direction =
+            event.target.value;
+
+          applyDirection();
+
+          saveState();
+
+        }
+      );
+
+    $("themeSetting")
+      ?.addEventListener(
+        "change",
+        event => {
+
+          state.settings.theme =
+            event.target.value;
+
+          applyTheme();
+
+          saveState();
+
+        }
+      );
+
+    $("detailSetting")
+      ?.addEventListener(
+        "change",
+        event => {
+
+          state.settings.detail =
+            event.target.value;
+
+          saveState();
+
+        }
+      );
+
+    $("clearMemoryBtn")
+      ?.addEventListener(
+        "click",
+        () => {
+
+          state.memory = [];
+
+          saveState();
+
+          setStatus(
+            "تم حذف الذاكرة المحلية."
+          );
+
+        }
+      );
+
+    document
+      .querySelectorAll(
+        ".quick"
+      )
+      .forEach(button => {
+
+        button.addEventListener(
+          "click",
+          () => {
+
+            const prompt =
+              button.dataset.prompt ||
+              "";
+
+            const input =
+              $("messageInput");
+
+            if (!input) return;
+
+            input.value =
+              prompt;
+
+            resizeTextarea();
+
+            input.focus();
+
+          }
+        );
+
+      });
   }
 
-  /* =========================================================
-     PUBLIC API
-  ========================================================= */
+  /* =========================
+     INIT
+  ========================= */
+
+  async function init() {
+
+    if (state.initialized)
+      return;
+
+    loadState();
+
+    applyTheme();
+    applyDirection();
+
+    const mode =
+      $("modeSelect");
+
+    if (mode) {
+      mode.value =
+        state.settings.mode;
+    }
+
+    if (!state.chats.length) {
+      createChat();
+    } else if (
+      !state.currentChatId
+    ) {
+      state.currentChatId =
+        state.chats[0].id;
+    }
+
+    bindEvents();
+
+    renderHistory();
+    renderMessages();
+
+    resizeTextarea();
+
+    state.initialized =
+      true;
+
+    await checkHealth();
+
+    console.log(
+      "WEURA AI initialized."
+    );
+  }
+
+  /* =========================
+     GLOBAL API
+  ========================= */
 
   window.WEURA = {
     send: sendMessage,
     newChat,
     openSettings,
-    toggleTheme: cycleTheme,
-    openSidebar,
-    closeSidebar,
-    search: performSearch,
-    stop: stopGeneration,
-    analyzeFile,
-    analyzeImage,
-    startVoice,
-    getState: () => ({
-      ...W
-    })
+    toggleSearch: () => {
+      $("searchToggle")?.click();
+    },
+    getState: () => state
   };
-
-  window.WEURA_API =
-    window.WEURA;
-
-  /* =========================================================
-     START
-  ========================================================= */
 
   if (
     document.readyState ===
     "loading"
   ) {
+
     document.addEventListener(
       "DOMContentLoaded",
       init,
-      { once: true }
+      {
+        once: true
+      }
     );
+
   } else {
     init();
   }
+
 })();
