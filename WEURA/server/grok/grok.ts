@@ -1,9 +1,9 @@
 import 'dotenv/config';
 
-const GROK_API_URL =
-  'https://api.x.ai/v1/chat/completions';
+const GROQ_API_URL =
+  'https://api.groq.com/openai/v1/chat/completions';
 
-const GROK_MODEL = 'grok-4.6';
+const DEFAULT_MODEL = 'llama-3.3-70b-versatile';
 
 export type GrokMessage = {
   role: 'system' | 'user' | 'assistant';
@@ -13,19 +13,20 @@ export type GrokMessage = {
 export async function askGrok(
   messages: GrokMessage[],
 ) {
-  const apiKey = process.env.GROK_API_KEY?.trim();
+  const apiKey = process.env.GROQ_API_KEY?.trim();
 
   if (!apiKey) {
     throw new Error(
-      'GROK_API_KEY is not configured on the server.',
+      'GROQ_API_KEY is not configured on the server.',
     );
   }
 
   if (messages.length === 0) {
-    throw new Error(
-      'No messages were provided.',
-    );
+    throw new Error('No messages were provided.');
   }
+
+  const model =
+    process.env.GROQ_MODEL?.trim() || DEFAULT_MODEL;
 
   const controller = new AbortController();
 
@@ -35,7 +36,7 @@ export async function askGrok(
 
   try {
     const response = await fetch(
-      GROK_API_URL,
+      GROQ_API_URL,
       {
         method: 'POST',
         signal: controller.signal,
@@ -45,7 +46,7 @@ export async function askGrok(
           Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-          model: GROK_MODEL,
+          model,
           messages,
           temperature: 0.7,
           stream: false,
@@ -61,7 +62,7 @@ export async function askGrok(
       data = JSON.parse(raw);
     } catch {
       throw new Error(
-        `Invalid response from xAI `
+        `Invalid response from Groq `
         + `(HTTP ${response.status}).`,
       );
     }
@@ -70,11 +71,9 @@ export async function askGrok(
       const providerError =
         data?.error?.message ??
         data?.error ??
-        `xAI request failed with HTTP ${response.status}.`;
+        `Groq request failed with HTTP ${response.status}.`;
 
-      throw new Error(
-        String(providerError),
-      );
+      throw new Error(String(providerError));
     }
 
     const content =
@@ -85,13 +84,13 @@ export async function askGrok(
       content.trim().length === 0
     ) {
       throw new Error(
-        'Grok returned an empty response.',
+        'Groq returned an empty response.',
       );
     }
 
     return {
       content: content.trim(),
-      model: data?.model ?? GROK_MODEL,
+      model: data?.model ?? model,
       usage: data?.usage ?? null,
     };
   } catch (error) {
@@ -100,7 +99,7 @@ export async function askGrok(
       error.name === 'AbortError'
     ) {
       throw new Error(
-        'Grok request timed out after 120 seconds.',
+        'Groq request timed out after 120 seconds.',
       );
     }
 
