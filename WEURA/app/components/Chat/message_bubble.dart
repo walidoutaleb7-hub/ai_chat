@@ -62,7 +62,9 @@ class WeuraMessageBubble extends StatelessWidget {
                 border: isUser
                     ? null
                     : Border.all(
-                        color: Colors.white.withOpacity(.06),
+                        color: Colors.white.withValues(
+                          alpha: 0.06,
+                        ),
                       ),
               ),
               child: SelectableText(
@@ -120,8 +122,8 @@ class WeuraMessageBubble extends StatelessWidget {
       icon: Icon(
         icon,
         color: onPressed == null
-            ? Colors.white18
-            : Colors.white38,
+            ? Colors.white.withValues(alpha: 0.18)
+            : Colors.white.withValues(alpha: 0.38),
       ),
     );
   }
