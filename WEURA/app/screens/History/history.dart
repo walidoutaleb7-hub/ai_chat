@@ -1,36 +1,28 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
-class ChatHistoryItem {
-  final String id;
-  String title;
-  final DateTime createdAt;
-
-  ChatHistoryItem({
-    required this.id,
-    required this.title,
-    required this.createdAt,
-  });
-}
+import '../../core/History/chat_history.dart';
 
 class HistoryScreen extends StatefulWidget {
-  const HistoryScreen({
-    super.key,
-    this.onOpenChat,
-  });
-
-  final void Function(ChatHistoryItem chat)? onOpenChat;
+  const HistoryScreen({super.key});
 
   @override
   State<HistoryScreen> createState() => _HistoryScreenState();
 }
 
 class _HistoryScreenState extends State<HistoryScreen> {
+  final HistoryManager _manager = HistoryManager();
   final TextEditingController _searchController =
       TextEditingController();
 
-  final List<ChatHistoryItem> _chats = [];
-
+  bool _isLoading = true;
   String _search = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
 
   @override
   void dispose() {
@@ -38,32 +30,31 @@ class _HistoryScreenState extends State<HistoryScreen> {
     super.dispose();
   }
 
-  List<ChatHistoryItem> get _filteredChats {
-    if (_search.trim().isEmpty) {
-      return _chats;
-    }
+  Future<void> _load() async {
+    await _manager.load();
 
-    final query = _search.toLowerCase();
+    if (!mounted) return;
 
-    return _chats.where((chat) {
-      return chat.title.toLowerCase().contains(query);
-    }).toList();
-  }
-
-  void _deleteChat(ChatHistoryItem chat) {
     setState(() {
-      _chats.removeWhere((item) => item.id == chat.id);
+      _isLoading = false;
     });
   }
 
-  void _renameChat(ChatHistoryItem chat) {
-    final controller = TextEditingController(
-      text: chat.title,
-    );
+  List<ChatSession> get _filteredChats {
+    return _manager.search(_search);
+  }
 
-    showDialog<void>(
+  Future<void> _deleteChat(ChatSession chat) async {
+    await _manager.delete(chat.id);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _renameChat(ChatSession chat) async {
+    final controller = TextEditingController(text: chat.title);
+
+    final result = await showDialog<String>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
           backgroundColor: const Color(0xFF15151D),
           title: const Text(
@@ -81,20 +72,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => Navigator.pop(dialogContext),
               child: const Text('Cancel'),
             ),
             TextButton(
               onPressed: () {
-                final title = controller.text.trim();
-
-                if (title.isNotEmpty) {
-                  setState(() {
-                    chat.title = title;
-                  });
-                }
-
-                Navigator.pop(context);
+                Navigator.pop(dialogContext, controller.text);
               },
               child: const Text('Save'),
             ),
@@ -102,14 +85,22 @@ class _HistoryScreenState extends State<HistoryScreen> {
         );
       },
     );
+
+    if (result == null) return;
+
+    final title = result.trim();
+    if (title.isEmpty) return;
+
+    await _manager.rename(chat.id, title);
+    if (mounted) setState(() {});
   }
 
-  void _deleteAll() {
-    if (_chats.isEmpty) return;
+  Future<void> _deleteAll() async {
+    if (_manager.sessions.isEmpty) return;
 
-    showDialog<void>(
+    final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
           backgroundColor: const Color(0xFF15151D),
           title: const Text(
@@ -122,17 +113,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => Navigator.pop(dialogContext, false),
               child: const Text('Cancel'),
             ),
             TextButton(
-              onPressed: () {
-                setState(() {
-                  _chats.clear();
-                });
-
-                Navigator.pop(context);
-              },
+              onPressed: () => Navigator.pop(dialogContext, true),
               child: const Text(
                 'Delete all',
                 style: TextStyle(color: Colors.redAccent),
@@ -142,6 +127,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
         );
       },
     );
+
+    if (confirmed != true) return;
+
+    await _manager.clear();
+    if (mounted) setState(() {});
   }
 
   String _formatDate(DateTime date) {
@@ -173,6 +163,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF07070C),
         elevation: 0,
+        leading: IconButton(
+          tooltip: 'Back',
+          onPressed: () => Navigator.pop(context),
+          icon: SvgPicture.asset(
+            'assets/icons/back.svg',
+            width: 23,
+            height: 23,
+          ),
+        ),
         title: const Text(
           'History',
           style: TextStyle(
@@ -181,94 +180,125 @@ class _HistoryScreenState extends State<HistoryScreen> {
           ),
         ),
         actions: [
-          if (_chats.isNotEmpty)
+          if (_manager.sessions.isNotEmpty)
             IconButton(
               tooltip: 'Delete all',
               onPressed: _deleteAll,
-              icon: const Icon(
-                Icons.delete_sweep_outlined,
-                color: Colors.white70,
+              icon: SvgPicture.asset(
+                'assets/icons/close.svg',
+                width: 22,
+                height: 22,
               ),
             ),
         ],
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-            child: TextField(
-              controller: _searchController,
-              onChanged: (value) {
-                setState(() {
-                  _search = value;
-                });
-              },
-              style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(
-                hintText: 'Search conversations...',
-                hintStyle: const TextStyle(
-                  color: Colors.white38,
-                ),
-                prefixIcon: const Icon(
-                  Icons.search,
-                  color: Colors.white54,
-                ),
-                suffixIcon: _search.isNotEmpty
-                    ? IconButton(
-                        onPressed: () {
-                          _searchController.clear();
-
-                          setState(() {
-                            _search = '';
-                          });
-                        },
-                        icon: const Icon(
-                          Icons.close,
-                          color: Colors.white54,
-                        ),
-                      )
-                    : null,
-                filled: true,
-                fillColor: const Color(0xFF111119),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide.none,
+      body: _isLoading
+          ? const Center(
+              child: SizedBox(
+                width: 28,
+                height: 28,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Color(0xFF3B82F6),
                 ),
               ),
-            ),
-          ),
-          Expanded(
-            child: chats.isEmpty
-                ? _emptyState()
-                : ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(
-                      16,
-                      4,
-                      16,
-                      24,
-                    ),
-                    itemCount: chats.length,
-                    separatorBuilder: (_, __) =>
-                        const SizedBox(height: 8),
-                    itemBuilder: (context, index) {
-                      final chat = chats[index];
-
-                      return _chatTile(chat);
-                    },
+            )
+          : Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    16,
+                    8,
+                    16,
+                    12,
                   ),
-          ),
-        ],
-      ),
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: (value) {
+                      setState(() {
+                        _search = value;
+                      });
+                    },
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      hintText: 'Search conversations...',
+                      hintStyle: const TextStyle(
+                        color: Colors.white38,
+                      ),
+                      prefixIcon: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: SvgPicture.asset(
+                          'assets/icons/search.svg',
+                          width: 20,
+                          height: 20,
+                        ),
+                      ),
+                      suffixIcon: _search.isNotEmpty
+                          ? IconButton(
+                              onPressed: () {
+                                _searchController.clear();
+
+                                setState(() {
+                                  _search = '';
+                                });
+                              },
+                              icon: SvgPicture.asset(
+                                'assets/icons/close.svg',
+                                width: 18,
+                                height: 18,
+                              ),
+                            )
+                          : null,
+                      filled: true,
+                      fillColor: const Color(0xFF111119),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: chats.isEmpty
+                      ? _emptyState()
+                      : ListView.separated(
+                          padding: const EdgeInsets.fromLTRB(
+                            16,
+                            4,
+                            16,
+                            24,
+                          ),
+                          itemCount: chats.length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 8),
+                          itemBuilder: (context, index) {
+                            return _chatTile(chats[index]);
+                          },
+                        ),
+                ),
+              ],
+            ),
     );
   }
 
-  Widget _chatTile(ChatHistoryItem chat) {
+  Widget _chatTile(ChatSession chat) {
     return Material(
       color: const Color(0xFF111119),
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: () => widget.onOpenChat?.call(chat),
+        onTap: () {
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Opening chats will be enabled in the next step.',
+                ),
+                duration: Duration(milliseconds: 1600),
+              ),
+            );
+        },
         child: Padding(
           padding: const EdgeInsets.all(15),
           child: Row(
@@ -277,14 +307,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1D4ED8).withValues(
-                    alpha: 0.14,
-                  ),
+                  color: const Color(0xFF1D4ED8)
+                      .withValues(alpha: 0.14),
                   borderRadius: BorderRadius.circular(13),
                 ),
-                child: const Icon(
-                  Icons.chat_bubble_outline,
-                  color: Colors.blueAccent,
+                child: Padding(
+                  padding: const EdgeInsets.all(11),
+                  child: SvgPicture.asset(
+                    'assets/icons/mode.svg',
+                  ),
                 ),
               ),
               const SizedBox(width: 13),
@@ -305,7 +336,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     ),
                     const SizedBox(height: 5),
                     Text(
-                      _formatDate(chat.createdAt),
+                      _formatDate(chat.updatedAt),
                       style: const TextStyle(
                         color: Colors.white38,
                         fontSize: 12,
@@ -323,9 +354,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 onSelected: (value) {
                   if (value == 'rename') {
                     _renameChat(chat);
-                  }
-
-                  if (value == 'delete') {
+                  } else if (value == 'delete') {
                     _deleteChat(chat);
                   }
                 },
@@ -334,18 +363,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     value: 'rename',
                     child: Text(
                       'Rename',
-                      style: TextStyle(
-                        color: Colors.white,
-                      ),
+                      style: TextStyle(color: Colors.white),
                     ),
                   ),
                   PopupMenuItem(
                     value: 'delete',
                     child: Text(
                       'Delete',
-                      style: TextStyle(
-                        color: Colors.redAccent,
-                      ),
+                      style: TextStyle(color: Colors.redAccent),
                     ),
                   ),
                 ],
@@ -364,10 +389,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.history,
-              size: 55,
-              color: Colors.white.withValues(alpha: 0.18),
+            Opacity(
+              opacity: 0.3,
+              child: SvgPicture.asset(
+                'assets/icons/history.svg',
+                width: 55,
+                height: 55,
+              ),
             ),
             const SizedBox(height: 18),
             const Text(
