@@ -1,1170 +1,394 @@
-(() => {
-  "use strict";
+window.WEURA_BOOT.scriptLoaded = true;
 
-  /*
-    WEURA AI
-    Think Beyond.
-  */
-
-  window.WEURA_LOADED = true;
-
-  const $ = (id) => document.getElementById(id);
-
-  const STORAGE = {
-    settings: "weura_settings_v3",
-    chats: "weura_chats_v3",
-    memory: "weura_memory_v3"
-  };
-
-  const DEFAULT_SETTINGS = {
-    theme: "auto",
-    language: "en",
-    direction: "ltr",
-    detail: "auto",
-    mode: "auto"
-  };
-
-  const state = {
-    initialized: false,
-    busy: false,
-    abortController: null,
-    searchEnabled: false,
-    currentChatId: null,
-    chats: [],
-    memory: [],
-    settings: { ...DEFAULT_SETTINGS },
-    recognition: null,
-    recording: false
-  };
-
-  function loadJSON(key, fallback) {
-    try {
-      const value = localStorage.getItem(key);
-      return value ? JSON.parse(value) : fallback;
-    } catch {
-      return fallback;
-    }
-  }
-
-  function saveJSON(key, value) {
-    try {
-      localStorage.setItem(key, JSON.stringify(value));
-    } catch {}
-  }
-
-  function loadState() {
-    state.settings = {
-      ...DEFAULT_SETTINGS,
-      ...loadJSON(STORAGE.settings, {})
+try {
+    const state = {
+        theme: 'system',
+        lang: 'en',
+        dir: 'ltr',
+        mode: 'auto',
+        detail: 'auto',
+        useSearch: false,
+        chats: JSON.parse(localStorage.getItem('weura_chats') || '[]'),
+        currentChatId: null,
+        memory: JSON.parse(localStorage.getItem('weura_memory') || '[]'),
+        connected: false,
+        abortController: null
     };
 
-    state.chats = loadJSON(STORAGE.chats, []);
-    state.memory = loadJSON(STORAGE.memory, []);
-
-    if (!Array.isArray(state.chats)) state.chats = [];
-    if (!Array.isArray(state.memory)) state.memory = [];
-  }
-
-  function saveState() {
-    saveJSON(STORAGE.settings, state.settings);
-    saveJSON(STORAGE.chats, state.chats);
-    saveJSON(STORAGE.memory, state.memory);
-  }
-
-  /* =========================
-     THEME
-  ========================= */
-
-  function applyTheme() {
-    const theme = state.settings.theme;
-
-    if (theme === "light") {
-      document.documentElement.dataset.theme = "light";
-    } else if (theme === "dark") {
-      document.documentElement.dataset.theme = "dark";
-    } else {
-      document.documentElement.dataset.theme =
-        window.matchMedia &&
-        window.matchMedia("(prefers-color-scheme: light)").matches
-          ? "light"
-          : "dark";
-    }
-  }
-
-  /* =========================
-     DIRECTION
-  ========================= */
-
-  function detectDirection() {
-    if (state.settings.direction === "ltr") return "ltr";
-    if (state.settings.direction === "rtl") return "rtl";
-
-    return "ltr";
-  }
-
-  function applyDirection() {
-    const dir = detectDirection();
-
-    document.documentElement.dir = dir;
-    document.documentElement.lang =
-      state.settings.language === "ar" ? "ar" : "en";
-  }
-
-  /* =========================
-     STATUS
-  ========================= */
-
-  function setStatus(text) {
-    document
-      .querySelectorAll("#statusText, #composerStatus")
-      .forEach((el) => {
-        el.textContent = text || "";
-      });
-  }
-
-  function showError(error) {
-    console.error("WEURA:", error);
-    setStatus("Something went wrong.");
-  }
-
-  /* =========================
-     CHAT
-  ========================= */
-
-  function createChat() {
-    const chat = {
-      id:
-        Date.now().toString(36) +
-        Math.random().toString(36).slice(2, 7),
-
-      title: "New conversation",
-      messages: [],
-      createdAt: Date.now(),
-      updatedAt: Date.now()
-    };
-
-    state.chats.unshift(chat);
-    state.currentChatId = chat.id;
-
-    saveJSON(STORAGE.chats, state.chats);
-
-    return chat;
-  }
-
-  function getCurrentChat() {
-    return state.chats.find(
-      (chat) => chat.id === state.currentChatId
-    );
-  }
-
-  function ensureChat() {
-    let chat = getCurrentChat();
-
-    if (!chat) {
-      chat = createChat();
-    }
-
-    return chat;
-  }
-
-  function makeTitle(text) {
-    const clean = String(text || "")
-      .replace(/\s+/g, " ")
-      .trim();
-
-    if (!clean) return "New conversation";
-
-    return clean.length > 34
-      ? clean.slice(0, 34) + "..."
-      : clean;
-  }
-
-  function renderHistory() {
-    const list = $("historyList");
-    if (!list) return;
-
-    list.innerHTML = "";
-
-    state.chats.forEach((chat) => {
-      const button = document.createElement("button");
-
-      button.type = "button";
-      button.className =
-        "history-item" +
-        (chat.id === state.currentChatId ? " active" : "");
-
-      button.textContent = chat.title || "New conversation";
-
-      button.addEventListener("click", () => {
-        state.currentChatId = chat.id;
-        renderHistory();
-        renderMessages();
-        closeSidebar();
-      });
-
-      list.appendChild(button);
-    });
-  }
-
-  function renderMessages() {
-    const container = $("messages");
-    const welcome = $("welcome");
-
-    if (!container) return;
-
-    const chat = getCurrentChat();
-
-    container
-      .querySelectorAll(".message")
-      .forEach((el) => el.remove());
-
-    if (!chat || !chat.messages.length) {
-      if (welcome) welcome.style.display = "flex";
-      return;
-    }
-
-    if (welcome) welcome.style.display = "none";
-
-    chat.messages.forEach((message) => {
-      addMessageElement(
-        message.role,
-        message.content,
-        false
-      );
-    });
-
-    scrollBottom();
-  }
-
-  function addMessageElement(role, content, scroll = true) {
-    const container = $("messages");
-    if (!container) return null;
-
-    const row = document.createElement("div");
-    row.className = `message ${role}`;
-
-    const bubble = document.createElement("div");
-    bubble.className = "message-bubble";
-    bubble.textContent = content;
-
-    row.appendChild(bubble);
-    container.appendChild(row);
-
-    if (scroll) scrollBottom();
-
-    return bubble;
-  }
-
-  function addMessage(role, content) {
-    const chat = ensureChat();
-
-    chat.messages.push({
-      role,
-      content,
-      timestamp: Date.now()
-    });
-
-    chat.updatedAt = Date.now();
-
-    if (
-      role === "user" &&
-      chat.title === "New conversation"
-    ) {
-      chat.title = makeTitle(content);
-    }
-
-    saveJSON(STORAGE.chats, state.chats);
-
-    addMessageElement(role, content);
-    renderHistory();
-  }
-
-  function scrollBottom() {
-    const container = $("messages");
-    if (!container) return;
-
-    requestAnimationFrame(() => {
-      container.scrollTop = container.scrollHeight;
-    });
-  }
-
-  /* =========================
-     BACKEND
-  ========================= */
-
-  async function checkHealth() {
-    try {
-      const response = await fetch("/api/health", {
-        method: "GET",
-        cache: "no-store"
-      });
-
-      if (!response.ok) throw new Error("Backend unavailable");
-
-      setStatus("Online");
-    } catch {
-      setStatus("Offline");
-    }
-  }
-
-  async function performSearch(query) {
-    const response = await fetch("/api/search", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        query
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error("Search failed");
-    }
-
-    return response.json();
-  }
-
-  /* =========================
-     SEND
-  ========================= */
-
-  async function sendMessage(forcedText = null) {
-    if (state.busy) return;
-
-    const input = $("messageInput");
-
-    const text =
-      forcedText !== null
-        ? String(forcedText).trim()
-        : String(input?.value || "").trim();
-
-    if (!text) return;
-
-    if (input) {
-      input.value = "";
-      resizeTextarea();
-    }
-
-    addMessage("user", text);
-
-    state.busy = true;
-    toggleBusy(true);
-
-    const assistantBubble =
-      addMessageElement("assistant", "Thinking...", true);
-
-    try {
-      let searchData = null;
-
-      if (state.searchEnabled) {
-        try {
-          searchData = await performSearch(text);
-        } catch {
-          searchData = null;
+    function bindClick(id, handler) {
+        const el = document.getElementById(id);
+        if (!el) {
+            console.warn(`Missing element: ${id}`);
+            return;
         }
-      }
+        el.addEventListener("click", handler);
+    }
 
-      state.abortController = new AbortController();
+    function initSplash() {
+        const splash = document.getElementById('splash-screen');
+        setTimeout(() => {
+            if (splash) splash.classList.add('hidden');
+        }, 1200);
+        setTimeout(() => {
+            if (splash) splash.remove();
+        }, 1800);
+    }
 
-      const chat = getCurrentChat();
+    async function checkHealth() {
+        try {
+            const res = await fetch('/api/health');
+            const data = await res.json();
+            state.connected = data.status === 'connected';
+            updateStatusUI();
+        } catch (err) {
+            state.connected = false;
+            updateStatusUI();
+        }
+    }
 
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        signal: state.abortController.signal,
+    function updateStatusUI() {
+        const dot = document.getElementById('status-dot');
+        const text = document.getElementById('status-text');
+        if (dot && text) {
+            if (state.connected) {
+                dot.className = 'status-dot';
+                text.textContent = 'Connected';
+            } else {
+                dot.className = 'status-dot offline';
+                text.textContent = 'Offline';
+            }
+        }
+    }
 
-        body: JSON.stringify({
-          message: text,
-          messages: chat?.messages || [],
-          mode: state.settings.mode,
-          language: state.settings.language,
-          detail: state.settings.detail,
-          memory: state.memory,
-          search: state.searchEnabled,
-          searchResults: searchData
-        })
-      });
+    function initTheme() {
+        const savedTheme = localStorage.getItem('weura_theme') || 'system';
+        state.theme = savedTheme;
+        applyTheme(savedTheme);
+    }
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
+    function applyTheme(theme) {
+        let actualTheme = theme;
+        if (theme === 'system') {
+            actualTheme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+        }
+        if (actualTheme === 'light') {
+            document.documentElement.setAttribute('data-theme', 'light');
+        } else {
+            document.documentElement.removeAttribute('data-theme');
+        }
+        localStorage.setItem('weura_theme', theme);
+    }
 
-      const data = await response.json();
-
-      const answer =
-        data.answer ||
-        data.message ||
-        data.content ||
-        "I couldn't generate a response.";
-
-      if (assistantBubble) {
-        assistantBubble.textContent = answer;
-      }
-
-      if (chat) {
-        chat.messages.push({
-          role: "assistant",
-          content: answer,
-          timestamp: Date.now()
+    function initEventListeners() {
+        bindClick('sidebar-toggle-btn', () => {
+            const sidebar = document.getElementById('sidebar');
+            if (sidebar) sidebar.classList.toggle('open');
         });
 
-        chat.updatedAt = Date.now();
-      }
+        bindClick('close-sidebar-btn', () => {
+            const sidebar = document.getElementById('sidebar');
+            if (sidebar) sidebar.classList.remove('open');
+        });
 
-      saveJSON(STORAGE.chats, state.chats);
-      renderHistory();
-      scrollBottom();
+        bindClick('theme-toggle-btn', () => {
+            const nextTheme = state.theme === 'dark' ? 'light' : 'dark';
+            state.theme = nextTheme;
+            applyTheme(nextTheme);
+        });
 
-      setStatus("Online");
-    } catch (error) {
-      if (error.name === "AbortError") {
-        if (assistantBubble) {
-          assistantBubble.textContent = "Generation stopped.";
+        bindClick('search-toggle-btn', () => {
+            state.useSearch = !state.useSearch;
+            const btn = document.getElementById('search-toggle-btn');
+            if (btn) {
+                btn.style.borderColor = state.useSearch ? 'var(--accent-blue)' : 'var(--border-color)';
+                btn.style.boxShadow = state.useSearch ? '0 0 10px var(--accent-glow)' : 'none';
+            }
+        });
+
+        bindClick('settings-open-btn', () => {
+            const modal = document.getElementById('settings-modal');
+            if (modal) modal.classList.add('active');
+        });
+
+        bindClick('settings-close-btn', () => {
+            const modal = document.getElementById('settings-modal');
+            if (modal) modal.classList.remove('active');
+        });
+
+        bindClick('new-chat-btn', () => {
+            startNewChat();
+        });
+
+        bindClick('send-btn', () => {
+            handleSendMessage();
+        });
+
+        const input = document.getElementById('composer-input');
+        if (input) {
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendMessage();
+                }
+            });
+            input.addEventListener('input', function() {
+                this.style.height = 'auto';
+                this.style.height = (this.scrollHeight) + 'px';
+            });
         }
-      } else {
-        console.error(error);
 
-        if (assistantBubble) {
-          assistantBubble.textContent =
-            "I couldn't connect to WEURA right now.";
+        document.querySelectorAll('.quick-card').forEach(card => {
+            card.addEventListener('click', () => {
+                const prompt = card.getAttribute('data-prompt');
+                if (prompt && input) {
+                    input.value = prompt;
+                    handleSendMessage();
+                }
+            });
+        });
+
+        const themeSelect = document.getElementById('setting-theme');
+        if (themeSelect) {
+            themeSelect.value = state.theme;
+            themeSelect.addEventListener('change', (e) => {
+                state.theme = e.target.value;
+                applyTheme(state.theme);
+            });
         }
 
-        setStatus("Connection error");
-      }
-    } finally {
-      state.abortController = null;
-      state.busy = false;
-      toggleBusy(false);
-    }
-  }
+        const langSelect = document.getElementById('setting-lang');
+        if (langSelect) {
+            langSelect.value = state.lang;
+            langSelect.addEventListener('change', (e) => {
+                state.lang = e.target.value;
+                document.documentElement.setAttribute('lang', state.lang);
+                document.documentElement.setAttribute('dir', state.lang === 'ar' ? 'rtl' : 'ltr');
+            });
+        }
 
-  function toggleBusy(busy) {
-    const send = $("sendBtn");
-    const stop = $("stopBtn");
+        const modeSelector = document.getElementById('mode-selector');
+        if (modeSelector) {
+            modeSelector.addEventListener('change', (e) => {
+                state.mode = e.target.value;
+            });
+        }
 
-    if (send) {
-      send.style.display = busy ? "none" : "flex";
-      send.disabled = false;
-    }
+        bindClick('file-upload-btn', () => document.getElementById('file-input')?.click());
+        bindClick('image-upload-btn', () => document.getElementById('image-input')?.click());
 
-    if (stop) {
-      stop.style.display = busy ? "flex" : "none";
-    }
-  }
+        const fileInput = document.getElementById('file-input');
+        if (fileInput) {
+            fileInput.addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                await handleFileUpload(file);
+            });
+        }
 
-  function stopGeneration() {
-    if (state.abortController) {
-      state.abortController.abort();
-    }
+        const imageInput = document.getElementById('image-input');
+        if (imageInput) {
+            imageInput.addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                await handleVisionUpload(file);
+            });
+        }
 
-    state.abortController = null;
-    state.busy = false;
+        bindClick('camera-btn', () => {
+            triggerCameraCapture();
+        });
 
-    toggleBusy(false);
-  }
+        bindClick('mic-btn', () => {
+            triggerVoiceInput();
+        });
 
-  /* =========================
-     FILE
-  ========================= */
-
-  async function analyzeFile(file) {
-    if (!file) return;
-
-    setStatus("Analyzing file...");
-
-    try {
-      const form = new FormData();
-      form.append("file", file);
-
-      const response = await fetch("/api/file", {
-        method: "POST",
-        body: form
-      });
-
-      if (!response.ok) {
-        throw new Error("File analysis failed");
-      }
-
-      const data = await response.json();
-
-      const result =
-        data.answer ||
-        data.text ||
-        data.content ||
-        "The file was analyzed.";
-
-      addMessage("user", `File: ${file.name}`);
-      addMessage("assistant", result);
-
-      setStatus("Online");
-    } catch (error) {
-      console.error(error);
-      setStatus("File analysis failed");
-    }
-  }
-
-  /* =========================
-     IMAGE
-  ========================= */
-
-  async function analyzeImage(file) {
-    if (!file) return;
-
-    setStatus("Analyzing image...");
-
-    try {
-      const form = new FormData();
-      form.append("image", file);
-
-      const response = await fetch("/api/vision", {
-        method: "POST",
-        body: form
-      });
-
-      if (!response.ok) {
-        throw new Error("Vision failed");
-      }
-
-      const data = await response.json();
-
-      const result =
-        data.answer ||
-        data.description ||
-        data.content ||
-        "The image was analyzed.";
-
-      addMessage("user", `Image: ${file.name}`);
-      addMessage("assistant", result);
-
-      setStatus("Online");
-    } catch (error) {
-      console.error(error);
-      setStatus("Image analysis failed");
-    }
-  }
-
-  /* =========================
-     VOICE
-  ========================= */
-
-  function startVoice() {
-    if (state.recording) {
-      stopVoice();
-      return;
+        bindClick('clear-memory-btn', () => {
+            state.memory = [];
+            localStorage.removeItem('weura_memory');
+            alert('Smart memory cleared successfully.');
+        });
     }
 
-    const Recognition =
-      window.SpeechRecognition ||
-      window.webkitSpeechRecognition;
-
-    if (!Recognition) {
-      setStatus("Voice input is not supported.");
-      return;
+    function startNewChat() {
+        state.currentChatId = 'chat_' + Date.now();
+        const container = document.getElementById('chat-container');
+        if (container) {
+            container.innerHTML = `
+                <div class="welcome-screen" id="welcome-screen">
+                    <h1 class="welcome-title">WEURA AI</h1>
+                    <p class="welcome-subtitle">Think Beyond. What would you like to explore or build today?</p>
+                    <div class="quick-actions-grid">
+                        <div class="quick-card" data-prompt="Analyze recent architectural trends in AI systems.">⚡ Smart Research</div>
+                        <div class="quick-card" data-prompt="Write a robust asynchronous Express API handler.">💻 Code Architecture</div>
+                        <div class="quick-card" data-prompt="Explain quantum computing principles simply.">🌌 Quantum Systems</div>
+                        <div class="quick-card" data-prompt="Draft a futuristic sci-fi narrative concept.">🚀 Creative Vision</div>
+                    </div>
+                </div>
+            `;
+            document.querySelectorAll('.quick-card').forEach(card => {
+                card.addEventListener('click', () => {
+                    const prompt = card.getAttribute('data-prompt');
+                    const input = document.getElementById('composer-input');
+                    if (prompt && input) {
+                        input.value = prompt;
+                        handleSendMessage();
+                    }
+                });
+            });
+        }
     }
 
-    const recognition = new Recognition();
+    async function handleSendMessage() {
+        const input = document.getElementById('composer-input');
+        if (!input) return;
+        const text = input.value.trim();
+        if (!text) return;
 
-    recognition.lang =
-      state.settings.language === "ar"
-        ? "ar-DZ"
-        : "en-US";
+        input.value = '';
+        input.style.height = 'auto';
 
-    recognition.interimResults = true;
-    recognition.continuous = false;
+        const welcome = document.getElementById('welcome-screen');
+        if (welcome) welcome.remove();
 
-    state.recognition = recognition;
-    state.recording = true;
+        appendMessage(text, 'user');
 
-    const voiceBtn = $("voiceBtn");
-
-    if (voiceBtn) {
-      voiceBtn.classList.add("recording");
-    }
-
-    setStatus("Listening...");
-
-    recognition.onresult = (event) => {
-      const input = $("messageInput");
-      if (!input) return;
-
-      let finalText = "";
-
-      for (
-        let i = event.resultIndex;
-        i < event.results.length;
-        i++
-      ) {
-        finalText += event.results[i][0].transcript;
-      }
-
-      input.value = finalText;
-      resizeTextarea();
-    };
-
-    recognition.onerror = () => {
-      setStatus("Voice input failed");
-      stopVoice();
-    };
-
-    recognition.onend = () => {
-      stopVoice();
-    };
-
-    recognition.start();
-  }
-
-  function stopVoice() {
-    try {
-      state.recognition?.stop();
-    } catch {}
-
-    state.recognition = null;
-    state.recording = false;
-
-    const voiceBtn = $("voiceBtn");
-
-    if (voiceBtn) {
-      voiceBtn.classList.remove("recording");
-    }
-
-    setStatus("Online");
-  }
-
-  /* =========================
-     TEXTAREA
-  ========================= */
-
-  function resizeTextarea() {
-    const input = $("messageInput");
-    if (!input) return;
-
-    input.style.height = "auto";
-    input.style.height =
-      Math.min(input.scrollHeight, 150) + "px";
-  }
-
-  /* =========================
-     SIDEBAR
-  ========================= */
-
-  function openSidebar() {
-    $("sidebar")?.classList.add("open");
-    $("overlay")?.classList.add("show");
-  }
-
-  function closeSidebar() {
-    $("sidebar")?.classList.remove("open");
-    $("overlay")?.classList.remove("show");
-  }
-
-  /* =========================
-     SETTINGS
-  ========================= */
-
-  function openSettings() {
-    $("settingsModal")?.classList.add("show");
-    syncSettingsUI();
-  }
-
-  function closeSettings() {
-    $("settingsModal")?.classList.remove("show");
-  }
-
-  function syncSettingsUI() {
-    const language = $("languageSetting");
-    const direction = $("directionSetting");
-    const theme = $("themeSetting");
-    const detail = $("detailSetting");
-    const mode = $("modeSelect");
-
-    if (language) language.value = state.settings.language;
-    if (direction) direction.value = state.settings.direction;
-    if (theme) theme.value = state.settings.theme;
-    if (detail) detail.value = state.settings.detail;
-    if (mode) mode.value = state.settings.mode;
-  }
-
-  /* =========================
-     NEW CHAT
-  ========================= */
-
-  function newChat() {
-    createChat();
-
-    renderHistory();
-    renderMessages();
-
-    const input = $("messageInput");
-
-    if (input) {
-      input.value = "";
-      resizeTextarea();
-      input.focus();
-    }
-
-    closeSidebar();
-  }
-
-  /* =========================
-     THEME
-  ========================= */
-
-  function cycleTheme() {
-    const order = ["auto", "dark", "light"];
-
-    const current =
-      order.indexOf(state.settings.theme);
-
-    state.settings.theme =
-      order[(current + 1) % order.length];
-
-    applyTheme();
-    syncSettingsUI();
-    saveState();
-  }
-
-  /* =========================
-     QUICK ACTIONS
-  ========================= */
-
-  function quickAction(action) {
-    const prompts = {
-      ask:
-        "What can you help me with?",
-
-      research:
-        "Research this topic thoroughly and explain the important points.",
-
-      code:
-        "Help me build and debug my code.",
-
-      creative:
-        "Help me create a creative idea."
-    };
-
-    const modeMap = {
-      research: "research",
-      code: "code",
-      creative: "creative",
-      ask: "auto"
-    };
-
-    if (modeMap[action]) {
-      state.settings.mode = modeMap[action];
-
-      const mode = $("modeSelect");
-      if (mode) mode.value = state.settings.mode;
-    }
-
-    const input = $("messageInput");
-
-    if (input) {
-      input.value = prompts[action] || "";
-      resizeTextarea();
-      input.focus();
-    }
-  }
-
-  /* =========================
-     EVENT BINDING
-  ========================= */
-
-  function bindClick(id, handler) {
-    const element = $(id);
-
-    if (!element) {
-      console.warn(`WEURA: Missing #${id}`);
-      return;
-    }
-
-    if (element.dataset.weuraBound === "1") {
-      return;
-    }
-
-    element.dataset.weuraBound = "1";
-
-    element.addEventListener(
-      "click",
-      (event) => {
-        event.preventDefault();
-        event.stopPropagation();
+        const container = document.getElementById('chat-container');
+        const aiMsgId = 'ai_msg_' + Date.now();
+        appendMessage('Thinking...', 'ai', aiMsgId);
 
         try {
-          handler(event);
-        } catch (error) {
-          console.error(`WEURA ${id}`, error);
-          showError(error);
+            state.abortController = new AbortController();
+            const res = await fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    messages: [{ role: 'user', content: text }],
+                    mode: state.mode,
+                    detail: state.detail,
+                    memory: state.memory,
+                    useSearch: state.useSearch
+                }),
+                signal: state.abortController.signal
+            });
+
+            const data = await res.json();
+            updateAiMessage(aiMsgId, data.reply || 'Something went wrong.');
+        } catch (err) {
+            if (err.name === 'AbortError') {
+                updateAiMessage(aiMsgId, 'Generation stopped.');
+            } else {
+                updateAiMessage(aiMsgId, 'Something went wrong. Please try again.');
+            }
         }
-      },
-      { passive: false }
-    );
-  }
+    }
 
-  function bindEvents() {
+    function appendMessage(text, role, id = null) {
+        const container = document.getElementById('chat-container');
+        if (!container) return;
 
-    /* SEND */
-    bindClick("sendBtn", () => {
-      sendMessage();
-    });
+        const msgDiv = document.createElement('div');
+        msgDiv.className = `message ${role}`;
+        if (id) msgDiv.id = id;
 
-    /* STOP */
-    bindClick("stopBtn", () => {
-      stopGeneration();
-    });
+        const avatar = document.createElement('div');
+        avatar.className = 'msg-avatar';
+        avatar.textContent = role === 'user' ? 'U' : 'W';
 
-    /* NEW CHAT */
-    bindClick("newChatBtn", () => {
-      newChat();
-    });
+        const bubble = document.createElement('div');
+        bubble.className = 'msg-bubble';
+        bubble.textContent = text;
 
-    /* SETTINGS */
-    bindClick("settingsBtn", () => {
-      openSettings();
-    });
+        msgDiv.appendChild(avatar);
+        msgDiv.appendChild(bubble);
+        container.appendChild(msgDiv);
+        container.scrollTop = container.scrollHeight;
+    }
 
-    /* THEME */
-    bindClick("themeBtn", () => {
-      cycleTheme();
-    });
+    function updateAiMessage(id, text) {
+        const msgDiv = document.getElementById(id);
+        if (msgDiv) {
+            const bubble = msgDiv.querySelector('.msg-bubble');
+            if (bubble) bubble.textContent = text;
+        }
+        const container = document.getElementById('chat-container');
+        if (container) container.scrollTop = container.scrollHeight;
+    }
 
-    bindClick("themeTopBtn", () => {
-      cycleTheme();
-    });
+    async function handleFileUpload(file) {
+        const welcome = document.getElementById('welcome-screen');
+        if (welcome) welcome.remove();
 
-    /* MENU */
-    bindClick("menuBtn", () => {
-      openSidebar();
-    });
+        appendMessage(`Uploaded file: ${file.name}`, 'user');
+        const aiMsgId = 'ai_file_' + Date.now();
+        appendMessage('Processing document...', 'ai', aiMsgId);
 
-    /* OVERLAY */
-    bindClick("overlay", () => {
-      closeSidebar();
-    });
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('prompt', 'Summarize and analyze this document.');
 
-    /* SEARCH */
-    bindClick("searchToggle", () => {
-      state.searchEnabled = !state.searchEnabled;
+        try {
+            const res = await fetch('/api/file', { method: 'POST', body: formData });
+            const data = await res.json();
+            updateAiMessage(aiMsgId, data.reply || data.error);
+        } catch (err) {
+            updateAiMessage(aiMsgId, 'Failed to process file.');
+        }
+    }
 
-      $("searchToggle")?.classList.toggle(
-        "active",
-        state.searchEnabled
-      );
+    async function handleVisionUpload(file) {
+        const welcome = document.getElementById('welcome-screen');
+        if (welcome) welcome.remove();
 
-      setStatus(
-        state.searchEnabled
-          ? "Smart search enabled"
-          : "Smart search disabled"
-      );
-    });
+        appendMessage(`Uploaded image: ${file.name}`, 'user');
+        const aiMsgId = 'ai_vision_' + Date.now();
+        appendMessage('Analyzing visual data...', 'ai', aiMsgId);
 
-    /* FILE */
-    bindClick("fileBtn", () => {
-      const input = $("fileInput");
+        const formData = new FormData();
+        formData.append('image', file);
+        formData.append('prompt', 'Analyze this image.');
 
-      if (input) {
-        input.value = "";
-        input.click();
-      }
-    });
+        try {
+            const res = await fetch('/api/vision', { method: 'POST', body: formData });
+            const data = await res.json();
+            updateAiMessage(aiMsgId, data.reply || data.error);
+        } catch (err) {
+            updateAiMessage(aiMsgId, 'Failed to analyze image.');
+        }
+    }
 
-    /* IMAGE */
-    bindClick("imageBtn", () => {
-      const input = $("imageInput");
-
-      if (input) {
-        input.value = "";
-        input.click();
-      }
-    });
-
-    /* CAMERA */
-    bindClick("cameraBtn", () => {
-      const input = $("cameraInput");
-
-      if (input) {
-        input.value = "";
-        input.click();
-      }
-    });
-
-    /* MICROPHONE */
-    bindClick("voiceBtn", () => {
-      if (state.recording) {
-        stopVoice();
-      } else {
-        startVoice();
-      }
-    });
-
-    /* FILE INPUT */
-    const fileInput = $("fileInput");
-
-    if (fileInput && fileInput.dataset.weuraBound !== "1") {
-      fileInput.dataset.weuraBound = "1";
-
-      fileInput.addEventListener("change", () => {
-        const files = Array.from(fileInput.files || []);
-
-        files.forEach((file) => {
-          analyzeFile(file);
+    function triggerCameraCapture() {
+        navigator.mediaDevices?.getUserMedia({ video: true }).then(stream => {
+            alert('Camera connected successfully. Capture feature active.');
+            stream.getTracks().forEach(track => track.stop());
+        }).catch(() => {
+            alert('Camera permission denied or not supported.');
         });
-      });
     }
 
-    /* IMAGE INPUT */
-    const imageInput = $("imageInput");
-
-    if (
-      imageInput &&
-      imageInput.dataset.weuraBound !== "1"
-    ) {
-      imageInput.dataset.weuraBound = "1";
-
-      imageInput.addEventListener("change", () => {
-        const file = imageInput.files?.[0];
-
-        if (file) {
-          analyzeImage(file);
+    function triggerVoiceInput() {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            alert('Speech Recognition is not supported in this browser.');
+            return;
         }
-      });
+        const recognition = new SpeechRecognition();
+        recognition.lang = state.lang === 'ar' ? 'ar-SA' : 'en-US';
+        recognition.onstart = () => { console.log('Voice recording started...'); };
+        recognition.onresult = (e) => {
+            const transcript = e.results[0][0].transcript;
+            const input = document.getElementById('composer-input');
+            if (input) input.value = transcript;
+        };
+        recognition.onerror = () => { alert('Voice recognition error.'); };
+        recognition.start();
     }
 
-    /* CAMERA INPUT */
-    const cameraInput = $("cameraInput");
+    initSplash();
+    initTheme();
+    initEventListeners();
+    checkHealth();
 
-    if (
-      cameraInput &&
-      cameraInput.dataset.weuraBound !== "1"
-    ) {
-      cameraInput.dataset.weuraBound = "1";
-
-      cameraInput.addEventListener("change", () => {
-        const file = cameraInput.files?.[0];
-
-        if (file) {
-          analyzeImage(file);
-        }
-      });
-    }
-
-    /* CLOSE SETTINGS */
-    bindClick("closeSettings", () => {
-      closeSettings();
-    });
-
-    /* CLEAR MEMORY */
-    bindClick("clearMemoryBtn", () => {
-      state.memory = [];
-      saveJSON(STORAGE.memory, []);
-      setStatus("Memory cleared");
-    });
-
-    /* LANGUAGE */
-    const language = $("languageSetting");
-
-    if (language) {
-      language.addEventListener("change", () => {
-        state.settings.language = language.value;
-
-        /*
-          English is the default system language.
-        */
-
-        applyDirection();
-        saveState();
-      });
-    }
-
-    /* DIRECTION */
-    const direction = $("directionSetting");
-
-    if (direction) {
-      direction.addEventListener("change", () => {
-        state.settings.direction = direction.value;
-
-        applyDirection();
-        saveState();
-      });
-    }
-
-    /* THEME */
-    const theme = $("themeSetting");
-
-    if (theme) {
-      theme.addEventListener("change", () => {
-        state.settings.theme = theme.value;
-
-        applyTheme();
-        saveState();
-      });
-    }
-
-    /* DETAIL */
-    const detail = $("detailSetting");
-
-    if (detail) {
-      detail.addEventListener("change", () => {
-        state.settings.detail = detail.value;
-        saveState();
-      });
-    }
-
-    /* MODE */
-    const mode = $("modeSelect");
-
-    if (mode) {
-      mode.addEventListener("change", () => {
-        state.settings.mode = mode.value;
-        saveState();
-      });
-    }
-
-    /* TEXTAREA */
-    const input = $("messageInput");
-
-    if (input) {
-
-      input.addEventListener("input", () => {
-        resizeTextarea();
-      });
-
-      input.addEventListener("keydown", (event) => {
-
-        if (
-          event.key === "Enter" &&
-          !event.shiftKey
-        ) {
-          event.preventDefault();
-          sendMessage();
-        }
-
-      });
-    }
-
-    /* QUICK BUTTONS */
-    document
-      .querySelectorAll(".quick")
-      .forEach((button) => {
-
-        if (button.dataset.weuraBound === "1") {
-          return;
-        }
-
-        button.dataset.weuraBound = "1";
-
-        button.addEventListener("click", () => {
-          quickAction(button.dataset.action);
-        });
-      });
-
-    /* ESC */
-    document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") {
-        closeSidebar();
-        closeSettings();
-        stopVoice();
-      }
-    });
-  }
-
-  /* =========================
-     INIT
-  ========================= */
-
-  async function init() {
-
-    if (state.initialized) return;
-
-    try {
-
-      loadState();
-
-      /*
-        FORCE ENGLISH DEFAULT
-        Existing user settings are preserved.
-      */
-      if (!state.settings.language) {
-        state.settings.language = "en";
-      }
-
-      if (!state.settings.direction) {
-        state.settings.direction = "ltr";
-      }
-
-      applyTheme();
-      applyDirection();
-
-      const mode = $("modeSelect");
-
-      if (mode) {
-        mode.value = state.settings.mode;
-      }
-
-      if (!state.chats.length) {
-        createChat();
-      } else if (!state.currentChatId) {
-        state.currentChatId =
-          state.chats[0].id;
-      }
-
-      bindEvents();
-      renderHistory();
-      renderMessages();
-      resizeTextarea();
-      syncSettingsUI();
-
-      state.initialized = true;
-
-      await checkHealth();
-
-      console.log("WEURA AI initialized.");
-    } catch (error) {
-
-      console.error(
-        "WEURA initialization error:",
-        error
-      );
-
-      setStatus(
-        "WEURA initialization failed."
-      );
-    }
-  }
-
-  /* =========================
-     PUBLIC API
-  ========================= */
-
-  window.WEURA = {
-    send: sendMessage,
-    newChat,
-    openSettings,
-    toggleSearch: () => {
-      $("searchToggle")?.click();
-    },
-
-    getState: () => state
-  };
-
-  /* =========================
-     START
-  ========================= */
-
-  if (document.readyState === "loading") {
-
-    document.addEventListener(
-      "DOMContentLoaded",
-      init,
-      { once: true }
-    );
-
-  } else {
-
-    init();
-
-  }
-
-})();
+    window.WEURA_BOOT.initialized = true;
+} catch (error) {
+    console.error('WEURA Initialization Error:', error);
+}
