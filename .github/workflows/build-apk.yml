@@ -27,6 +27,46 @@ jobs:
       - name: Verify Flutter
         run: flutter --version
 
+      - name: Check project
+        working-directory: WEURA
+        run: |
+          echo "WEURA project:"
+          ls -la
+          echo ""
+          echo "Android directory:"
+          if [ -d "android" ]; then
+            echo "android/ exists"
+            find android -maxdepth 2 -type f | sort
+          else
+            echo "android/ does not exist"
+          fi
+
+      - name: Repair Android project
+        working-directory: WEURA
+        run: |
+          if [ ! -f "android/settings.gradle" ] && [ ! -f "android/settings.gradle.kts" ]; then
+            echo "Creating missing Flutter Android project files..."
+            mkdir -p /tmp/weura_dart_backup
+
+            cp -r app /tmp/weura_dart_backup/app
+            cp pubspec.yaml /tmp/weura_dart_backup/pubspec.yaml
+
+            flutter create \
+              --platforms=android \
+              --project-name=weura \
+              --org=com.walidout.weura \
+              .
+
+            rm -rf app
+            cp -r /tmp/weura_dart_backup/app app
+
+            cp /tmp/weura_dart_backup/pubspec.yaml pubspec.yaml
+
+            echo "Android project created successfully."
+          else
+            echo "Android project already exists."
+          fi
+
       - name: Install dependencies
         working-directory: WEURA
         run: flutter pub get
