@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../components/Composer/comppser.dart';
 import '../../core/AI/ai_router.dart';
@@ -30,7 +31,8 @@ class _ChatMessage {
   final bool isError;
 }
 
-class _ChatScreenState extends State<ChatScreen> {
+class _ChatScreenState extends State<ChatScreen>
+    with TickerProviderStateMixin {
   final ScrollController _scrollController =
       ScrollController();
 
@@ -72,15 +74,11 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _sendMessage(String text) async {
-    if (_isLoading) {
-      return;
-    }
+    if (_isLoading) return;
 
     final message = text.trim();
 
-    if (message.isEmpty) {
-      return;
-    }
+    if (message.isEmpty) return;
 
     final resolvedMode = _router.resolve(
       message: message,
@@ -125,9 +123,7 @@ class _ChatScreenState extends State<ChatScreen> {
         messages: conversation,
       );
 
-      if (!mounted || _requestCancelled) {
-        return;
-      }
+      if (!mounted || _requestCancelled) return;
 
       setState(() {
         _messages.add(
@@ -140,9 +136,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
       _scrollToBottom();
     } catch (error) {
-      if (!mounted || _requestCancelled) {
-        return;
-      }
+      if (!mounted || _requestCancelled) return;
 
       setState(() {
         _messages.add(
@@ -165,16 +159,12 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _cancelRequest() {
-    if (!_isLoading) {
-      return;
-    }
+    if (!_isLoading) return;
 
     setState(() {
       _requestCancelled = true;
       _isLoading = false;
     });
-
-    _showMessage('Generation stopped.');
   }
 
   String _cleanError(Object error) {
@@ -187,17 +177,13 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _retryLastMessage() {
-    if (_isLoading || _messages.isEmpty) {
-      return;
-    }
+    if (_isLoading || _messages.isEmpty) return;
 
     final userMessages = _messages
         .where((message) => message.isUser)
         .toList();
 
-    if (userMessages.isEmpty) {
-      return;
-    }
+    if (userMessages.isEmpty) return;
 
     final lastUserMessage = userMessages.last;
 
@@ -214,22 +200,18 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_scrollController.hasClients) {
-        return;
-      }
+      if (!_scrollController.hasClients) return;
 
       _scrollController.animateTo(
         _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeOut,
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
       );
     });
   }
 
   void _showMessage(String message) {
-    if (!mounted) {
-      return;
-    }
+    if (!mounted) return;
 
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -244,13 +226,14 @@ class _ChatScreenState extends State<ChatScreen> {
   void _showAttachmentSheet() {
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: const Color(0xFF111119),
+      backgroundColor: const Color(0xFF0D0D14),
+      showDragHandle: true,
       builder: (sheetContext) {
         return SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(
               18,
-              18,
+              8,
               18,
               24,
             ),
@@ -267,7 +250,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
                 const SizedBox(height: 14),
                 _attachmentOption(
-                  icon: Icons.photo_library_outlined,
+                  asset: 'assets/icons/home.svg',
                   title: 'Photos',
                   subtitle: 'Choose an image',
                   onTap: () {
@@ -278,7 +261,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   },
                 ),
                 _attachmentOption(
-                  icon: Icons.camera_alt_outlined,
+                  asset: 'assets/icons/camera.svg',
                   title: 'Camera',
                   subtitle: 'Capture an image',
                   onTap: () {
@@ -289,9 +272,10 @@ class _ChatScreenState extends State<ChatScreen> {
                   },
                 ),
                 _attachmentOption(
-                  icon: Icons.attach_file,
+                  asset: 'assets/icons/file.svg',
                   title: 'Files',
-                  subtitle: 'PDF, DOCX, XLSX, TXT, CSV',
+                  subtitle:
+                      'PDF, DOCX, XLSX, TXT, CSV',
                   onTap: () {
                     Navigator.pop(sheetContext);
                     _showMessage(
@@ -308,7 +292,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _attachmentOption({
-    required IconData icon,
+    required String asset,
     required String title,
     required String subtitle,
     required VoidCallback onTap,
@@ -316,21 +300,13 @@ class _ChatScreenState extends State<ChatScreen> {
     return ListTile(
       onTap: onTap,
       contentPadding: const EdgeInsets.symmetric(
-        horizontal: 6,
+        horizontal: 4,
         vertical: 2,
       ),
-      leading: Container(
-        width: 44,
-        height: 44,
-        decoration: BoxDecoration(
-          color: const Color(0xFF1D4ED8)
-              .withValues(alpha: 0.16),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Icon(
-          icon,
-          color: Colors.white,
-        ),
+      leading: SizedBox(
+        width: 40,
+        height: 40,
+        child: SvgPicture.asset(asset),
       ),
       title: Text(
         title,
@@ -346,9 +322,10 @@ class _ChatScreenState extends State<ChatScreen> {
           fontSize: 12,
         ),
       ),
-      trailing: const Icon(
-        Icons.chevron_right,
-        color: Colors.white30,
+      trailing: SvgPicture.asset(
+        'assets/icons/send.svg',
+        width: 18,
+        height: 18,
       ),
     );
   }
@@ -356,11 +333,17 @@ class _ChatScreenState extends State<ChatScreen> {
   void _showModePicker() {
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: const Color(0xFF101018),
+      backgroundColor: const Color(0xFF0D0D14),
+      showDragHandle: true,
       builder: (sheetContext) {
         return SafeArea(
           child: Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.fromLTRB(
+              14,
+              8,
+              14,
+              24,
+            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -374,21 +357,34 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
                 const SizedBox(height: 12),
                 ...AIMode.values.map((mode) {
+                  final selected = _mode == mode;
+
                   return ListTile(
-                    leading: Icon(
-                      _modeIcon(mode),
-                      color: Colors.white70,
+                    shape: RoundedRectangleBorder(
+                      borderRadius:
+                          BorderRadius.circular(16),
+                    ),
+                    tileColor: selected
+                        ? const Color(0xFF315DFF)
+                            .withValues(alpha: 0.10)
+                        : null,
+                    leading: SvgPicture.asset(
+                      'assets/icons/mode.svg',
+                      width: 23,
+                      height: 23,
                     ),
                     title: Text(
                       _modeName(mode),
                       style: const TextStyle(
                         color: Colors.white,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
-                    trailing: _mode == mode
-                        ? const Icon(
-                            Icons.check,
-                            color: Colors.blueAccent,
+                    trailing: selected
+                        ? SvgPicture.asset(
+                            'assets/icons/check.svg',
+                            width: 21,
+                            height: 21,
                           )
                         : null,
                     onTap: () {
@@ -427,25 +423,6 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  IconData _modeIcon(AIMode mode) {
-    switch (mode) {
-      case AIMode.auto:
-        return Icons.auto_awesome;
-      case AIMode.smart:
-        return Icons.psychology;
-      case AIMode.fast:
-        return Icons.bolt;
-      case AIMode.research:
-        return Icons.search;
-      case AIMode.code:
-        return Icons.code;
-      case AIMode.creative:
-        return Icons.lightbulb_outline;
-      case AIMode.vision:
-        return Icons.visibility_outlined;
-    }
-  }
-
   void _handleVoice() {
     _showMessage(
       'Voice input will be connected in the Voice step.',
@@ -468,10 +445,10 @@ class _ChatScreenState extends State<ChatScreen> {
               Navigator.pop(context);
             }
           },
-          icon: const Icon(
-            Icons.arrow_back_ios_new,
-            color: Colors.white,
-            size: 20,
+          icon: SvgPicture.asset(
+            'assets/icons/back.svg',
+            width: 23,
+            height: 23,
           ),
         ),
         title: const Text(
@@ -485,8 +462,10 @@ class _ChatScreenState extends State<ChatScreen> {
           IconButton(
             tooltip: 'AI Mode',
             onPressed: _showModePicker,
-            icon: Icon(
-              _modeIcon(_mode),
+            icon: SvgPicture.asset(
+              'assets/icons/mode.svg',
+              width: 23,
+              height: 23,
             ),
           ),
         ],
@@ -513,7 +492,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     itemBuilder: (context, index) {
                       if (_isLoading &&
                           index == _messages.length) {
-                        return _typingIndicator();
+                        return const _WeuraThinking();
                       }
 
                       return _messageBubble(
@@ -548,17 +527,17 @@ class _ChatScreenState extends State<ChatScreen> {
               height: 68,
               decoration: BoxDecoration(
                 color: const Color(0xFF1D4ED8)
-                    .withValues(alpha: 0.15),
+                    .withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(22),
                 border: Border.all(
-                  color: Colors.blueAccent
+                  color: const Color(0xFF3B82F6)
                       .withValues(alpha: 0.18),
                 ),
               ),
-              child: const Icon(
-                Icons.auto_awesome,
-                color: Colors.blueAccent,
-                size: 30,
+              child: SvgPicture.asset(
+                'assets/icons/mode.svg',
+                width: 31,
+                height: 31,
               ),
             ),
             const SizedBox(height: 20),
@@ -633,17 +612,26 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             if (message.isError) ...[
               const SizedBox(height: 10),
-              TextButton.icon(
-                onPressed: _retryLastMessage,
-                style: TextButton.styleFrom(
-                  padding: EdgeInsets.zero,
-                  minimumSize: const Size(0, 32),
+              GestureDetector(
+                onTap: _retryLastMessage,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SvgPicture.asset(
+                      'assets/icons/history.svg',
+                      width: 18,
+                      height: 18,
+                    ),
+                    const SizedBox(width: 7),
+                    const Text(
+                      'Retry',
+                      style: TextStyle(
+                        color: Color(0xFF7DD3FC),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
                 ),
-                icon: const Icon(
-                  Icons.refresh,
-                  size: 17,
-                ),
-                label: const Text('Retry'),
               ),
             ],
           ],
@@ -651,46 +639,91 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     );
   }
-
-  Widget _typingIndicator() {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.symmetric(
-          horizontal: 18,
-          vertical: 14,
-        ),
-        decoration: BoxDecoration(
-          color: const Color(0xFF15151D),
-          borderRadius: BorderRadius.circular(18),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: const [
-            _Dot(),
-            SizedBox(width: 5),
-            _Dot(),
-            SizedBox(width: 5),
-            _Dot(),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
-class _Dot extends StatelessWidget {
-  const _Dot();
+class _WeuraThinking extends StatefulWidget {
+  const _WeuraThinking();
+
+  @override
+  State<_WeuraThinking> createState() =>
+      _WeuraThinkingState();
+}
+
+class _WeuraThinkingState
+    extends State<_WeuraThinking>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 6,
-      height: 6,
-      decoration: const BoxDecoration(
-        color: Colors.white54,
-        shape: BoxShape.circle,
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        width: 66,
+        height: 44,
+        margin: const EdgeInsets.only(bottom: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFF111119),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: const Color(0xFF3B82F6)
+                .withValues(alpha: 0.10),
+          ),
+        ),
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, child) {
+            return Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(
+                3,
+                (index) {
+                  final value =
+                      (_controller.value * 3 - index)
+                          .clamp(0.0, 1.0);
+
+                  final scale =
+                      0.65 + (value * 0.45);
+
+                  return Padding(
+                    padding:
+                        const EdgeInsets.symmetric(
+                      horizontal: 3,
+                    ),
+                    child: Transform.scale(
+                      scale: scale,
+                      child: Container(
+                        width: 6,
+                        height: 6,
+                        decoration:
+                            const BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Color(0xFF3B82F6),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            );
+          },
+        ),
       ),
     );
   }
