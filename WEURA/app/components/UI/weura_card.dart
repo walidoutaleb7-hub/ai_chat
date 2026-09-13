@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 
 class WeuraCard extends StatelessWidget {
@@ -25,7 +26,7 @@ class WeuraCard extends StatelessWidget {
         color: const Color(0xFF101018),
         borderRadius: BorderRadius.circular(borderRadius),
         border: Border.all(
-          color: Colors.white.withOpacity(.065),
+          color: Colors.white.withValues(alpha: 0.065),
         ),
       ),
       child: child,
