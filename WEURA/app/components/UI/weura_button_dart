@@ -1,0 +1,68 @@
+import 'package:flutter/material.dart';
+
+class WeuraButton extends StatelessWidget {
+  const WeuraButton({
+    super.key,
+    required this.label,
+    required this.onPressed,
+    this.icon,
+    this.loading = false,
+    this.expanded = false,
+  });
+
+  final String label;
+  final VoidCallback? onPressed;
+  final IconData? icon;
+  final bool loading;
+  final bool expanded;
+
+  @override
+  Widget build(BuildContext context) {
+    final button = SizedBox(
+      height: 48,
+      child: ElevatedButton(
+        onPressed: loading ? null : onPressed,
+        style: ElevatedButton.styleFrom(
+          elevation: 0,
+          backgroundColor: const Color(0xFF315DFF),
+          disabledBackgroundColor: const Color(0xFF202331),
+          foregroundColor: Colors.white,
+          disabledForegroundColor: Colors.white38,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(13),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 18),
+        ),
+        child: loading
+            ? const SizedBox(
+                width: 19,
+                height: 19,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
+              )
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (icon != null) ...[
+                    Icon(icon, size: 19),
+                    const SizedBox(width: 8),
+                  ],
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    );
+
+    return expanded
+        ? SizedBox(width: double.infinity, child: button)
+        : button;
+  }
+}
