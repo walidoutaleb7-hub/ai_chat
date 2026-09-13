@@ -409,7 +409,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         color: const Color(0xFF111119),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: Colors.white.withOpacity(.06),
+          color: Colors.white.withValues(alpha: 0.06),
         ),
       ),
       child: Column(children: children),
@@ -500,7 +500,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Divider(
       height: 1,
       indent: 60,
-      color: Colors.white.withOpacity(.05),
+      color: Colors.white.withValues(alpha: 0.05),
     );
   }
 }
