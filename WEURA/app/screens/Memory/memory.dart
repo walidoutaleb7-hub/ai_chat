@@ -212,7 +212,7 @@ class _MemoryScreenState extends State<MemoryScreen> {
         color: const Color(0xFF111119),
         borderRadius: BorderRadius.circular(17),
         border: Border.all(
-          color: Colors.white.withOpacity(.06),
+          color: Colors.white.withValues(alpha: 0.06),
         ),
       ),
       child: Row(
@@ -222,7 +222,9 @@ class _MemoryScreenState extends State<MemoryScreen> {
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: const Color(0xFF1D4ED8).withOpacity(.14),
+              color: const Color(0xFF1D4ED8).withValues(
+                alpha: 0.14,
+              ),
               borderRadius: BorderRadius.circular(12),
             ),
             child: const Icon(
@@ -299,7 +301,7 @@ class _MemoryScreenState extends State<MemoryScreen> {
             Icon(
               Icons.psychology_outlined,
               size: 58,
-              color: Colors.white.withOpacity(.18),
+              color: Colors.white.withValues(alpha: 0.18),
             ),
             const SizedBox(height: 18),
             const Text(
