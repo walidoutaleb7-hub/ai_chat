@@ -11,9 +11,11 @@ class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
     super.key,
     this.onClearLocalData,
+    this.onBack,
   });
 
   final VoidCallback? onClearLocalData;
+  final VoidCallback? onBack;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -28,6 +30,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _memoryEnabled = true;
   bool _voiceInput = true;
   bool _voiceOutput = false;
+  bool _autoSaveHistory = true;
+  bool _sendOnEnter = true;
+  bool _hapticFeedback = true;
+  bool _streamResponses = true;
+  bool _showStatusMessages = true;
 
   String get _responseDetailName {
     switch (_responseDetail) {
@@ -57,7 +64,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final result = await showModalBottomSheet<ThemeMode>(
       context: context,
       backgroundColor: const Color(0xFF15151D),
-      builder: (context) {
+      builder: (_) {
         return _SelectionSheet<ThemeMode>(
           title: 'Appearance',
           value: _themeMode,
@@ -79,10 +86,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       },
     );
 
-    if (result != null) {
-      setState(() {
-        _themeMode = result;
-      });
+    if (result != null && mounted) {
+      setState(() => _themeMode = result);
+      _showChanged('Appearance changed');
     }
   }
 
@@ -90,7 +96,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final result = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: const Color(0xFF15151D),
-      builder: (context) {
+      builder: (_) {
         return _SelectionSheet<String>(
           title: 'Language',
           value: _language,
@@ -112,10 +118,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       },
     );
 
-    if (result != null) {
-      setState(() {
-        _language = result;
-      });
+    if (result != null && mounted) {
+      setState(() => _language = result);
+      _showChanged('Language changed');
     }
   }
 
@@ -123,7 +128,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final result = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: const Color(0xFF15151D),
-      builder: (context) {
+      builder: (_) {
         return _SelectionSheet<String>(
           title: 'Text direction',
           value: _direction,
@@ -145,18 +150,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
       },
     );
 
-    if (result != null) {
-      setState(() {
-        _direction = result;
-      });
+    if (result != null && mounted) {
+      setState(() => _direction = result);
+      _showChanged('Text direction changed');
     }
   }
 
   Future<void> _selectResponseDetail() async {
-    final result = await showModalBottomSheet<ResponseDetail>(
+    final result =
+        await showModalBottomSheet<ResponseDetail>(
       context: context,
       backgroundColor: const Color(0xFF15151D),
-      builder: (context) {
+      builder: (_) {
         return _SelectionSheet<ResponseDetail>(
           title: 'Response detail',
           value: _responseDetail,
@@ -182,17 +187,82 @@ class _SettingsScreenState extends State<SettingsScreen> {
       },
     );
 
-    if (result != null) {
-      setState(() {
-        _responseDetail = result;
-      });
+    if (result != null && mounted) {
+      setState(() => _responseDetail = result);
+      _showChanged('Response detail changed');
     }
+  }
+
+  void _showChanged(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          duration: const Duration(milliseconds: 1400),
+        ),
+      );
+  }
+
+  void _confirmResetSettings() {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF15151D),
+          title: const Text(
+            'Reset settings?',
+            style: TextStyle(color: Colors.white),
+          ),
+          content: const Text(
+            'All WEURA preferences will return to their defaults.',
+            style: TextStyle(
+              color: Colors.white70,
+              height: 1.4,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+
+                setState(() {
+                  _themeMode = ThemeMode.dark;
+                  _language = 'English';
+                  _direction = 'Auto';
+                  _responseDetail = ResponseDetail.auto;
+
+                  _memoryEnabled = true;
+                  _voiceInput = true;
+                  _voiceOutput = false;
+                  _autoSaveHistory = true;
+                  _sendOnEnter = true;
+                  _hapticFeedback = true;
+                  _streamResponses = true;
+                  _showStatusMessages = true;
+                });
+
+                _showChanged('Settings reset');
+              },
+              child: const Text(
+                'Reset',
+                style: TextStyle(color: Colors.redAccent),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   void _confirmClearData() {
     showDialog<void>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
           backgroundColor: const Color(0xFF15151D),
           title: const Text(
@@ -209,26 +279,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => Navigator.pop(dialogContext),
               child: const Text('Cancel'),
             ),
             TextButton(
               onPressed: () {
                 widget.onClearLocalData?.call();
-
-                Navigator.pop(context);
-
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Local data cleared.'),
-                  ),
-                );
+                Navigator.pop(dialogContext);
+                _showChanged('Local data cleared');
               },
               child: const Text(
                 'Clear',
-                style: TextStyle(
-                  color: Colors.redAccent,
-                ),
+                style: TextStyle(color: Colors.redAccent),
               ),
             ),
           ],
@@ -264,6 +326,88 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  void _showConnectionInfo() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF15151D),
+      builder: (_) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(22),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Connection',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _infoRow(
+                  Icons.cloud_done_outlined,
+                  'AI Engine',
+                  'Grok',
+                ),
+                _infoRow(
+                  Icons.security_outlined,
+                  'API key',
+                  'Server-side',
+                ),
+                _infoRow(
+                  Icons.shield_outlined,
+                  'Security',
+                  'Protected',
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'Connection availability depends on the '
+                  'WEURA backend configuration.',
+                  style: TextStyle(
+                    color: Colors.white54,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _infoRow(
+    IconData icon,
+    String title,
+    String value,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Icon(icon, color: Colors.white60),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              title,
+              style: const TextStyle(color: Colors.white70),
+            ),
+          ),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -271,6 +415,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF07070C),
         elevation: 0,
+        leading: IconButton(
+          icon: const Icon(
+            Icons.arrow_back_ios_new,
+            color: Colors.white,
+            size: 20,
+          ),
+          onPressed: () {
+            if (widget.onBack != null) {
+              widget.onBack!();
+            } else if (Navigator.canPop(context)) {
+              Navigator.pop(context);
+            }
+          },
+        ),
         title: const Text(
           'Settings',
           style: TextStyle(
@@ -278,6 +436,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
             fontWeight: FontWeight.w700,
           ),
         ),
+        actions: [
+          IconButton(
+            tooltip: 'Reset settings',
+            onPressed: _confirmResetSettings,
+            icon: const Icon(
+              Icons.restart_alt,
+              color: Colors.white70,
+            ),
+          ),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(
@@ -311,6 +479,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ]),
           const SizedBox(height: 24),
+
           _sectionTitle('AI'),
           _card([
             _settingTile(
@@ -326,13 +495,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
               subtitle: 'Allow WEURA to use saved memories',
               value: _memoryEnabled,
               onChanged: (value) {
-                setState(() {
-                  _memoryEnabled = value;
-                });
+                setState(() => _memoryEnabled = value);
+              },
+            ),
+            _divider(),
+            _switchTile(
+              icon: Icons.bolt_outlined,
+              title: 'Stream responses',
+              subtitle: 'Show responses as they are generated',
+              value: _streamResponses,
+              onChanged: (value) {
+                setState(() => _streamResponses = value);
+              },
+            ),
+            _divider(),
+            _switchTile(
+              icon: Icons.sync_outlined,
+              title: 'Status messages',
+              subtitle: 'Show analyzing and processing states',
+              value: _showStatusMessages,
+              onChanged: (value) {
+                setState(() => _showStatusMessages = value);
               },
             ),
           ]),
           const SizedBox(height: 24),
+
           _sectionTitle('Voice'),
           _card([
             _switchTile(
@@ -341,9 +529,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               subtitle: 'Use your microphone for messages',
               value: _voiceInput,
               onChanged: (value) {
-                setState(() {
-                  _voiceInput = value;
-                });
+                setState(() => _voiceInput = value);
               },
             ),
             _divider(),
@@ -353,13 +539,57 @@ class _SettingsScreenState extends State<SettingsScreen> {
               subtitle: 'Read AI responses aloud',
               value: _voiceOutput,
               onChanged: (value) {
-                setState(() {
-                  _voiceOutput = value;
-                });
+                setState(() => _voiceOutput = value);
               },
             ),
           ]),
           const SizedBox(height: 24),
+
+          _sectionTitle('Chat'),
+          _card([
+            _switchTile(
+              icon: Icons.save_outlined,
+              title: 'Auto-save history',
+              subtitle: 'Automatically save conversations',
+              value: _autoSaveHistory,
+              onChanged: (value) {
+                setState(() => _autoSaveHistory = value);
+              },
+            ),
+            _divider(),
+            _switchTile(
+              icon: Icons.keyboard_return,
+              title: 'Send on Enter',
+              subtitle: 'Press Enter to send a message',
+              value: _sendOnEnter,
+              onChanged: (value) {
+                setState(() => _sendOnEnter = value);
+              },
+            ),
+            _divider(),
+            _switchTile(
+              icon: Icons.vibration_outlined,
+              title: 'Haptic feedback',
+              subtitle: 'Use subtle vibration for interactions',
+              value: _hapticFeedback,
+              onChanged: (value) {
+                setState(() => _hapticFeedback = value);
+              },
+            ),
+          ]),
+          const SizedBox(height: 24),
+
+          _sectionTitle('Connection'),
+          _card([
+            _settingTile(
+              icon: Icons.cloud_outlined,
+              title: 'AI connection',
+              subtitle: 'Grok • Server-side API',
+              onTap: _showConnectionInfo,
+            ),
+          ]),
+          const SizedBox(height: 24),
+
           _sectionTitle('Privacy'),
           _card([
             _settingTile(
@@ -371,6 +601,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ]),
           const SizedBox(height: 24),
+
           _sectionTitle('About'),
           _card([
             _settingTile(
@@ -423,9 +654,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required VoidCallback onTap,
     bool destructive = false,
   }) {
-    final iconColor =
-        destructive ? Colors.redAccent : Colors.white70;
-
     return ListTile(
       onTap: onTap,
       contentPadding: const EdgeInsets.symmetric(
@@ -434,7 +662,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       leading: Icon(
         icon,
-        color: iconColor,
+        color: destructive
+            ? Colors.redAccent
+            : Colors.white70,
       ),
       title: Text(
         title,
