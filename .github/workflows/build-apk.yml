@@ -11,6 +11,7 @@ permissions:
 
 jobs:
   build:
+    name: Build WEURA Android APK
     runs-on: ubuntu-latest
 
     steps:
@@ -27,15 +28,15 @@ jobs:
       - name: Verify Flutter
         run: flutter --version
 
-      - name: Check project
+      - name: Inspect WEURA project
         working-directory: WEURA
         run: |
-          echo "WEURA project:"
+          echo "=== WEURA ROOT ==="
           ls -la
+
           echo ""
-          echo "Android directory:"
+          echo "=== Android ==="
           if [ -d "android" ]; then
-            echo "android/ exists"
             find android -maxdepth 2 -type f | sort
           else
             echo "android/ does not exist"
@@ -45,39 +46,69 @@ jobs:
         working-directory: WEURA
         run: |
           if [ ! -f "android/settings.gradle" ] && [ ! -f "android/settings.gradle.kts" ]; then
-            echo "Creating missing Flutter Android project files..."
-            mkdir -p /tmp/weura_dart_backup
+            echo "Android project is missing or unsupported."
+            echo "Creating a modern Flutter Android project..."
 
-            cp -r app /tmp/weura_dart_backup/app
-            cp pubspec.yaml /tmp/weura_dart_backup/pubspec.yaml
+            rm -rf /tmp/weura_backup
+            mkdir -p /tmp/weura_backup
 
+            # Backup WEURA Dart application.
+            cp -r app /tmp/weura_backup/app
+
+            # Backup the existing pubspec.
+            cp pubspec.yaml /tmp/weura_backup/pubspec.yaml
+
+            # Generate a modern Flutter Android project.
             flutter create \
               --platforms=android \
               --project-name=weura \
               --org=com.walidout.weura \
               .
 
+            # Restore the WEURA application structure.
             rm -rf app
-            cp -r /tmp/weura_dart_backup/app app
+            cp -r /tmp/weura_backup/app app
 
-            cp /tmp/weura_dart_backup/pubspec.yaml pubspec.yaml
+            # Restore the WEURA dependency configuration.
+            cp /tmp/weura_backup/pubspec.yaml pubspec.yaml
 
-            echo "Android project created successfully."
+            echo "Modern Android project created."
           else
             echo "Android project already exists."
+            echo "Keeping the existing Android project."
           fi
+
+          # The generated Flutter project may contain the default
+          # widget test referencing package:weura/main.dart and MyApp.
+          # WEURA uses app/main.dart instead.
+          rm -f test/widget_test.dart
+
+          echo ""
+          echo "=== Final Android check ==="
+          ls -la android
 
       - name: Install dependencies
         working-directory: WEURA
-        run: flutter pub get
+        run: |
+          flutter pub get
 
       - name: Analyze
         working-directory: WEURA
-        run: flutter analyze
+        run: |
+          flutter analyze
 
       - name: Build APK
         working-directory: WEURA
-        run: flutter build apk --debug --target=app/main.dart
+        run: |
+          flutter build apk \
+            --debug \
+            --target=app/main.dart
+
+      - name: Verify APK
+        working-directory: WEURA
+        run: |
+          test -f build/app/outputs/flutter-apk/app-debug.apk
+          ls -lh build/app/outputs/flutter-apk/app-debug.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
