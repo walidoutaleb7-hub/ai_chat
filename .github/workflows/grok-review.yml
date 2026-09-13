@@ -1,0 +1,33 @@
+name: grok-review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Grok CLI
+        run: |
+          curl -fsSL https://x.ai/cli/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Review pull request
+        env:
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          grok \
+            -p "Review this pull request for bugs, security issues, regressions, performance problems, and code-quality issues. Focus on concrete findings and suggest fixes." \
+            --always-approve
