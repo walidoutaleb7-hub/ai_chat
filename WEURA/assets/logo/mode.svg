@@ -1,0 +1,61 @@
+<svg width="24" height="24" viewBox="0 0 24 24"
+     fill="none" xmlns="http://www.w3.org/2000/svg">
+
+  <defs>
+    <filter id="blueGlow"
+            x="-80%" y="-80%"
+            width="260%" height="260%">
+      <feGaussianBlur stdDeviation="1.5" result="blur"/>
+      <feFlood flood-color="#3B82F6"
+               flood-opacity="0.75"
+               result="glowColor"/>
+      <feComposite in="glowColor"
+                   in2="blur"
+                   operator="in"
+                   result="glow"/>
+      <feMerge>
+        <feMergeNode in="glow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <linearGradient id="weuraBlue"
+                    x1="4"
+                    y1="20"
+                    x2="20"
+                    y2="4"
+                    gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2563EB"/>
+      <stop offset="0.5" stop-color="#3B82F6"/>
+      <stop offset="1" stop-color="#7DD3FC"/>
+    </linearGradient>
+  </defs>
+
+  <g filter="url(#blueGlow)"
+     stroke="url(#weuraBlue)"
+     stroke-width="1.8"
+     stroke-linecap="round"
+     stroke-linejoin="round">
+
+    <circle cx="12" cy="12" r="7.5"/>
+
+    <path d="M12 4.5V7"/>
+
+    <path d="M12 17V19.5"/>
+
+    <path d="M4.5 12H7"/>
+
+    <path d="M17 12H19.5"/>
+
+    <path d="M6.7 6.7L8.45 8.45"/>
+
+    <path d="M15.55 15.55L17.3 17.3"/>
+
+    <path d="M17.3 6.7L15.55 8.45"/>
+
+    <path d="M8.45 15.55L6.7 17.3"/>
+
+    <circle cx="12" cy="12" r="2.5"/>
+
+  </g>
+</svg>
