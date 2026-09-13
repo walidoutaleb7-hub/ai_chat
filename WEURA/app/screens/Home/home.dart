@@ -4,10 +4,6 @@ import 'package:flutter/material.dart';
 /// Product: WEURA AI
 /// Tagline: Think Beyond.
 /// Developer: Walid Out — وليد
-///
-/// This screen intentionally keeps its dependencies minimal.
-/// Other WEURA modules can be connected later without rebuilding
-/// the Home experience from scratch.
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
@@ -96,9 +92,6 @@ class _HomeScreenState extends State<HomeScreen>
       return;
     }
 
-    // Chat/Grok integration will be connected in the next stages.
-    //
-    // For now we forward the user into Chat.
     widget.onOpenChat?.call();
   }
 
@@ -116,8 +109,6 @@ class _HomeScreenState extends State<HomeScreen>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final media = MediaQuery.of(context);
-
-    final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -213,8 +204,8 @@ class _HomeScreenState extends State<HomeScreen>
                 Text(
                   'Think Beyond.',
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.textTheme.bodySmall?.color?.withOpacity(
-                      0.55,
+                    color: theme.textTheme.bodySmall?.color?.withValues(
+                      alpha: 0.55,
                     ),
                     letterSpacing: 0.2,
                   ),
@@ -252,7 +243,7 @@ class _HomeScreenState extends State<HomeScreen>
         color: isDark ? Colors.white : Colors.black,
         boxShadow: [
           BoxShadow(
-            color: Colors.blueAccent.withOpacity(0.16),
+            color: Colors.blueAccent.withValues(alpha: 0.16),
             blurRadius: 24,
             spreadRadius: 1,
           ),
@@ -282,11 +273,11 @@ class _HomeScreenState extends State<HomeScreen>
     return Tooltip(
       message: tooltip,
       child: Material(
-        color: theme.colorScheme.surface.withOpacity(0.75),
+        color: theme.colorScheme.surface.withValues(alpha: 0.75),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14),
           side: BorderSide(
-            color: theme.dividerColor.withOpacity(0.10),
+            color: theme.dividerColor.withValues(alpha: 0.10),
           ),
         ),
         child: InkWell(
@@ -320,13 +311,13 @@ class _HomeScreenState extends State<HomeScreen>
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                theme.colorScheme.primary.withOpacity(0.95),
-                theme.colorScheme.primary.withOpacity(0.48),
+                theme.colorScheme.primary.withValues(alpha: 0.95),
+                theme.colorScheme.primary.withValues(alpha: 0.48),
               ],
             ),
             boxShadow: [
               BoxShadow(
-                color: theme.colorScheme.primary.withOpacity(0.20),
+                color: theme.colorScheme.primary.withValues(alpha: 0.20),
                 blurRadius: 42,
                 spreadRadius: 4,
               ),
@@ -365,7 +356,9 @@ class _HomeScreenState extends State<HomeScreen>
             textAlign: TextAlign.center,
             style: theme.textTheme.bodyLarge?.copyWith(
               height: 1.55,
-              color: theme.textTheme.bodyLarge?.color?.withOpacity(0.58),
+              color: theme.textTheme.bodyLarge?.color?.withValues(
+                alpha: 0.58,
+              ),
             ),
           ),
         ),
@@ -385,21 +378,21 @@ class _HomeScreenState extends State<HomeScreen>
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
           color: _isComposerFocused
-              ? primary.withOpacity(0.55)
-              : theme.dividerColor.withOpacity(0.12),
+              ? primary.withValues(alpha: 0.55)
+              : theme.dividerColor.withValues(alpha: 0.12),
           width: _isComposerFocused ? 1.2 : 1,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(
-              theme.brightness == Brightness.dark ? 0.18 : 0.06,
+            color: Colors.black.withValues(
+              alpha: theme.brightness == Brightness.dark ? 0.18 : 0.06,
             ),
             blurRadius: 30,
             offset: const Offset(0, 12),
           ),
           if (_isComposerFocused)
             BoxShadow(
-              color: primary.withOpacity(0.08),
+              color: primary.withValues(alpha: 0.08),
               blurRadius: 35,
               spreadRadius: 1,
             ),
@@ -419,7 +412,7 @@ class _HomeScreenState extends State<HomeScreen>
               decoration: InputDecoration(
                 hintText: 'Ask WEURA anything...',
                 hintStyle: TextStyle(
-                  color: theme.hintColor.withOpacity(0.65),
+                  color: theme.hintColor.withValues(alpha: 0.65),
                 ),
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
@@ -435,17 +428,13 @@ class _HomeScreenState extends State<HomeScreen>
                 _ComposerActionButton(
                   icon: Icons.add_rounded,
                   label: 'Attach',
-                  onPressed: () {
-                    // File/Image tools will be connected later.
-                  },
+                  onPressed: () {},
                 ),
                 const SizedBox(width: 6),
                 _ComposerActionButton(
                   icon: Icons.tune_rounded,
                   label: 'Mode',
-                  onPressed: () {
-                    // AI mode selector will be connected later.
-                  },
+                  onPressed: () {},
                 ),
                 const Spacer(),
                 Material(
@@ -542,7 +531,9 @@ class _ComposerActionButton extends StatelessWidget {
             child: Icon(
               icon,
               size: 20,
-              color: theme.iconTheme.color?.withOpacity(0.72),
+              color: theme.iconTheme.color?.withValues(
+                alpha: 0.72,
+              ),
             ),
           ),
         ),
@@ -580,7 +571,7 @@ class _SuggestionChip extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(15),
             border: Border.all(
-              color: theme.dividerColor.withOpacity(0.10),
+              color: theme.dividerColor.withValues(alpha: 0.10),
             ),
           ),
           child: Row(
