@@ -52,12 +52,16 @@ class _WeuraShellState extends State<WeuraShell> {
   WeuraPage _page = WeuraPage.home;
 
   void _goTo(WeuraPage page) {
+    if (_page == page) {
+      return;
+    }
+
     setState(() {
       _page = page;
     });
   }
 
-  void _newChat() {
+  void _openHistoryChat(ChatHistoryItem item) {
     _goTo(WeuraPage.chat);
   }
 
@@ -92,7 +96,7 @@ class _WeuraShellState extends State<WeuraShell> {
       case WeuraPage.history:
         return HistoryScreen(
           key: const ValueKey('history'),
-          onOpenChat: () => _goTo(WeuraPage.chat),
+          onOpenChat: _openHistoryChat,
         );
 
       case WeuraPage.memory:
