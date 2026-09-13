@@ -48,7 +48,7 @@ class _ChatScreenState extends State<ChatScreen>
   bool _requestCancelled = false;
 
   static const String _serverUrl =
-      'http://10.0.2.2:8080';
+      'https://ai-chat-tlol.onrender.com';
 
   @override
   void initState() {
