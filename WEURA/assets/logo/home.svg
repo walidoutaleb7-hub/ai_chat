@@ -1,1 +1,22 @@
- 
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none"
+xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <filter id="blueGlow" x="-80%" y="-80%" width="260%" height="260%">
+    <feGaussianBlur stdDeviation="1.5" result="blur"/>
+    <feFlood flood-color="#3B82F6" flood-opacity="0.75" result="glowColor"/>
+    <feComposite in="glowColor" in2="blur" operator="in" result="glow"/>
+    <feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+  <linearGradient id="weuraBlue" x1="4" y1="20" x2="20" y2="4">
+    <stop offset="0" stop-color="#2563EB"/>
+    <stop offset="0.5" stop-color="#3B82F6"/>
+    <stop offset="1" stop-color="#7DD3FC"/>
+  </linearGradient>
+</defs>
+<path d="M4 10.5L12 4L20 10.5V19C20 19.55 19.55 20 19 20H5C4.45 20 4 19.55 4 19V10.5Z"
+stroke="url(#weuraBlue)" stroke-width="1.8"
+stroke-linejoin="round" filter="url(#blueGlow)"/>
+<path d="M9.5 20V14H14.5V20"
+stroke="url(#weuraBlue)" stroke-width="1.8"
+stroke-linejoin="round" filter="url(#blueGlow)"/>
+</svg> 
