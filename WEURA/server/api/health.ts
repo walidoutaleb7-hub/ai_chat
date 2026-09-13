@@ -3,15 +3,15 @@ import express from 'express';
 const router = express.Router();
 
 router.get('/health', (_req, res) => {
-  const grokConfigured = Boolean(
-    process.env.GROK_API_KEY?.trim(),
+  const groqConfigured = Boolean(
+    process.env.GROQ_API_KEY?.trim(),
   );
 
   const searchConfigured = Boolean(
     process.env.SEARCH_API_URL?.trim(),
   );
 
-  const ready = grokConfigured;
+  const ready = groqConfigured;
 
   return res.status(ready ? 200 : 503).json({
     success: ready,
@@ -19,7 +19,7 @@ router.get('/health', (_req, res) => {
     status: ready ? 'connected' : 'misconfigured',
 
     services: {
-      grok: grokConfigured
+      groq: groqConfigured
         ? 'configured'
         : 'missing_api_key',
 
@@ -46,9 +46,9 @@ router.get('/status', (_req, res) => {
     status: 'online',
 
     provider: {
-      name: 'xAI / Grok',
+      name: 'Groq',
       configured: Boolean(
-        process.env.GROK_API_KEY?.trim(),
+        process.env.GROQ_API_KEY?.trim(),
       ),
     },
 
