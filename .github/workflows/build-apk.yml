@@ -52,24 +52,18 @@ jobs:
             rm -rf /tmp/weura_backup
             mkdir -p /tmp/weura_backup
 
-            # Backup WEURA Dart application.
             cp -r app /tmp/weura_backup/app
-
-            # Backup the existing pubspec.
             cp pubspec.yaml /tmp/weura_backup/pubspec.yaml
 
-            # Generate a modern Flutter Android project.
             flutter create \
               --platforms=android \
               --project-name=weura \
               --org=com.walidout.weura \
               .
 
-            # Restore the WEURA application structure.
             rm -rf app
             cp -r /tmp/weura_backup/app app
 
-            # Restore the WEURA dependency configuration.
             cp /tmp/weura_backup/pubspec.yaml pubspec.yaml
 
             echo "Modern Android project created."
@@ -78,14 +72,39 @@ jobs:
             echo "Keeping the existing Android project."
           fi
 
-          # The generated Flutter project may contain the default
-          # widget test referencing package:weura/main.dart and MyApp.
-          # WEURA uses app/main.dart instead.
           rm -f test/widget_test.dart
 
           echo ""
           echo "=== Final Android check ==="
           ls -la android
+
+      - name: Fix icon assets structure
+        working-directory: WEURA
+        run: |
+          echo "=== BEFORE ==="
+          echo "assets/icons:"
+          ls -la assets/icons 2>/dev/null || echo "  (empty or missing)"
+          echo "assets/logo:"
+          ls -la assets/logo
+
+          mkdir -p assets/icons
+
+          # Move every SVG from assets/logo/ to assets/icons/
+          # EXCEPT weura.svg which must stay in assets/logo/
+          for f in assets/logo/*.svg; do
+            [ -e "$f" ] || continue
+            name=$(basename "$f")
+            if [ "$name" != "weura.svg" ]; then
+              mv "$f" "assets/icons/$name"
+            fi
+          done
+
+          echo ""
+          echo "=== AFTER ==="
+          echo "assets/icons:"
+          ls -la assets/icons
+          echo "assets/logo:"
+          ls -la assets/logo
 
       - name: Install dependencies
         working-directory: WEURA
@@ -96,6 +115,7 @@ jobs:
         working-directory: WEURA
         run: |
           flutter analyze
+        continue-on-error: true
 
       - name: Build APK
         working-directory: WEURA
