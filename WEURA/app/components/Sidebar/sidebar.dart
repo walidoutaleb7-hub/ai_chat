@@ -37,7 +37,7 @@ class WeuraSidebar extends StatelessWidget {
         color: const Color(0xFF08080F),
         border: Border(
           right: BorderSide(
-            color: Colors.white.withOpacity(.06),
+            color: Colors.white.withValues(alpha: 0.06),
           ),
         ),
       ),
@@ -50,7 +50,9 @@ class WeuraSidebar extends StatelessWidget {
             const SizedBox(height: 18),
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                ),
                 child: Column(
                   children: [
                     _item(
@@ -84,7 +86,12 @@ class WeuraSidebar extends StatelessWidget {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 14),
+              padding: const EdgeInsets.fromLTRB(
+                12,
+                8,
+                12,
+                14,
+              ),
               child: _item(
                 page: WeuraSidebarPage.settings,
                 icon: Icons.settings_outlined,
@@ -172,7 +179,7 @@ class WeuraSidebar extends StatelessWidget {
               borderRadius: BorderRadius.circular(13),
               color: const Color(0xFF11131D),
               border: Border.all(
-                color: Colors.white.withOpacity(.07),
+                color: Colors.white.withValues(alpha: 0.07),
               ),
             ),
             child: const Row(
@@ -248,7 +255,8 @@ class WeuraSidebar extends StatelessWidget {
               borderRadius: BorderRadius.circular(11),
               border: selected
                   ? Border.all(
-                      color: const Color(0xFF315DFF).withOpacity(.20),
+                      color: const Color(0xFF315DFF)
+                          .withValues(alpha: 0.20),
                     )
                   : null,
             ),
@@ -269,8 +277,9 @@ class WeuraSidebar extends StatelessWidget {
                         ? Colors.white
                         : Colors.white60,
                     fontSize: 14,
-                    fontWeight:
-                        selected ? FontWeight.w600 : FontWeight.w400,
+                    fontWeight: selected
+                        ? FontWeight.w600
+                        : FontWeight.w400,
                   ),
                 ),
               ],
