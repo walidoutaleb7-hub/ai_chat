@@ -1,37 +1,40 @@
 import express from 'express';
 import { askGrok, GrokMessage } from '../grok/grok';
+import {
+  createRequestId,
+  sanitizeMessages,
+  validateChatRequest,
+} from '../security/security';
 
 const router = express.Router();
 
 router.post('/chat', async (req, res) => {
-  try {
-    const { messages } = req.body as {
-      messages?: GrokMessage[];
-    };
+  const requestId = createRequestId();
 
-    if (!Array.isArray(messages) || messages.length === 0) {
+  res.setHeader('X-WEURA-Request-ID', requestId);
+
+  try {
+    const validation = validateChatRequest(req.body);
+
+    if (!validation.valid) {
       return res.status(400).json({
         success: false,
-        error: 'messages must be a non-empty array.',
+        error: validation.error,
+        requestId,
       });
     }
 
-    const safeMessages: GrokMessage[] = messages
-      .filter(
-        (message) =>
-          message &&
-          ['system', 'user', 'assistant'].includes(message.role) &&
-          typeof message.content === 'string'
-      )
-      .map((message) => ({
-        role: message.role,
-        content: message.content.slice(0, 30000),
-      }));
+    const body = req.body as {
+      messages: GrokMessage[];
+    };
 
-    if (!safeMessages.length) {
+    const safeMessages = sanitizeMessages(body.messages);
+
+    if (safeMessages.length === 0) {
       return res.status(400).json({
         success: false,
         error: 'No valid messages were provided.',
+        requestId,
       });
     }
 
@@ -39,10 +42,16 @@ router.post('/chat', async (req, res) => {
 
     return res.json({
       success: true,
-      ...result,
+      content: result.content,
+      model: result.model,
+      usage: result.usage,
+      requestId,
     });
   } catch (error) {
-    console.error('[WEURA] Chat error:', error);
+    console.error(
+      `[WEURA] Chat error ${requestId}:`,
+      error,
+    );
 
     return res.status(500).json({
       success: false,
@@ -50,6 +59,7 @@ router.post('/chat', async (req, res) => {
         error instanceof Error
           ? error.message
           : 'An unexpected server error occurred.',
+      requestId,
     });
   }
 });
