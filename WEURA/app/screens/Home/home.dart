@@ -1,23 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
-/// WEURA AI — Home Screen
-/// Product: WEURA AI
-/// Tagline: Think Beyond.
-/// Developer: Walid Out — وليد
+import '../Chat/chat.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({
-    super.key,
-    this.onOpenChat,
-    this.onOpenHistory,
-    this.onOpenMemory,
-    this.onOpenSettings,
-  });
-
-  final VoidCallback? onOpenChat;
-  final VoidCallback? onOpenHistory;
-  final VoidCallback? onOpenMemory;
-  final VoidCallback? onOpenSettings;
+  const HomeScreen({super.key});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -26,15 +13,18 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _animationController;
-  late final Animation<double> _fadeAnimation;
-  late final Animation<Offset> _slideAnimation;
 
-  final TextEditingController _composerController =
+  final TextEditingController _controller =
       TextEditingController();
 
-  final FocusNode _composerFocusNode = FocusNode();
+  final FocusNode _focusNode = FocusNode();
 
-  bool _isComposerFocused = false;
+  final List<String> _suggestions = const [
+    'Explain something to me',
+    'Help me write something',
+    'Analyze this idea',
+    'Help me code',
+  ];
 
   @override
   void initState() {
@@ -42,419 +32,160 @@ class _HomeScreenState extends State<HomeScreen>
 
     _animationController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 700),
-    );
-
-    _fadeAnimation = CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeOutCubic,
-    );
-
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.035),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(
-        parent: _animationController,
-        curve: Curves.easeOutCubic,
-      ),
-    );
-
-    _composerFocusNode.addListener(_handleComposerFocus);
-
-    _animationController.forward();
-  }
-
-  void _handleComposerFocus() {
-    if (!mounted) return;
-
-    setState(() {
-      _isComposerFocused = _composerFocusNode.hasFocus;
-    });
+      duration: const Duration(milliseconds: 900),
+    )..forward();
   }
 
   @override
   void dispose() {
     _animationController.dispose();
-    _composerController.dispose();
-    _composerFocusNode
-      ..removeListener(_handleComposerFocus)
-      ..dispose();
-
+    _controller.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
-  void _submitPrompt() {
-    final prompt = _composerController.text.trim();
+  void _openChat([String? message]) {
+    final text = message ?? _controller.text.trim();
 
-    if (prompt.isEmpty) {
-      widget.onOpenChat?.call();
+    if (text.isEmpty) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => const ChatScreen(),
+        ),
+      );
       return;
     }
 
-    widget.onOpenChat?.call();
+    _controller.clear();
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ChatScreen(
+          initialMessage: text,
+        ),
+      ),
+    );
   }
 
-  void _selectSuggestion(String text) {
-    _composerController
-      ..text = text
-      ..selection = TextSelection.collapsed(
-        offset: text.length,
-      );
-
-    _composerFocusNode.requestFocus();
+  void _useSuggestion(String text) {
+    _openChat(text);
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final media = MediaQuery.of(context);
-
     return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
+      backgroundColor: const Color(0xFF07070C),
       body: SafeArea(
         child: FadeTransition(
-          opacity: _fadeAnimation,
-          child: SlideTransition(
-            position: _slideAnimation,
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final isWide = constraints.maxWidth >= 900;
-
-                return CustomScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  slivers: [
-                    SliverToBoxAdapter(
-                      child: _buildTopBar(
-                        context,
-                        isWide: isWide,
-                      ),
-                    ),
-                    SliverToBoxAdapter(
-                      child: SizedBox(
-                        height: isWide ? 90 : 56,
-                      ),
-                    ),
-                    SliverToBoxAdapter(
-                      child: Center(
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(
-                            maxWidth: 920,
-                          ),
-                          child: Padding(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: isWide ? 32 : 20,
-                            ),
-                            child: Column(
-                              children: [
-                                _buildHero(context),
-                                const SizedBox(height: 42),
-                                _buildComposer(context),
-                                const SizedBox(height: 22),
-                                _buildSuggestions(context),
-                                SizedBox(
-                                  height: media.viewInsets.bottom > 0
-                                      ? 24
-                                      : 56,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
+          opacity: CurvedAnimation(
+            parent: _animationController,
+            curve: Curves.easeOut,
+          ),
+          child: Column(
+            children: [
+              _topBar(),
+              Expanded(
+                child: _mainContent(),
+              ),
+              _composer(),
+            ],
           ),
         ),
       ),
     );
   }
 
-  Widget _buildTopBar(
-    BuildContext context, {
-    required bool isWide,
-  }) {
-    final theme = Theme.of(context);
-
+  Widget _topBar() {
     return Padding(
-      padding: EdgeInsets.fromLTRB(
-        isWide ? 32 : 18,
+      padding: const EdgeInsets.fromLTRB(
         16,
-        isWide ? 32 : 18,
-        0,
+        12,
+        16,
+        8,
       ),
       child: Row(
         children: [
-          _buildLogo(context),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'WEURA AI',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.8,
-                  ),
-                ),
-                Text(
-                  'Think Beyond.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.textTheme.bodySmall?.color?.withValues(
-                      alpha: 0.55,
-                    ),
-                    letterSpacing: 0.2,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          _buildTopBarButton(
-            context,
-            icon: Icons.history_rounded,
+          _iconButton(
+            asset: 'assets/icons/history.svg',
             tooltip: 'History',
-            onPressed: widget.onOpenHistory,
+            onTap: () {},
           ),
-          const SizedBox(width: 8),
-          _buildTopBarButton(
-            context,
-            icon: Icons.settings_outlined,
-            tooltip: 'Settings',
-            onPressed: widget.onOpenSettings,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLogo(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    return Container(
-      width: 46,
-      height: 46,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: isDark ? Colors.white : Colors.black,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.blueAccent.withValues(alpha: 0.16),
-            blurRadius: 24,
-            spreadRadius: 1,
-          ),
-        ],
-      ),
-      alignment: Alignment.center,
-      child: Text(
-        'W',
-        style: TextStyle(
-          color: isDark ? Colors.black : Colors.white,
-          fontSize: 21,
-          fontWeight: FontWeight.w900,
-          letterSpacing: -1,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTopBarButton(
-    BuildContext context, {
-    required IconData icon,
-    required String tooltip,
-    VoidCallback? onPressed,
-  }) {
-    final theme = Theme.of(context);
-
-    return Tooltip(
-      message: tooltip,
-      child: Material(
-        color: theme.colorScheme.surface.withValues(alpha: 0.75),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-          side: BorderSide(
-            color: theme.dividerColor.withValues(alpha: 0.10),
-          ),
-        ),
-        child: InkWell(
-          onTap: onPressed,
-          borderRadius: BorderRadius.circular(14),
-          child: SizedBox(
-            width: 44,
-            height: 44,
-            child: Icon(
-              icon,
-              size: 20,
-              color: theme.iconTheme.color,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHero(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Column(
-      children: [
-        Container(
-          width: 72,
-          height: 72,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                theme.colorScheme.primary.withValues(alpha: 0.95),
-                theme.colorScheme.primary.withValues(alpha: 0.48),
-              ],
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: theme.colorScheme.primary.withValues(alpha: 0.20),
-                blurRadius: 42,
-                spreadRadius: 4,
+          const Spacer(),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 27,
+                height: 27,
+                child: SvgPicture.asset(
+                  'assets/logo/weura.svg',
+                ),
+              ),
+              const SizedBox(width: 9),
+              const Text(
+                'WEURA',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.4,
+                ),
               ),
             ],
           ),
-          child: const Center(
-            child: Text(
-              'W',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 32,
-                fontWeight: FontWeight.w900,
-                letterSpacing: -2,
-              ),
-            ),
+          const Spacer(),
+          _iconButton(
+            asset: 'assets/icons/settings.svg',
+            tooltip: 'Settings',
+            onTap: () {},
           ),
-        ),
-        const SizedBox(height: 26),
-        Text(
-          'Think beyond.',
-          textAlign: TextAlign.center,
-          style: theme.textTheme.headlineLarge?.copyWith(
-            fontSize: 38,
-            height: 1.08,
-            fontWeight: FontWeight.w800,
-            letterSpacing: -1.2,
-          ),
-        ),
-        const SizedBox(height: 12),
-        ConstrainedBox(
-          constraints: const BoxConstraints(
-            maxWidth: 610,
-          ),
-          child: Text(
-            'Ask questions, explore ideas, create, code, and solve problems with WEURA AI.',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodyLarge?.copyWith(
-              height: 1.55,
-              color: theme.textTheme.bodyLarge?.color?.withValues(
-                alpha: 0.58,
-              ),
-            ),
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
-  Widget _buildComposer(BuildContext context) {
-    final theme = Theme.of(context);
-    final primary = theme.colorScheme.primary;
-
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOut,
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: _isComposerFocused
-              ? primary.withValues(alpha: 0.55)
-              : theme.dividerColor.withValues(alpha: 0.12),
-          width: _isComposerFocused ? 1.2 : 1,
+  Widget _mainContent() {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(
+          22,
+          20,
+          22,
+          20,
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(
-              alpha: theme.brightness == Brightness.dark ? 0.18 : 0.06,
-            ),
-            blurRadius: 30,
-            offset: const Offset(0, 12),
-          ),
-          if (_isComposerFocused)
-            BoxShadow(
-              color: primary.withValues(alpha: 0.08),
-              blurRadius: 35,
-              spreadRadius: 1,
-            ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 14, 12, 12),
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            TextField(
-              controller: _composerController,
-              focusNode: _composerFocusNode,
-              minLines: 1,
-              maxLines: 6,
-              textInputAction: TextInputAction.newline,
-              onSubmitted: (_) => _submitPrompt(),
-              decoration: InputDecoration(
-                hintText: 'Ask WEURA anything...',
-                hintStyle: TextStyle(
-                  color: theme.hintColor.withValues(alpha: 0.65),
-                ),
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(
-                  vertical: 4,
-                ),
+            _heroLogo(),
+            const SizedBox(height: 26),
+            const Text(
+              'Think Beyond.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 38,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -1.2,
               ),
             ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                _ComposerActionButton(
-                  icon: Icons.add_rounded,
-                  label: 'Attach',
-                  onPressed: () {},
-                ),
-                const SizedBox(width: 6),
-                _ComposerActionButton(
-                  icon: Icons.tune_rounded,
-                  label: 'Mode',
-                  onPressed: () {},
-                ),
-                const Spacer(),
-                Material(
-                  color: primary,
-                  shape: const CircleBorder(),
-                  child: InkWell(
-                    onTap: _submitPrompt,
-                    customBorder: const CircleBorder(),
-                    child: const SizedBox(
-                      width: 46,
-                      height: 46,
-                      child: Icon(
-                        Icons.arrow_upward_rounded,
-                        color: Colors.white,
-                        size: 22,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+            const SizedBox(height: 10),
+            Text(
+              'Your intelligent space for ideas, answers and creation.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.48),
+                fontSize: 15,
+                height: 1.45,
+              ),
+            ),
+            const SizedBox(height: 34),
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 9,
+              runSpacing: 9,
+              children: _suggestions.map((suggestion) {
+                return _suggestionChip(suggestion);
+              }).toList(),
             ),
           ],
         ),
@@ -462,136 +193,149 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  Widget _buildSuggestions(BuildContext context) {
-    return Wrap(
-      alignment: WrapAlignment.center,
-      spacing: 9,
-      runSpacing: 9,
-      children: [
-        _SuggestionChip(
-          icon: Icons.lightbulb_outline_rounded,
-          label: 'Help me think',
-          onTap: () => _selectSuggestion(
-            'Help me think through an idea.',
-          ),
+  Widget _heroLogo() {
+    return Container(
+      width: 86,
+      height: 86,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: const Color(0xFF0A0D17),
+        border: Border.all(
+          color: const Color(0xFF3B82F6)
+              .withValues(alpha: 0.20),
         ),
-        _SuggestionChip(
-          icon: Icons.code_rounded,
-          label: 'Write code',
-          onTap: () => _selectSuggestion(
-            'Help me write and improve some code.',
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF2563EB)
+                .withValues(alpha: 0.18),
+            blurRadius: 45,
+            spreadRadius: 5,
           ),
-        ),
-        _SuggestionChip(
-          icon: Icons.search_rounded,
-          label: 'Research',
-          onTap: () => _selectSuggestion(
-            'Research this topic and explain the important points.',
-          ),
-        ),
-        _SuggestionChip(
-          icon: Icons.auto_awesome_rounded,
-          label: 'Create',
-          onTap: () => _selectSuggestion(
-            'Help me create something original.',
-          ),
-        ),
-      ],
+        ],
+      ),
+      child: SvgPicture.asset(
+        'assets/logo/weura.svg',
+      ),
     );
   }
-}
 
-class _ComposerActionButton extends StatelessWidget {
-  const _ComposerActionButton({
-    required this.icon,
-    required this.label,
-    required this.onPressed,
-  });
-
-  final IconData icon;
-  final String label;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Tooltip(
-      message: label,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onPressed,
-          borderRadius: BorderRadius.circular(12),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 10,
-              vertical: 9,
-            ),
-            child: Icon(
-              icon,
-              size: 20,
-              color: theme.iconTheme.color?.withValues(
-                alpha: 0.72,
-              ),
-            ),
+  Widget _suggestionChip(String text) {
+    return GestureDetector(
+      onTap: () => _useSuggestion(text),
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: 15,
+          vertical: 11,
+        ),
+        decoration: BoxDecoration(
+          color: const Color(0xFF10111A),
+          borderRadius: BorderRadius.circular(15),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.07),
+          ),
+        ),
+        child: Text(
+          text,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.72),
+            fontSize: 13,
           ),
         ),
       ),
     );
   }
-}
 
-class _SuggestionChip extends StatelessWidget {
-  const _SuggestionChip({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Material(
-      color: theme.colorScheme.surface,
-      borderRadius: BorderRadius.circular(15),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(15),
-        child: Container(
-          padding: const EdgeInsets.symmetric(
-            horizontal: 13,
-            vertical: 10,
-          ),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(15),
-            border: Border.all(
-              color: theme.dividerColor.withValues(alpha: 0.10),
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
-                size: 17,
-                color: theme.colorScheme.primary,
-              ),
-              const SizedBox(width: 7),
-              Text(
-                label,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
+  Widget _composer() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        14,
+        4,
+        14,
+        14,
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFF111119),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.07),
           ),
         ),
+        child: Row(
+          children: [
+            const SizedBox(width: 7),
+            IconButton(
+              tooltip: 'New chat',
+              onPressed: () => _openChat(),
+              icon: SvgPicture.asset(
+                'assets/icons/plus.svg',
+                width: 22,
+                height: 22,
+              ),
+            ),
+            Expanded(
+              child: TextField(
+                controller: _controller,
+                focusNode: _focusNode,
+                minLines: 1,
+                maxLines: 5,
+                textInputAction: TextInputAction.send,
+                onSubmitted: (_) => _openChat(),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                ),
+                cursorColor: const Color(0xFF5B7CFF),
+                decoration: const InputDecoration(
+                  hintText: 'Message WEURA...',
+                  hintStyle: TextStyle(
+                    color: Colors.white30,
+                  ),
+                  border: InputBorder.none,
+                ),
+              ),
+            ),
+            GestureDetector(
+              onTap: () => _openChat(),
+              child: Container(
+                width: 42,
+                height: 42,
+                margin: const EdgeInsets.only(
+                  right: 7,
+                ),
+                decoration: const BoxDecoration(
+                  color: Color(0xFF315DFF),
+                  shape: BoxShape.circle,
+                ),
+                child: Center(
+                  child: SvgPicture.asset(
+                    'assets/icons/send.svg',
+                    width: 22,
+                    height: 22,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _iconButton({
+    required String asset,
+    required String tooltip,
+    required VoidCallback onTap,
+  }) {
+    return IconButton(
+      tooltip: tooltip,
+      onPressed: onTap,
+      splashRadius: 22,
+      icon: SvgPicture.asset(
+        asset,
+        width: 23,
+        height: 23,
       ),
     );
   }
