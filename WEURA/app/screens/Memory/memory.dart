@@ -1,16 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
-class MemoryItem {
-  final String id;
-  String content;
-  DateTime updatedAt;
-
-  MemoryItem({
-    required this.id,
-    required this.content,
-    required this.updatedAt,
-  });
-}
+import '../../core/Memory/memory_manager.dart';
 
 class MemoryScreen extends StatefulWidget {
   const MemoryScreen({super.key});
@@ -20,24 +11,42 @@ class MemoryScreen extends StatefulWidget {
 }
 
 class _MemoryScreenState extends State<MemoryScreen> {
-  final List<MemoryItem> _memories = [];
+  final MemoryManager _manager = MemoryManager();
+
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    await _manager.load();
+
+    if (!mounted) return;
+
+    setState(() {
+      _isLoading = false;
+    });
+  }
 
   void _addMemory() {
     _showMemoryDialog();
   }
 
-  void _editMemory(MemoryItem memory) {
+  void _editMemory(WeuraMemory memory) {
     _showMemoryDialog(memory: memory);
   }
 
-  void _showMemoryDialog({MemoryItem? memory}) {
+  Future<void> _showMemoryDialog({WeuraMemory? memory}) async {
     final controller = TextEditingController(
       text: memory?.content ?? '',
     );
 
-    showDialog<void>(
+    final result = await showDialog<String>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
           backgroundColor: const Color(0xFF15151D),
           title: Text(
@@ -62,34 +71,13 @@ class _MemoryScreenState extends State<MemoryScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => Navigator.pop(dialogContext),
               child: const Text('Cancel'),
             ),
             TextButton(
               onPressed: () {
                 final text = controller.text.trim();
-
-                if (text.isEmpty) return;
-
-                setState(() {
-                  if (memory == null) {
-                    _memories.insert(
-                      0,
-                      MemoryItem(
-                        id: DateTime.now()
-                            .microsecondsSinceEpoch
-                            .toString(),
-                        content: text,
-                        updatedAt: DateTime.now(),
-                      ),
-                    );
-                  } else {
-                    memory.content = text;
-                    memory.updatedAt = DateTime.now();
-                  }
-                });
-
-                Navigator.pop(context);
+                Navigator.pop(dialogContext, text);
               },
               child: const Text('Save'),
             ),
@@ -97,20 +85,30 @@ class _MemoryScreenState extends State<MemoryScreen> {
         );
       },
     );
+
+    if (result == null || result.isEmpty) return;
+
+    if (memory == null) {
+      await _manager.add(result);
+    } else {
+      await _manager.update(memory.id, result);
+    }
+
+    if (mounted) setState(() {});
   }
 
-  void _deleteMemory(MemoryItem memory) {
-    setState(() {
-      _memories.removeWhere((item) => item.id == memory.id);
-    });
+  Future<void> _deleteMemory(WeuraMemory memory) async {
+    await _manager.delete(memory.id);
+
+    if (mounted) setState(() {});
   }
 
-  void _clearMemory() {
-    if (_memories.isEmpty) return;
+  Future<void> _clearMemory() async {
+    if (_manager.memories.isEmpty) return;
 
-    showDialog<void>(
+    final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
           backgroundColor: const Color(0xFF15151D),
           title: const Text(
@@ -123,17 +121,13 @@ class _MemoryScreenState extends State<MemoryScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () =>
+                  Navigator.pop(dialogContext, false),
               child: const Text('Cancel'),
             ),
             TextButton(
-              onPressed: () {
-                setState(() {
-                  _memories.clear();
-                });
-
-                Navigator.pop(context);
-              },
+              onPressed: () =>
+                  Navigator.pop(dialogContext, true),
               child: const Text(
                 'Clear',
                 style: TextStyle(color: Colors.redAccent),
@@ -143,6 +137,12 @@ class _MemoryScreenState extends State<MemoryScreen> {
         );
       },
     );
+
+    if (confirmed != true) return;
+
+    await _manager.clear();
+
+    if (mounted) setState(() {});
   }
 
   String _date(DateTime value) {
@@ -154,11 +154,22 @@ class _MemoryScreenState extends State<MemoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final memories = _manager.memories;
+
     return Scaffold(
       backgroundColor: const Color(0xFF07070C),
       appBar: AppBar(
         backgroundColor: const Color(0xFF07070C),
         elevation: 0,
+        leading: IconButton(
+          tooltip: 'Back',
+          onPressed: () => Navigator.pop(context),
+          icon: SvgPicture.asset(
+            'assets/icons/back.svg',
+            width: 23,
+            height: 23,
+          ),
+        ),
         title: const Text(
           'Memory',
           style: TextStyle(
@@ -167,13 +178,14 @@ class _MemoryScreenState extends State<MemoryScreen> {
           ),
         ),
         actions: [
-          if (_memories.isNotEmpty)
+          if (memories.isNotEmpty)
             IconButton(
               tooltip: 'Clear memory',
               onPressed: _clearMemory,
-              icon: const Icon(
-                Icons.delete_sweep_outlined,
-                color: Colors.white70,
+              icon: SvgPicture.asset(
+                'assets/icons/close.svg',
+                width: 22,
+                height: 22,
               ),
             ),
         ],
@@ -181,31 +193,47 @@ class _MemoryScreenState extends State<MemoryScreen> {
       floatingActionButton: FloatingActionButton(
         onPressed: _addMemory,
         backgroundColor: const Color(0xFF1D4ED8),
-        child: const Icon(
-          Icons.add,
-          color: Colors.white,
+        child: SvgPicture.asset(
+          'assets/icons/plus.svg',
+          width: 22,
+          height: 22,
+          colorFilter: const ColorFilter.mode(
+            Colors.white,
+            BlendMode.srcIn,
+          ),
         ),
       ),
-      body: _memories.isEmpty
-          ? _emptyState()
-          : ListView.separated(
-              padding: const EdgeInsets.fromLTRB(
-                16,
-                18,
-                16,
-                100,
+      body: _isLoading
+          ? const Center(
+              child: SizedBox(
+                width: 28,
+                height: 28,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Color(0xFF3B82F6),
+                ),
               ),
-              itemCount: _memories.length,
-              separatorBuilder: (_, __) =>
-                  const SizedBox(height: 10),
-              itemBuilder: (context, index) {
-                return _memoryCard(_memories[index]);
-              },
-            ),
+            )
+          : memories.isEmpty
+              ? _emptyState()
+              : ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(
+                    16,
+                    18,
+                    16,
+                    100,
+                  ),
+                  itemCount: memories.length,
+                  separatorBuilder: (_, __) =>
+                      const SizedBox(height: 10),
+                  itemBuilder: (context, index) {
+                    return _memoryCard(memories[index]);
+                  },
+                ),
     );
   }
 
-  Widget _memoryCard(MemoryItem memory) {
+  Widget _memoryCard(WeuraMemory memory) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -222,14 +250,15 @@ class _MemoryScreenState extends State<MemoryScreen> {
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: const Color(0xFF1D4ED8).withValues(
-                alpha: 0.14,
-              ),
+              color: const Color(0xFF1D4ED8)
+                  .withValues(alpha: 0.14),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Icon(
-              Icons.psychology_outlined,
-              color: Colors.blueAccent,
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: SvgPicture.asset(
+                'assets/icons/mode.svg',
+              ),
             ),
           ),
           const SizedBox(width: 13),
@@ -247,7 +276,7 @@ class _MemoryScreenState extends State<MemoryScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  _date(memory.updatedAt),
+                  _date(memory.updatedAt ?? memory.createdAt),
                   style: const TextStyle(
                     color: Colors.white38,
                     fontSize: 11,
@@ -298,10 +327,13 @@ class _MemoryScreenState extends State<MemoryScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.psychology_outlined,
-              size: 58,
-              color: Colors.white.withValues(alpha: 0.18),
+            Opacity(
+              opacity: 0.3,
+              child: SvgPicture.asset(
+                'assets/icons/mode.svg',
+                width: 56,
+                height: 56,
+              ),
             ),
             const SizedBox(height: 18),
             const Text(
