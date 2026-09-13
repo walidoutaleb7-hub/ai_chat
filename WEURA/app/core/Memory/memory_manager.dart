@@ -22,7 +22,9 @@ class WeuraMemory {
     };
   }
 
-  factory WeuraMemory.fromJson(Map<String, dynamic> json) {
+  factory WeuraMemory.fromJson(
+    Map<String, dynamic> json,
+  ) {
     return WeuraMemory(
       id: json['id']?.toString() ?? '',
       content: json['content']?.toString() ?? '',
@@ -45,14 +47,14 @@ class MemoryManager {
   static const String _storageKey = 'weura_memory';
 
   final StorageService _storage;
-
   final List<WeuraMemory> _memories = [];
 
   List<WeuraMemory> get memories =>
       List.unmodifiable(_memories);
 
   Future<void> load() async {
-    final data = await _storage.read<List<dynamic>>(_storageKey);
+    final data =
+        await _storage.read<List<dynamic>>(_storageKey);
 
     _memories.clear();
 
@@ -124,16 +126,18 @@ class MemoryManager {
   }
 
   Future<bool> delete(String id) async {
-    final removed = _memories.removeWhere(
-          (memory) => memory.id == id,
-        ) >
-        0;
+    final index = _memories.indexWhere(
+      (memory) => memory.id == id,
+    );
 
-    if (removed) {
-      await _save();
+    if (index == -1) {
+      return false;
     }
 
-    return removed;
+    _memories.removeAt(index);
+    await _save();
+
+    return true;
   }
 
   Future<void> clear() async {
@@ -149,7 +153,9 @@ class MemoryManager {
     }
 
     return _memories.where((memory) {
-      return memory.content.toLowerCase().contains(cleanQuery);
+      return memory.content
+          .toLowerCase()
+          .contains(cleanQuery);
     }).toList();
   }
 
@@ -177,7 +183,9 @@ class MemoryManager {
   Future<void> _save() async {
     await _storage.write(
       _storageKey,
-      _memories.map((memory) => memory.toJson()).toList(),
+      _memories
+          .map((memory) => memory.toJson())
+          .toList(),
     );
   }
 
