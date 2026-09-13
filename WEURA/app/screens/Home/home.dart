@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../Chat/chat.dart';
+import '../History/history.dart';
+import '../Settings/settings.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -67,6 +69,22 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+  void _openHistory() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const HistoryScreen(),
+      ),
+    );
+  }
+
+  void _openSettings() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const SettingsScreen(),
+      ),
+    );
+  }
+
   void _useSuggestion(String text) {
     _openChat(text);
   }
@@ -108,7 +126,7 @@ class _HomeScreenState extends State<HomeScreen>
           _iconButton(
             asset: 'assets/icons/history.svg',
             tooltip: 'History',
-            onTap: () {},
+            onTap: _openHistory,
           ),
           const Spacer(),
           Row(
@@ -137,7 +155,7 @@ class _HomeScreenState extends State<HomeScreen>
           _iconButton(
             asset: 'assets/icons/settings.svg',
             tooltip: 'Settings',
-            onTap: () {},
+            onTap: _openSettings,
           ),
         ],
       ),
