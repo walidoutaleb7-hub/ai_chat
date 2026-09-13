@@ -42,7 +42,7 @@ class WeuraMemory {
 class MemoryManager {
   MemoryManager({
     StorageService? storage,
-  }) : _storage = storage ?? StorageService();
+  }) : _storage = storage ?? StorageService.instance;
 
   static const String _storageKey = 'weura_memory';
 
