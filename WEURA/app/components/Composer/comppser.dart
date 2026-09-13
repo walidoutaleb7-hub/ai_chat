@@ -41,30 +41,39 @@ class _WeuraComposerState extends State<WeuraComposer> {
     super.initState();
 
     _controller.addListener(_refresh);
+    _focusNode.addListener(_refresh);
   }
 
   @override
   void dispose() {
     _controller.removeListener(_refresh);
+    _focusNode.removeListener(_refresh);
     _controller.dispose();
     _focusNode.dispose();
     super.dispose();
   }
 
   void _refresh() {
-    setState(() {});
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   void _send() {
     final text = _controller.text.trim();
 
-    if (text.isEmpty || !widget.enabled || widget.isLoading) {
+    if (text.isEmpty ||
+        !widget.enabled ||
+        widget.isLoading) {
       return;
     }
 
     widget.onSend?.call(text);
     _controller.clear();
-    _focusNode.requestFocus();
+
+    if (mounted) {
+      _focusNode.requestFocus();
+    }
   }
 
   void _handleSubmitted(String value) {
@@ -86,23 +95,24 @@ class _WeuraComposerState extends State<WeuraComposer> {
         ),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.fromLTRB(
-            7,
-            7,
-            7,
-            7,
-          ),
+          padding: const EdgeInsets.all(7),
           decoration: BoxDecoration(
             color: const Color(0xFF111119),
             borderRadius: BorderRadius.circular(22),
             border: Border.all(
               color: _focusNode.hasFocus
-                  ? const Color(0xFF315DFF).withOpacity(.45)
-                  : Colors.white.withOpacity(.07),
+                  ? const Color(0xFF315DFF).withValues(
+                      alpha: 0.45,
+                    )
+                  : Colors.white.withValues(
+                      alpha: 0.07,
+                    ),
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(.18),
+                color: Colors.black.withValues(
+                  alpha: 0.18,
+                ),
                 blurRadius: 20,
                 offset: const Offset(0, 8),
               ),
@@ -113,18 +123,22 @@ class _WeuraComposerState extends State<WeuraComposer> {
               TextField(
                 controller: _controller,
                 focusNode: _focusNode,
-                enabled: widget.enabled && !widget.isLoading,
+                enabled:
+                    widget.enabled && !widget.isLoading,
                 minLines: 1,
                 maxLines: 7,
-                textInputAction: TextInputAction.newline,
-                keyboardType: TextInputType.multiline,
+                textInputAction:
+                    TextInputAction.newline,
+                keyboardType:
+                    TextInputType.multiline,
                 onSubmitted: _handleSubmitted,
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 15.5,
                   height: 1.45,
                 ),
-                cursorColor: const Color(0xFF5B7CFF),
+                cursorColor:
+                    const Color(0xFF5B7CFF),
                 decoration: InputDecoration(
                   hintText: widget.hintText,
                   hintStyle: const TextStyle(
@@ -132,7 +146,8 @@ class _WeuraComposerState extends State<WeuraComposer> {
                     fontSize: 15,
                   ),
                   border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(
+                  contentPadding:
+                      const EdgeInsets.symmetric(
                     horizontal: 10,
                     vertical: 7,
                   ),
@@ -190,8 +205,8 @@ class _WeuraComposerState extends State<WeuraComposer> {
         icon,
         size: 21,
         color: onPressed == null
-            ? Colors.white18
-            : Colors.white60,
+            ? Colors.white.withValues(alpha: 0.18)
+            : Colors.white.withValues(alpha: 0.60),
       ),
     );
   }
