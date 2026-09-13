@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../components/Composer/comppser.dart';
 import '../../core/AI/ai_router.dart';
 import '../../services/Grok/grok_service.dart';
 
@@ -30,13 +31,8 @@ class _ChatMessage {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
-  final TextEditingController _controller =
-      TextEditingController();
-
   final ScrollController _scrollController =
       ScrollController();
-
-  final FocusNode _focusNode = FocusNode();
 
   final AIRouter _router = const AIRouter();
 
@@ -49,12 +45,6 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isLoading = false;
   bool _requestCancelled = false;
 
-  // Android emulator:
-  // http://10.0.2.2:8080
-  //
-  // IMPORTANT:
-  // On a real phone this must be replaced with a
-  // reachable backend URL.
   static const String _serverUrl =
       'http://10.0.2.2:8080';
 
@@ -76,36 +66,31 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
-    _controller.dispose();
     _scrollController.dispose();
-    _focusNode.dispose();
     _grok.dispose();
     super.dispose();
   }
 
-  Future<void> _sendMessage([String? value]) async {
+  Future<void> _sendMessage(String text) async {
     if (_isLoading) {
       return;
     }
 
-    final text = (value ?? _controller.text).trim();
+    final message = text.trim();
 
-    if (text.isEmpty) {
-      _focusNode.requestFocus();
+    if (message.isEmpty) {
       return;
     }
 
-    _controller.clear();
-
     final resolvedMode = _router.resolve(
-      message: text,
+      message: message,
       selectedMode: _mode,
     );
 
     setState(() {
       _messages.add(
         _ChatMessage(
-          text: text,
+          text: message,
           isUser: true,
         ),
       );
@@ -114,7 +99,6 @@ class _ChatScreenState extends State<ChatScreen> {
       _requestCancelled = false;
     });
 
-    _focusNode.unfocus();
     _scrollToBottom();
 
     try {
@@ -141,11 +125,7 @@ class _ChatScreenState extends State<ChatScreen> {
         messages: conversation,
       );
 
-      if (!mounted) {
-        return;
-      }
-
-      if (_requestCancelled) {
+      if (!mounted || _requestCancelled) {
         return;
       }
 
@@ -160,11 +140,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
       _scrollToBottom();
     } catch (error) {
-      if (!mounted) {
-        return;
-      }
-
-      if (_requestCancelled) {
+      if (!mounted || _requestCancelled) {
         return;
       }
 
@@ -206,14 +182,6 @@ class _ChatScreenState extends State<ChatScreen> {
       return error.message;
     }
 
-    final message = error.toString();
-
-    if (message.startsWith('Exception: ')) {
-      return message.substring(
-        'Exception: '.length,
-      );
-    }
-
     return 'WEURA could not complete the request. '
         'Please check the connection and try again.';
   }
@@ -223,13 +191,15 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
 
-    final lastUserMessage = _messages
+    final userMessages = _messages
         .where((message) => message.isUser)
-        .lastOrNull;
+        .toList();
 
-    if (lastUserMessage == null) {
+    if (userMessages.isEmpty) {
       return;
     }
+
+    final lastUserMessage = userMessages.last;
 
     _messages.removeWhere(
       (message) =>
@@ -303,7 +273,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   onTap: () {
                     Navigator.pop(sheetContext);
                     _showMessage(
-                      'Image picker will be connected next.',
+                      'Image tools will be connected in the Vision step.',
                     );
                   },
                 ),
@@ -314,7 +284,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   onTap: () {
                     Navigator.pop(sheetContext);
                     _showMessage(
-                      'Camera will be connected next.',
+                      'Camera tools will be connected in the Vision step.',
                     );
                   },
                 ),
@@ -325,7 +295,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   onTap: () {
                     Navigator.pop(sheetContext);
                     _showMessage(
-                      'File picker will be connected next.',
+                      'File tools will be connected in the Files step.',
                     );
                   },
                 ),
@@ -476,6 +446,12 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  void _handleVoice() {
+    _showMessage(
+      'Voice input will be connected in the Voice step.',
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -546,7 +522,15 @@ class _ChatScreenState extends State<ChatScreen> {
                     },
                   ),
           ),
-          _composer(),
+          WeuraComposer(
+            enabled: true,
+            isLoading: _isLoading,
+            onSend: _sendMessage,
+            onAttach: _showAttachmentSheet,
+            onMode: _showModePicker,
+            onVoice: _handleVoice,
+            onStop: _cancelRequest,
+          ),
         ],
       ),
     );
@@ -641,7 +625,7 @@ class _ChatScreenState extends State<ChatScreen> {
           children: [
             SelectableText(
               message.text,
-              style: TextStyle(
+              style: const TextStyle(
                 color: Colors.white,
                 fontSize: 15.5,
                 height: 1.5,
@@ -683,109 +667,13 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
-          children: [
-            const _Dot(),
-            const SizedBox(width: 5),
-            const _Dot(),
-            const SizedBox(width: 5),
-            const _Dot(),
-            const SizedBox(width: 12),
-            GestureDetector(
-              onTap: _cancelRequest,
-              child: const Icon(
-                Icons.stop_circle_outlined,
-                color: Colors.white54,
-                size: 19,
-              ),
-            ),
+          children: const [
+            _Dot(),
+            SizedBox(width: 5),
+            _Dot(),
+            SizedBox(width: 5),
+            _Dot(),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _composer() {
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          12,
-          6,
-          12,
-          12,
-        ),
-        child: Container(
-          padding: const EdgeInsets.symmetric(
-            horizontal: 7,
-            vertical: 7,
-          ),
-          decoration: BoxDecoration(
-            color: const Color(0xFF111119),
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(
-              color: Colors.white
-                  .withValues(alpha: 0.08),
-            ),
-          ),
-          child: Row(
-            crossAxisAlignment:
-                CrossAxisAlignment.end,
-            children: [
-              IconButton(
-                tooltip: 'Add',
-                onPressed: _showAttachmentSheet,
-                icon: const Icon(
-                  Icons.add,
-                  color: Colors.white70,
-                ),
-              ),
-              Expanded(
-                child: TextField(
-                  controller: _controller,
-                  focusNode: _focusNode,
-                  minLines: 1,
-                  maxLines: 6,
-                  textInputAction:
-                      TextInputAction.newline,
-                  keyboardType:
-                      TextInputType.multiline,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 15.5,
-                  ),
-                  cursorColor: Colors.blueAccent,
-                  decoration: const InputDecoration(
-                    hintText: 'Message WEURA...',
-                    hintStyle: TextStyle(
-                      color: Colors.white38,
-                    ),
-                    border: InputBorder.none,
-                    isDense: true,
-                    contentPadding:
-                        EdgeInsets.symmetric(
-                      vertical: 10,
-                    ),
-                  ),
-                ),
-              ),
-              IconButton(
-                tooltip: _isLoading
-                    ? 'Stop'
-                    : 'Send',
-                onPressed: _isLoading
-                    ? _cancelRequest
-                    : _sendMessage,
-                icon: Icon(
-                  _isLoading
-                      ? Icons.stop_rounded
-                      : Icons.arrow_upward_rounded,
-                  color: _isLoading
-                      ? Colors.redAccent
-                      : Colors.white,
-                ),
-              ),
-            ],
-          ),
         ),
       ),
     );
@@ -805,15 +693,5 @@ class _Dot extends StatelessWidget {
         shape: BoxShape.circle,
       ),
     );
-  }
-}
-
-extension _LastOrNull<T> on Iterable<T> {
-  T? get lastOrNull {
-    if (isEmpty) {
-      return null;
-    }
-
-    return last;
   }
 }
