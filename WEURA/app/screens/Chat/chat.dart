@@ -228,9 +228,14 @@ class _ChatScreenState extends State<ChatScreen>
       context: context,
       backgroundColor: const Color(0xFF0D0D14),
       showDragHandle: true,
+      isScrollControlled: true,
+      constraints: BoxConstraints(
+        maxHeight:
+            MediaQuery.of(context).size.height * 0.85,
+      ),
       builder: (sheetContext) {
         return SafeArea(
-          child: Padding(
+          child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(
               18,
               8,
@@ -335,9 +340,14 @@ class _ChatScreenState extends State<ChatScreen>
       context: context,
       backgroundColor: const Color(0xFF0D0D14),
       showDragHandle: true,
+      isScrollControlled: true,
+      constraints: BoxConstraints(
+        maxHeight:
+            MediaQuery.of(context).size.height * 0.85,
+      ),
       builder: (sheetContext) {
         return SafeArea(
-          child: Padding(
+          child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(
               14,
               8,
