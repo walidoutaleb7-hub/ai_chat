@@ -3,6 +3,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../Chat/chat.dart';
 import '../History/history.dart';
+import '../Memory/memory.dart';
 import '../Settings/settings.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -77,6 +78,14 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+  void _openMemory() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const MemoryScreen(),
+      ),
+    );
+  }
+
   void _openSettings() {
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -127,6 +136,12 @@ class _HomeScreenState extends State<HomeScreen>
             asset: 'assets/icons/history.svg',
             tooltip: 'History',
             onTap: _openHistory,
+          ),
+          const SizedBox(width: 4),
+          _iconButton(
+            asset: 'assets/icons/mode.svg',
+            tooltip: 'Memory',
+            onTap: _openMemory,
           ),
           const Spacer(),
           Row(
