@@ -3,16 +3,19 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../components/Composer/comppser.dart';
 import '../../core/AI/ai_router.dart';
+import '../../core/History/chat_history.dart';
 import '../../services/Grok/grok_service.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({
     super.key,
     this.initialMessage,
+    this.sessionId,
     this.onBack,
   });
 
   final String? initialMessage;
+  final String? sessionId;
   final VoidCallback? onBack;
 
   @override
@@ -33,19 +36,18 @@ class _ChatMessage {
 
 class _ChatScreenState extends State<ChatScreen>
     with TickerProviderStateMixin {
-  final ScrollController _scrollController =
-      ScrollController();
-
+  final ScrollController _scrollController = ScrollController();
   final AIRouter _router = const AIRouter();
+  final HistoryManager _history = HistoryManager();
 
   late final GrokService _grok;
 
   final List<_ChatMessage> _messages = [];
 
   AIMode _mode = AIMode.auto;
-
   bool _isLoading = false;
   bool _requestCancelled = false;
+  ChatSession? _session;
 
   static const String _serverUrl =
       'https://ai-chat-tlol.onrender.com';
@@ -54,9 +56,32 @@ class _ChatScreenState extends State<ChatScreen>
   void initState() {
     super.initState();
 
-    _grok = GrokService(
-      baseUrl: _serverUrl,
-    );
+    _grok = GrokService(baseUrl: _serverUrl);
+
+    _initialize();
+  }
+
+  Future<void> _initialize() async {
+    await _history.load();
+
+    if (widget.sessionId != null) {
+      final existing = _history.findById(widget.sessionId!);
+
+      if (existing != null) {
+        _session = existing;
+
+        for (final msg in existing.messages) {
+          _messages.add(
+            _ChatMessage(
+              text: msg.text,
+              isUser: msg.isUser,
+            ),
+          );
+        }
+
+        if (mounted) setState(() {});
+      }
+    }
 
     if (widget.initialMessage != null &&
         widget.initialMessage!.trim().isNotEmpty) {
@@ -73,11 +98,41 @@ class _ChatScreenState extends State<ChatScreen>
     super.dispose();
   }
 
+  Future<void> _ensureSession(String firstMessage) async {
+    if (_session != null) return;
+
+    final title = firstMessage.length > 40
+        ? '${firstMessage.substring(0, 40)}...'
+        : firstMessage;
+
+    _session = await _history.create(title: title);
+  }
+
+  Future<void> _persistMessages() async {
+    final session = _session;
+    if (session == null) return;
+
+    session.messages.clear();
+
+    for (final msg in _messages) {
+      if (msg.isError) continue;
+
+      session.messages.add(
+        ChatMessageData(
+          text: msg.text,
+          isUser: msg.isUser,
+          timestamp: DateTime.now(),
+        ),
+      );
+    }
+
+    await _history.save(session);
+  }
+
   Future<void> _sendMessage(String text) async {
     if (_isLoading) return;
 
     final message = text.trim();
-
     if (message.isEmpty) return;
 
     final resolvedMode = _router.resolve(
@@ -85,55 +140,44 @@ class _ChatScreenState extends State<ChatScreen>
       selectedMode: _mode,
     );
 
-    setState(() {
-      _messages.add(
-        _ChatMessage(
-          text: message,
-          isUser: true,
-        ),
-      );
+    await _ensureSession(message);
 
+    setState(() {
+      _messages.add(_ChatMessage(text: message, isUser: true));
       _isLoading = true;
       _requestCancelled = false;
     });
 
+    await _persistMessages();
     _scrollToBottom();
 
     try {
       final conversation = <GrokMessage>[
         GrokMessage(
           role: 'system',
-          content: _router.systemPromptFor(
-            resolvedMode,
-          ),
+          content: _router.systemPromptFor(resolvedMode),
         ),
         ..._messages
-            .where((message) => !message.isError)
+            .where((m) => !m.isError)
             .map(
-              (message) => GrokMessage(
-                role: message.isUser
-                    ? 'user'
-                    : 'assistant',
-                content: message.text,
+              (m) => GrokMessage(
+                role: m.isUser ? 'user' : 'assistant',
+                content: m.text,
               ),
             ),
       ];
 
-      final result = await _grok.sendMessage(
-        messages: conversation,
-      );
+      final result = await _grok.sendMessage(messages: conversation);
 
       if (!mounted || _requestCancelled) return;
 
       setState(() {
         _messages.add(
-          _ChatMessage(
-            text: result.content,
-            isUser: false,
-          ),
+          _ChatMessage(text: result.content, isUser: false),
         );
       });
 
+      await _persistMessages();
       _scrollToBottom();
     } catch (error) {
       if (!mounted || _requestCancelled) return;
@@ -168,9 +212,7 @@ class _ChatScreenState extends State<ChatScreen>
   }
 
   String _cleanError(Object error) {
-    if (error is GrokException) {
-      return error.message;
-    }
+    if (error is GrokException) return error.message;
 
     return 'WEURA could not complete the request. '
         'Please check the connection and try again.';
@@ -179,19 +221,14 @@ class _ChatScreenState extends State<ChatScreen>
   void _retryLastMessage() {
     if (_isLoading || _messages.isEmpty) return;
 
-    final userMessages = _messages
-        .where((message) => message.isUser)
-        .toList();
+    final userMessages =
+        _messages.where((m) => m.isUser).toList();
 
     if (userMessages.isEmpty) return;
 
     final lastUserMessage = userMessages.last;
 
-    _messages.removeWhere(
-      (message) =>
-          !message.isUser &&
-          message.isError,
-    );
+    _messages.removeWhere((m) => !m.isUser && m.isError);
 
     setState(() {});
 
@@ -230,18 +267,12 @@ class _ChatScreenState extends State<ChatScreen>
       showDragHandle: true,
       isScrollControlled: true,
       constraints: BoxConstraints(
-        maxHeight:
-            MediaQuery.of(context).size.height * 0.85,
+        maxHeight: MediaQuery.of(context).size.height * 0.85,
       ),
       builder: (sheetContext) {
         return SafeArea(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(
-              18,
-              8,
-              18,
-              24,
-            ),
+            padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -279,8 +310,7 @@ class _ChatScreenState extends State<ChatScreen>
                 _attachmentOption(
                   asset: 'assets/icons/file.svg',
                   title: 'Files',
-                  subtitle:
-                      'PDF, DOCX, XLSX, TXT, CSV',
+                  subtitle: 'PDF, DOCX, XLSX, TXT, CSV',
                   onTap: () {
                     Navigator.pop(sheetContext);
                     _showMessage(
@@ -304,10 +334,8 @@ class _ChatScreenState extends State<ChatScreen>
   }) {
     return ListTile(
       onTap: onTap,
-      contentPadding: const EdgeInsets.symmetric(
-        horizontal: 4,
-        vertical: 2,
-      ),
+      contentPadding:
+          const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
       leading: SizedBox(
         width: 40,
         height: 40,
@@ -322,10 +350,7 @@ class _ChatScreenState extends State<ChatScreen>
       ),
       subtitle: Text(
         subtitle,
-        style: const TextStyle(
-          color: Colors.white38,
-          fontSize: 12,
-        ),
+        style: const TextStyle(color: Colors.white38, fontSize: 12),
       ),
       trailing: SvgPicture.asset(
         'assets/icons/send.svg',
@@ -342,18 +367,12 @@ class _ChatScreenState extends State<ChatScreen>
       showDragHandle: true,
       isScrollControlled: true,
       constraints: BoxConstraints(
-        maxHeight:
-            MediaQuery.of(context).size.height * 0.85,
+        maxHeight: MediaQuery.of(context).size.height * 0.85,
       ),
       builder: (sheetContext) {
         return SafeArea(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(
-              14,
-              8,
-              14,
-              24,
-            ),
+            padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -371,8 +390,7 @@ class _ChatScreenState extends State<ChatScreen>
 
                   return ListTile(
                     shape: RoundedRectangleBorder(
-                      borderRadius:
-                          BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(16),
                     ),
                     tileColor: selected
                         ? const Color(0xFF315DFF)
@@ -401,7 +419,6 @@ class _ChatScreenState extends State<ChatScreen>
                       setState(() {
                         _mode = mode;
                       });
-
                       Navigator.pop(sheetContext);
                     },
                   );
@@ -488,8 +505,7 @@ class _ChatScreenState extends State<ChatScreen>
                 : ListView.builder(
                     controller: _scrollController,
                     keyboardDismissBehavior:
-                        ScrollViewKeyboardDismissBehavior
-                            .onDrag,
+                        ScrollViewKeyboardDismissBehavior.onDrag,
                     padding: const EdgeInsets.fromLTRB(
                       16,
                       20,
@@ -497,17 +513,14 @@ class _ChatScreenState extends State<ChatScreen>
                       20,
                     ),
                     itemCount:
-                        _messages.length +
-                        (_isLoading ? 1 : 0),
+                        _messages.length + (_isLoading ? 1 : 0),
                     itemBuilder: (context, index) {
                       if (_isLoading &&
                           index == _messages.length) {
                         return const _WeuraThinking();
                       }
 
-                      return _messageBubble(
-                        _messages[index],
-                      );
+                      return _messageBubble(_messages[index]);
                     },
                   ),
           ),
@@ -564,8 +577,7 @@ class _ChatScreenState extends State<ChatScreen>
             Text(
               'Ask WEURA anything.',
               style: TextStyle(
-                color: Colors.white
-                    .withValues(alpha: 0.55),
+                color: Colors.white.withValues(alpha: 0.55),
                 fontSize: 16,
               ),
             ),
@@ -587,9 +599,7 @@ class _ChatScreenState extends State<ChatScreen>
     return Align(
       alignment: alignment,
       child: Container(
-        constraints: const BoxConstraints(
-          maxWidth: 650,
-        ),
+        constraints: const BoxConstraints(maxWidth: 650),
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.symmetric(
           horizontal: 16,
@@ -602,15 +612,12 @@ class _ChatScreenState extends State<ChatScreen>
               ? null
               : Border.all(
                   color: message.isError
-                      ? Colors.redAccent
-                          .withValues(alpha: 0.25)
-                      : Colors.white
-                          .withValues(alpha: 0.06),
+                      ? Colors.redAccent.withValues(alpha: 0.25)
+                      : Colors.white.withValues(alpha: 0.06),
                 ),
         ),
         child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SelectableText(
               message.text,
@@ -655,12 +662,10 @@ class _WeuraThinking extends StatefulWidget {
   const _WeuraThinking();
 
   @override
-  State<_WeuraThinking> createState() =>
-      _WeuraThinkingState();
+  State<_WeuraThinking> createState() => _WeuraThinkingState();
 }
 
-class _WeuraThinkingState
-    extends State<_WeuraThinking>
+class _WeuraThinkingState extends State<_WeuraThinking>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
 
@@ -692,8 +697,7 @@ class _WeuraThinkingState
           color: const Color(0xFF111119),
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: const Color(0xFF3B82F6)
-                .withValues(alpha: 0.10),
+            color: const Color(0xFF3B82F6).withValues(alpha: 0.10),
           ),
         ),
         child: AnimatedBuilder(
@@ -704,16 +708,13 @@ class _WeuraThinkingState
               children: List.generate(
                 3,
                 (index) {
-                  final value =
-                      (_controller.value * 3 - index)
-                          .clamp(0.0, 1.0);
+                  final value = (_controller.value * 3 - index)
+                      .clamp(0.0, 1.0);
 
-                  final scale =
-                      0.65 + (value * 0.45);
+                  final scale = 0.65 + (value * 0.45);
 
                   return Padding(
-                    padding:
-                        const EdgeInsets.symmetric(
+                    padding: const EdgeInsets.symmetric(
                       horizontal: 3,
                     ),
                     child: Transform.scale(
@@ -721,8 +722,7 @@ class _WeuraThinkingState
                       child: Container(
                         width: 6,
                         height: 6,
-                        decoration:
-                            const BoxDecoration(
+                        decoration: const BoxDecoration(
                           shape: BoxShape.circle,
                           color: Color(0xFF3B82F6),
                         ),
