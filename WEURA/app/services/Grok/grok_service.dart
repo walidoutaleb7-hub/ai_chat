@@ -68,7 +68,7 @@ class GrokService {
             }),
           )
           .timeout(
-            const Duration(seconds: 75),
+            const Duration(seconds:120),
           );
 
       return _parseResponse(response);
