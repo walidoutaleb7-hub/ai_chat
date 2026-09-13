@@ -97,8 +97,8 @@ app.use(
 );
 
 app.listen(PORT, () => {
-  const grokReady = Boolean(
-    process.env.GROK_API_KEY?.trim(),
+  const groqReady = Boolean(
+    process.env.GROQ_API_KEY?.trim(),
   );
 
   console.log('');
@@ -110,7 +110,7 @@ app.listen(PORT, () => {
   console.log(`Health: http://localhost:${PORT}/health`);
   console.log(`Status: http://localhost:${PORT}/status`);
   console.log(
-    `Grok: ${grokReady ? 'READY' : 'MISSING'}`,
+    `Groq: ${groqReady ? 'READY' : 'MISSING'}`,
   );
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('');
