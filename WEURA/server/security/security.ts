@@ -1,8 +1,14 @@
 import crypto from 'node:crypto';
 
-const MAX_BODY_SIZE = 10 * 1024 * 1024;
-const MAX_MESSAGES = 100;
-const MAX_MESSAGE_LENGTH = 30_000;
+export const MAX_MESSAGES = 100;
+export const MAX_MESSAGE_LENGTH = 30_000;
+
+export type SafeRole = 'system' | 'user' | 'assistant';
+
+export type SafeMessage = {
+  role: SafeRole;
+  content: string;
+};
 
 export function sanitizeText(value: unknown): string {
   if (typeof value !== 'string') {
@@ -73,7 +79,7 @@ export function validateChatRequest(body: unknown): {
 
     if (
       typeof item.content !== 'string' ||
-      item.content.trim().isEmpty
+      item.content.trim().length === 0
     ) {
       return {
         valid: false,
@@ -92,22 +98,20 @@ export function validateChatRequest(body: unknown): {
   return { valid: true };
 }
 
-export function createRequestId(): string {
-  return crypto.randomUUID();
-}
-
-export function getMaxBodySize(): number {
-  return MAX_BODY_SIZE;
-}
-
 export function sanitizeMessages(
   messages: Array<{
-    role: 'system' | 'user' | 'assistant';
+    role: SafeRole;
     content: string;
   }>,
-) {
-  return messages.map((message) => ({
-    role: message.role,
-    content: sanitizeText(message.content),
-  }));
+): SafeMessage[] {
+  return messages
+    .map((message) => ({
+      role: message.role,
+      content: sanitizeText(message.content),
+    }))
+    .filter((message) => message.content.length > 0);
+}
+
+export function createRequestId(): string {
+  return crypto.randomUUID();
 }
