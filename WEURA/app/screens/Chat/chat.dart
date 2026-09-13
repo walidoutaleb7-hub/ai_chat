@@ -38,15 +38,6 @@ class _ChatScreenState extends State<ChatScreen> {
   AIMode _mode = AIMode.auto;
   bool _isLoading = false;
 
-  /*
-   * غيّر هذا العنوان حسب مكان تشغيل السيرفر.
-   *
-   * Android Emulator:
-   * http://10.0.2.2:8080
-   *
-   * جهاز حقيقي:
-   * استعمل IP الكمبيوتر الذي يشغل server.
-   */
   static const String _serverUrl = 'http://10.0.2.2:8080';
 
   @override
@@ -327,7 +318,7 @@ class _ChatScreenState extends State<ChatScreen> {
             Text(
               'Ask WEURA anything.',
               style: TextStyle(
-                color: Colors.white.withOpacity(.55),
+                color: Colors.white.withValues(alpha: 0.55),
                 fontSize: 16,
               ),
             ),
@@ -338,8 +329,9 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _messageBubble(_ChatMessage message) {
-    final alignment =
-        message.isUser ? Alignment.centerRight : Alignment.centerLeft;
+    final alignment = message.isUser
+        ? Alignment.centerRight
+        : Alignment.centerLeft;
 
     final background = message.isUser
         ? const Color(0xFF1D4ED8)
@@ -362,7 +354,7 @@ class _ChatScreenState extends State<ChatScreen> {
           border: message.isUser
               ? null
               : Border.all(
-                  color: Colors.white.withOpacity(.06),
+                  color: Colors.white.withValues(alpha: 0.06),
                 ),
         ),
         child: SelectableText(
@@ -419,7 +411,7 @@ class _ChatScreenState extends State<ChatScreen> {
             color: const Color(0xFF111119),
             borderRadius: BorderRadius.circular(22),
             border: Border.all(
-              color: Colors.white.withOpacity(.08),
+              color: Colors.white.withValues(alpha: 0.08),
             ),
           ),
           child: Row(
