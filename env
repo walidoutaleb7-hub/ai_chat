@@ -1,4 +1,0 @@
-PORT=3000
-GROK_API_KEY=your_actual_grok_api_key_here
-GROK_CHAT_MODEL=llama-3.3-70b-versatile
-GROK_VISION_MODEL=llama-3.2-11b-vision-preview
