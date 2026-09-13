@@ -10,6 +10,7 @@ class WeuraComposer extends StatefulWidget {
     this.onAttach,
     this.onMode,
     this.onVoice,
+    this.onStop,
   });
 
   final String hintText;
@@ -20,6 +21,7 @@ class WeuraComposer extends StatefulWidget {
   final VoidCallback? onAttach;
   final VoidCallback? onMode;
   final VoidCallback? onVoice;
+  final VoidCallback? onStop;
 
   @override
   State<WeuraComposer> createState() => _WeuraComposerState();
@@ -31,10 +33,11 @@ class _WeuraComposerState extends State<WeuraComposer> {
 
   final FocusNode _focusNode = FocusNode();
 
-  bool get _canSend =>
-      widget.enabled &&
-      !widget.isLoading &&
-      _controller.text.trim().isNotEmpty;
+  bool get _canSend {
+    return widget.enabled &&
+        !widget.isLoading &&
+        _controller.text.trim().isNotEmpty;
+  }
 
   @override
   void initState() {
@@ -45,11 +48,25 @@ class _WeuraComposerState extends State<WeuraComposer> {
   }
 
   @override
+  void didUpdateWidget(
+    covariant WeuraComposer oldWidget,
+  ) {
+    super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.isLoading != widget.isLoading ||
+        oldWidget.enabled != widget.enabled) {
+      _refresh();
+    }
+  }
+
+  @override
   void dispose() {
     _controller.removeListener(_refresh);
     _focusNode.removeListener(_refresh);
+
     _controller.dispose();
     _focusNode.dispose();
+
     super.dispose();
   }
 
@@ -62,13 +79,12 @@ class _WeuraComposerState extends State<WeuraComposer> {
   void _send() {
     final text = _controller.text.trim();
 
-    if (text.isEmpty ||
-        !widget.enabled ||
-        widget.isLoading) {
+    if (!_canSend || text.isEmpty) {
       return;
     }
 
     widget.onSend?.call(text);
+
     _controller.clear();
 
     if (mounted) {
@@ -77,9 +93,11 @@ class _WeuraComposerState extends State<WeuraComposer> {
   }
 
   void _handleSubmitted(String value) {
-    if (value.trim().isNotEmpty) {
-      _send();
+    if (value.trim().isEmpty) {
+      return;
     }
+
+    _send();
   }
 
   @override
@@ -95,36 +113,41 @@ class _WeuraComposerState extends State<WeuraComposer> {
         ),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.all(7),
+          curve: Curves.easeOut,
+          padding: const EdgeInsets.fromLTRB(
+            7,
+            5,
+            7,
+            6,
+          ),
           decoration: BoxDecoration(
             color: const Color(0xFF111119),
             borderRadius: BorderRadius.circular(22),
             border: Border.all(
               color: _focusNode.hasFocus
-                  ? const Color(0xFF315DFF).withValues(
-                      alpha: 0.45,
-                    )
-                  : Colors.white.withValues(
-                      alpha: 0.07,
-                    ),
+                  ? const Color(0xFF315DFF)
+                      .withValues(alpha: 0.45)
+                  : Colors.white
+                      .withValues(alpha: 0.07),
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(
-                  alpha: 0.18,
-                ),
+                color: Colors.black
+                    .withValues(alpha: 0.18),
                 blurRadius: 20,
                 offset: const Offset(0, 8),
               ),
             ],
           ),
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
                 controller: _controller,
                 focusNode: _focusNode,
                 enabled:
-                    widget.enabled && !widget.isLoading,
+                    widget.enabled &&
+                    !widget.isLoading,
                 minLines: 1,
                 maxLines: 7,
                 textInputAction:
@@ -146,35 +169,40 @@ class _WeuraComposerState extends State<WeuraComposer> {
                     fontSize: 15,
                   ),
                   border: InputBorder.none,
+                  isDense: true,
                   contentPadding:
                       const EdgeInsets.symmetric(
                     horizontal: 10,
-                    vertical: 7,
+                    vertical: 8,
                   ),
                 ),
               ),
               Row(
                 children: [
                   _actionButton(
-                    icon: Icons.add,
+                    icon: Icons.add_rounded,
                     tooltip: 'Attach',
-                    onPressed: widget.enabled
-                        ? widget.onAttach
-                        : null,
+                    onPressed:
+                        widget.enabled &&
+                                !widget.isLoading
+                            ? widget.onAttach
+                            : null,
                   ),
                   _actionButton(
-                    icon: Icons.tune,
+                    icon: Icons.tune_rounded,
                     tooltip: 'AI mode',
-                    onPressed: widget.enabled
-                        ? widget.onMode
-                        : null,
+                    onPressed:
+                        widget.enabled &&
+                                !widget.isLoading
+                            ? widget.onMode
+                            : null,
                   ),
                   const Spacer(),
-                  if (widget.isLoading)
-                    _loadingButton()
-                  else ...[
+                  if (widget.isLoading) ...[
+                    _stopButton(),
+                  ] else ...[
                     _actionButton(
-                      icon: Icons.mic_none,
+                      icon: Icons.mic_none_rounded,
                       tooltip: 'Voice',
                       onPressed: widget.enabled
                           ? widget.onVoice
@@ -195,8 +223,10 @@ class _WeuraComposerState extends State<WeuraComposer> {
   Widget _actionButton({
     required IconData icon,
     required String tooltip,
-    VoidCallback? onPressed,
+    required VoidCallback? onPressed,
   }) {
+    final active = onPressed != null;
+
     return IconButton(
       tooltip: tooltip,
       onPressed: onPressed,
@@ -204,51 +234,62 @@ class _WeuraComposerState extends State<WeuraComposer> {
       icon: Icon(
         icon,
         size: 21,
-        color: onPressed == null
-            ? Colors.white.withValues(alpha: 0.18)
-            : Colors.white.withValues(alpha: 0.60),
+        color: active
+            ? Colors.white.withValues(alpha: 0.68)
+            : Colors.white.withValues(alpha: 0.18),
       ),
     );
   }
 
   Widget _sendButton() {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 160),
-      width: 42,
-      height: 42,
-      decoration: BoxDecoration(
-        color: _canSend
-            ? const Color(0xFF315DFF)
-            : const Color(0xFF24242D),
-        shape: BoxShape.circle,
-      ),
-      child: IconButton(
-        tooltip: 'Send',
-        onPressed: _canSend ? _send : null,
-        icon: Icon(
-          Icons.arrow_upward_rounded,
-          size: 21,
+    return AnimatedScale(
+      scale: _canSend ? 1.0 : 0.92,
+      duration: const Duration(milliseconds: 140),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        width: 42,
+        height: 42,
+        decoration: BoxDecoration(
           color: _canSend
-              ? Colors.white
-              : Colors.white24,
+              ? const Color(0xFF315DFF)
+              : const Color(0xFF24242D),
+          shape: BoxShape.circle,
+        ),
+        child: IconButton(
+          tooltip: 'Send',
+          onPressed: _canSend ? _send : null,
+          padding: EdgeInsets.zero,
+          icon: Icon(
+            Icons.arrow_upward_rounded,
+            size: 21,
+            color: _canSend
+                ? Colors.white
+                : Colors.white24,
+          ),
         ),
       ),
     );
   }
 
-  Widget _loadingButton() {
-    return Container(
-      width: 42,
-      height: 42,
-      decoration: const BoxDecoration(
-        color: Color(0xFF24242D),
-        shape: BoxShape.circle,
-      ),
-      child: const Padding(
-        padding: EdgeInsets.all(12),
-        child: CircularProgressIndicator(
-          strokeWidth: 2,
-          color: Colors.white54,
+  Widget _stopButton() {
+    return GestureDetector(
+      onTap: widget.onStop,
+      child: Container(
+        width: 42,
+        height: 42,
+        decoration: BoxDecoration(
+          color: Colors.redAccent
+              .withValues(alpha: 0.14),
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: Colors.redAccent
+                .withValues(alpha: 0.25),
+          ),
+        ),
+        child: const Icon(
+          Icons.stop_rounded,
+          size: 21,
+          color: Colors.redAccent,
         ),
       ),
     );
