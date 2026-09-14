@@ -28,26 +28,11 @@ jobs:
       - name: Verify Flutter
         run: flutter --version
 
-      - name: Inspect WEURA project
-        working-directory: WEURA
-        run: |
-          echo "=== WEURA ROOT ==="
-          ls -la
-
-          echo ""
-          echo "=== Android ==="
-          if [ -d "android" ]; then
-            find android -maxdepth 2 -type f | sort
-          else
-            echo "android/ does not exist"
-          fi
-
       - name: Repair Android project
         working-directory: WEURA
         run: |
           if [ ! -f "android/settings.gradle" ] && [ ! -f "android/settings.gradle.kts" ]; then
-            echo "Android project is missing or unsupported."
-            echo "Creating a modern Flutter Android project..."
+            echo "Creating Android project..."
 
             rm -rf /tmp/weura_backup
             mkdir -p /tmp/weura_backup
@@ -63,34 +48,18 @@ jobs:
 
             rm -rf app
             cp -r /tmp/weura_backup/app app
-
             cp /tmp/weura_backup/pubspec.yaml pubspec.yaml
-
-            echo "Modern Android project created."
           else
-            echo "Android project already exists."
-            echo "Keeping the existing Android project."
+            echo "Android project exists."
           fi
 
           rm -f test/widget_test.dart
 
-          echo ""
-          echo "=== Final Android check ==="
-          ls -la android
-
       - name: Fix icon assets structure
         working-directory: WEURA
         run: |
-          echo "=== BEFORE ==="
-          echo "assets/icons:"
-          ls -la assets/icons 2>/dev/null || echo "  (empty or missing)"
-          echo "assets/logo:"
-          ls -la assets/logo
-
           mkdir -p assets/icons
 
-          # Move every SVG from assets/logo/ to assets/icons/
-          # EXCEPT weura.svg which must stay in assets/logo/
           for f in assets/logo/*.svg; do
             [ -e "$f" ] || continue
             name=$(basename "$f")
@@ -99,8 +68,6 @@ jobs:
             fi
           done
 
-          echo ""
-          echo "=== AFTER ==="
           echo "assets/icons:"
           ls -la assets/icons
           echo "assets/logo:"
@@ -108,13 +75,15 @@ jobs:
 
       - name: Install dependencies
         working-directory: WEURA
-        run: |
-          flutter pub get
+        run: flutter pub get
+
+      - name: Generate app launcher icons
+        working-directory: WEURA
+        run: dart run flutter_launcher_icons
 
       - name: Analyze
         working-directory: WEURA
-        run: |
-          flutter analyze
+        run: flutter analyze
         continue-on-error: true
 
       - name: Build APK
