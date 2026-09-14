@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
@@ -1727,6 +1729,10 @@ class _ChatScreenState extends State<ChatScreen>
   }
 }
 
+// ---------------------------------------------------------------------------
+// Image loading widget
+// ---------------------------------------------------------------------------
+
 class _NetworkImageWithLoader extends StatelessWidget {
   const _NetworkImageWithLoader({
     required this.url,
@@ -1743,52 +1749,7 @@ class _NetworkImageWithLoader extends StatelessWidget {
       fit: BoxFit.cover,
       loadingBuilder: (context, child, progress) {
         if (progress == null) return child;
-
-        final total = progress.expectedTotalBytes;
-        final loaded = progress.cumulativeBytesLoaded;
-        final pct = (total != null && total > 0)
-            ? (loaded / total)
-            : null;
-
-        return Container(
-          width: 300,
-          height: 300,
-          padding: const EdgeInsets.all(20),
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                SizedBox(
-                  width: 44,
-                  height: 44,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 3,
-                    color: colors.accentGlow,
-                    value: pct,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  pct != null
-                      ? 'Generating... ${(pct * 100).toInt()}%'
-                      : 'Generating image...',
-                  style: TextStyle(
-                    color: colors.textMuted,
-                    fontSize: 13,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'This can take 5-15 seconds',
-                  style: TextStyle(
-                    color: colors.textFaint,
-                    fontSize: 11,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
+        return _ImageGeneratingLoader(colors: colors);
       },
       errorBuilder: (context, error, stackTrace) {
         return Container(
@@ -1830,6 +1791,281 @@ class _NetworkImageWithLoader extends StatelessWidget {
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// Animated "creating image" loader
+// ---------------------------------------------------------------------------
+
+class _ImageGeneratingLoader extends StatefulWidget {
+  const _ImageGeneratingLoader({required this.colors});
+
+  final WeuraColors colors;
+
+  @override
+  State<_ImageGeneratingLoader> createState() =>
+      _ImageGeneratingLoaderState();
+}
+
+class _ImageGeneratingLoaderState extends State<_ImageGeneratingLoader>
+    with TickerProviderStateMixin {
+  late final AnimationController _pulseController;
+  late final AnimationController _rotateController;
+  late final AnimationController _sparkleController;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    )..repeat(reverse: true);
+
+    _rotateController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 8),
+    )..repeat();
+
+    _sparkleController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2400),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    _rotateController.dispose();
+    _sparkleController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = widget.colors;
+
+    return Container(
+      width: double.infinity,
+      constraints: const BoxConstraints(maxWidth: 340),
+      padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 24),
+      decoration: BoxDecoration(
+        color: colors.surfaceAlt,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: colors.border),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 140,
+            height: 140,
+            child: AnimatedBuilder(
+              animation: Listenable.merge([
+                _pulseController,
+                _rotateController,
+                _sparkleController,
+              ]),
+              builder: (context, _) {
+                return CustomPaint(
+                  painter: _ImageLoadingPainter(
+                    progress: _pulseController.value,
+                    rotation: _rotateController.value,
+                    sparkle: _sparkleController.value,
+                    glow: colors.accentGlow,
+                    accent: colors.accent,
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 22),
+          Text(
+            'Creating your image',
+            style: TextStyle(
+              color: colors.textPrimary,
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.3,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'This can take 5-15 seconds',
+            style: TextStyle(
+              color: colors.textMuted,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ImageLoadingPainter extends CustomPainter {
+  _ImageLoadingPainter({
+    required this.progress,
+    required this.rotation,
+    required this.sparkle,
+    required this.glow,
+    required this.accent,
+  });
+
+  final double progress;
+  final double rotation;
+  final double sparkle;
+  final Color glow;
+  final Color accent;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final baseRadius = size.width / 2;
+
+    _paintDashedRing(
+      canvas,
+      center,
+      baseRadius * 0.95,
+      rotation,
+      accent.withValues(alpha: 0.40),
+    );
+
+    _paintDashedRing(
+      canvas,
+      center,
+      baseRadius * 0.75,
+      -rotation * 1.4,
+      glow.withValues(alpha: 0.28),
+    );
+
+    final pulseRadius = baseRadius * (0.52 + progress * 0.18);
+    final haloPaint = Paint()
+      ..shader = RadialGradient(
+        colors: [
+          glow.withValues(alpha: 0.35 * (0.6 + progress * 0.4)),
+          glow.withValues(alpha: 0.0),
+        ],
+      ).createShader(
+        Rect.fromCircle(center: center, radius: pulseRadius),
+      );
+    canvas.drawCircle(center, pulseRadius, haloPaint);
+
+    final corePaint = Paint()
+      ..color = accent.withValues(alpha: 0.85);
+    canvas.drawCircle(center, baseRadius * 0.32, corePaint);
+
+    _paintBrushIcon(canvas, center, baseRadius * 0.30);
+    _paintSparkles(canvas, center, baseRadius * 0.85, sparkle);
+  }
+
+  void _paintDashedRing(
+    Canvas canvas,
+    Offset center,
+    double radius,
+    double rotation,
+    Color color,
+  ) {
+    const segments = 22;
+    const gapFactor = 0.55;
+
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+
+    for (int i = 0; i < segments; i++) {
+      final startAngle =
+          (i / segments) * 2 * math.pi + rotation * 2 * math.pi;
+      final sweep = (2 * math.pi / segments) * gapFactor;
+
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: radius),
+        startAngle,
+        sweep,
+        false,
+        paint,
+      );
+    }
+  }
+
+  void _paintSparkles(
+    Canvas canvas,
+    Offset center,
+    double radius,
+    double progress,
+  ) {
+    const sparkleCount = 6;
+
+    for (int i = 0; i < sparkleCount; i++) {
+      final baseAngle = (i / sparkleCount) * 2 * math.pi;
+      final phase = (progress + i / sparkleCount) % 1.0;
+      final scale = phase < 0.5 ? phase * 2 : (1 - phase) * 2;
+
+      if (scale < 0.15) continue;
+
+      final offset = Offset(
+        center.dx + radius * math.cos(baseAngle),
+        center.dy + radius * math.sin(baseAngle),
+      );
+
+      final sparklePaint = Paint()
+        ..color = glow.withValues(alpha: scale * 0.95)
+        ..strokeWidth = 2
+        ..strokeCap = StrokeCap.round;
+
+      final armLength = 4.0 * scale;
+
+      canvas.drawLine(
+        Offset(offset.dx - armLength, offset.dy),
+        Offset(offset.dx + armLength, offset.dy),
+        sparklePaint,
+      );
+      canvas.drawLine(
+        Offset(offset.dx, offset.dy - armLength),
+        Offset(offset.dx, offset.dy + armLength),
+        sparklePaint,
+      );
+    }
+  }
+
+  void _paintBrushIcon(Canvas canvas, Offset center, double size) {
+    final paint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+
+    final handleRect = Rect.fromCenter(
+      center: Offset(center.dx, center.dy + size * 0.18),
+      width: size * 0.18,
+      height: size * 0.65,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        handleRect,
+        Radius.circular(size * 0.08),
+      ),
+      paint,
+    );
+
+    final bristlesPath = Path()
+      ..moveTo(center.dx - size * 0.24, center.dy - size * 0.32)
+      ..lineTo(center.dx + size * 0.24, center.dy - size * 0.32)
+      ..lineTo(center.dx, center.dy - size * 0.78)
+      ..close();
+    canvas.drawPath(bristlesPath, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _ImageLoadingPainter oldDelegate) {
+    return oldDelegate.progress != progress ||
+        oldDelegate.rotation != rotation ||
+        oldDelegate.sparkle != sparkle;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Thinking indicator for text chat
+// ---------------------------------------------------------------------------
 
 class _WeuraThinking extends StatefulWidget {
   const _WeuraThinking({required this.colors});
