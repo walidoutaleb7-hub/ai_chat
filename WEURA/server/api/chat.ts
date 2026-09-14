@@ -22,6 +22,13 @@ function currentTimeContext(): string {
   );
 }
 
+/// Returns the current date as YYYY-MM-DD.
+function todayISO(): string {
+  return new Date().toISOString().split('T')[0];
+}
+
+/// Returns true when the message is likely to need up-to-date
+/// information from the web.
 function needsSearch(message: string): boolean {
   const text = message.toLowerCase().trim();
 
@@ -39,41 +46,63 @@ function needsSearch(message: string): boolean {
   if (wordCount < 3) return false;
 
   const searchTriggers = [
-    // English — general
     'latest', 'today', 'tonight', 'news', 'current', 'currently',
     'recent', 'recently', 'now', 'right now', 'this year',
     'this week', 'this month', 'new', 'update', 'updates',
+    'last match', 'last game', 'last result', 'last time',
     'price', 'prices', 'cost', 'weather', 'temperature',
     'score', 'scores', 'match', 'game', 'winner', 'election',
     'release', 'released', 'launch', 'launched', 'announced',
     'who is', 'what is', 'where is', 'when did', 'how much',
     'how many', 'is there', 'are there', 'was there',
-
-    // English — sports & events
     'match summary', 'game summary', 'league', 'standings',
     'scorers', 'championship', 'tournament', 'fixture', 'fixtures',
     'injury', 'injured', 'roster', 'lineup', 'transfer',
     'real madrid', 'barcelona', 'psg', 'liverpool', 'chelsea',
 
-    // Arabic — general
+    // Arabic
     'اخبار', 'أخبار', 'خبر', 'اليوم', 'الآن', 'حاليا', 'حاليًا',
-    'آخر', 'الأخبار', 'الجديد', 'الجديدة', 'حديث', 'حديثة',
+    'آخر', 'أحدث', 'الأخبار', 'الجديد', 'الجديدة', 'حديث', 'حديثة',
     'سعر', 'أسعار', 'تكلفة', 'طقس', 'حرارة',
     'إصدار', 'أعلن', 'أطلقت', 'نتيجة', 'نتائج',
     'من هو', 'من هي', 'ما هو', 'ما هي', 'وين', 'أين', 'متى',
     'كم', 'بشحال', 'واش صرا', 'واش صار',
-
-    // Arabic — sports & events
     'ملخص', 'مباراة', 'مباريات', 'ماتش', 'الدوري',
     'الترتيب', 'هداف', 'هدافين', 'كأس', 'بطولة', 'منتخب',
     'إصابة', 'إصابات', 'مصاب', 'تشكيلة', 'انتقال',
     'ريال مدريد', 'برشلونة', 'ليفربول', 'تشيلسي',
+    'آخر مباراة', 'آخر ماتش', 'آخر لقاء', 'آخر نتيجة',
 
-    // Years
     '2026', '2025', '2024',
   ];
 
   for (const trigger of searchTriggers) {
+    if (text.includes(trigger)) return true;
+  }
+
+  return false;
+}
+
+/// Returns true when the query clearly asks for the most recent
+/// information (news, latest match, current price, etc.).
+/// Used to restrict Tavily to fresh results.
+function isTimeSensitive(message: string): boolean {
+  const text = message.toLowerCase();
+
+  const triggers = [
+    'latest', 'recent', 'today', 'tonight', 'this week',
+    'this month', 'this year', 'current', 'now', 'right now',
+    'news', 'last match', 'last game', 'last result',
+    'breaking',
+
+    'آخر', 'أحدث', 'اليوم', 'الآن', 'حاليا', 'حاليًا',
+    'هذا الأسبوع', 'هذا الشهر', 'هذه السنة', 'الجديد',
+    'الأخبار', 'أخبار', 'عاجل', 'حالياً',
+    'آخر مباراة', 'آخر ماتش', 'آخر لقاء', 'آخر نتيجة',
+    'مؤخرا', 'مؤخرًا',
+  ];
+
+  for (const trigger of triggers) {
     if (text.includes(trigger)) return true;
   }
 
@@ -142,26 +171,38 @@ router.post('/chat', async (req, res) => {
       needsSearch(lastUserMessage) &&
       tavilyConfigured;
 
+    const timeSensitive = isTimeSensitive(lastUserMessage);
+
     let enrichedMessages: GrokMessage[];
     let searchSucceeded = false;
 
     if (shouldSearch) {
       try {
-        const results = await searchTavily(lastUserMessage, 5);
+        const results = await searchTavily(
+          lastUserMessage,
+          5,
+          timeSensitive,
+        );
 
         if (results.length > 0) {
           searchSucceeded = true;
+
+          const today = todayISO();
 
           const sources = results
             .map(
               (r, i) =>
                 `[${i + 1}] ${cleanSnippet(r.title, 120)}\n` +
                 `URL: ${r.url}\n` +
+                (r.publishedDate
+                  ? `Published: ${r.publishedDate}\n`
+                  : '') +
                 `Content: ${cleanSnippet(r.snippet, 500)}`,
             )
             .join('\n\n');
 
           const searchContext =
+            `Today's date is ${today}.\n\n` +
             `You have been given real web search results for the ` +
             `user's question. These results are your ONLY source of ` +
             `truth for this reply.\n\n` +
@@ -186,7 +227,19 @@ router.post('/chat', async (req, res) => {
             `7. If the user asks a follow-up question about the same ` +
             `topic and the answer is not in the sources above, you ` +
             `MUST again say that it is not in the available sources. ` +
-            `Do not switch to your training data.`;
+            `Do not switch to your training data.\n` +
+            `8. CRITICAL — DATE CHECK:\n` +
+            `   Today is ${today}.\n` +
+            `   If the user asks for "latest", "last", "recent", ` +
+            `"آخر", "أحدث", or "اليوم", and the most relevant result ` +
+            `in the search results is OLDER than 3 months, you MUST ` +
+            `say clearly: "لم أجد معلومات حديثة في المصادر المتاحة" ` +
+            `(or "I could not find recent information in the ` +
+            `available sources."). Do NOT present old information ` +
+            `as if it were current.\n` +
+            `9. If a result explicitly shows a "Published:" date, ` +
+            `compare it to today's date (${today}) and prefer the ` +
+            `most recent result.`;
 
           enrichedMessages = [
             timeMessage,
@@ -216,6 +269,7 @@ router.post('/chat', async (req, res) => {
       usage: result.usage,
       requestId,
       searchUsed: searchSucceeded,
+      timeSensitive,
     });
   } catch (error) {
     console.error(`[WEURA] Chat error ${requestId}:`, error);
