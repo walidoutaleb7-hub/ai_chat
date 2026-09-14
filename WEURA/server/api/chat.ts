@@ -9,33 +9,53 @@ import {
 
 const router = express.Router();
 
-/// Simple heuristic: does this query need current information?
+/// Returns true when the message is likely to need up-to-date
+/// information from the web.
 function needsSearch(message: string): boolean {
-  const text = message.toLowerCase();
+  const text = message.toLowerCase().trim();
 
-  const triggers = [
-    'latest',
-    'today',
-    'news',
-    'current',
-    'recent',
-    'this year',
-    'right now',
-    'in 2026',
-    'in 2025',
-    'اخبار',
-    'أخبار',
-    'اليوم',
-    'الآن',
-    'حاليا',
-    'آخر',
-    'الأخبار',
-    'الجديد',
-    '2026',
-    '2025',
+  // Don't search on greetings, thanks, or very short messages.
+  const skipPatterns = [
+    /^(hi|hello|hey|salam|salut|مرحبا|سلام|أهلا|اهلا|صباح|مساء)[\s!.,?]*$/,
+    /^(thanks|thank you|شكرا|مشكور|بارك الله)[\s!.,?]*$/,
+    /^(ok|okay|yes|no|نعم|لا|حسنا|طيب)[\s!.,?]*$/,
   ];
 
-  return triggers.some((t) => text.includes(t));
+  for (const pattern of skipPatterns) {
+    if (pattern.test(text)) return false;
+  }
+
+  // Very short messages (< 4 words) rarely need search.
+  const wordCount = text.split(/\s+/).filter(Boolean).length;
+  if (wordCount < 3) return false;
+
+  // Keywords that strongly suggest the user wants fresh information.
+  const searchTriggers = [
+    // English
+    'latest', 'today', 'tonight', 'news', 'current', 'currently',
+    'recent', 'recently', 'now', 'right now', 'this year',
+    'this week', 'this month', 'new', 'update', 'updates',
+    'price', 'prices', 'cost', 'weather', 'temperature',
+    'score', 'scores', 'match', 'game', 'winner', 'election',
+    'release', 'released', 'launch', 'launched', 'announced',
+    'who is', 'what is', 'where is', 'when did', 'how much',
+    'how many', 'is there', 'are there', 'was there',
+    // Arabic
+    'اخبار', 'أخبار', 'خبر', 'اليوم', 'الآن', 'حاليا', 'حاليًا',
+    'آخر', 'الأخبار', 'الجديد', 'الجديدة', 'حديث', 'حديثة',
+    'سعر', 'أسعار', 'تكلفة', 'طقس', 'حرارة', 'مباراة', 'نتيجة',
+    'فاز', 'انتخابات', 'إصدار', 'أعلن', 'أطلقت',
+    'من هو', 'من هي', 'ما هو', 'ما هي', 'وين', 'أين', 'متى',
+    'كم', 'بشحال', 'واش صرا', 'واش صار',
+    // Years (recent)
+    '2026', '2025', '2024',
+  ];
+
+  for (const trigger of searchTriggers) {
+    if (text.includes(trigger)) return true;
+  }
+
+  return false;
 }
 
 function getLastUserMessage(messages: GrokMessage[]): string {
@@ -45,6 +65,15 @@ function getLastUserMessage(messages: GrokMessage[]): string {
     }
   }
   return '';
+}
+
+/// Strips HTML tags and limits length so search context stays clean.
+function cleanSnippet(raw: string, maxLen = 400): string {
+  return raw
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLen);
 }
 
 router.post('/chat', async (req, res) => {
@@ -96,18 +125,21 @@ router.post('/chat', async (req, res) => {
           const sources = results
             .map(
               (r, i) =>
-                `[${i + 1}] ${r.title}\n${r.url}\n${r.snippet}`,
+                `[${i + 1}] ${cleanSnippet(r.title, 120)}\n` +
+                `${r.url}\n` +
+                `${cleanSnippet(r.snippet, 400)}`,
             )
             .join('\n\n');
 
           const searchContext =
             `Current web search results for the user's query:\n\n` +
             `${sources}\n\n` +
-            `IMPORTANT: Use only these real sources in your answer. ` +
-            `Cite them as [1], [2] etc. when you use their information. ` +
-            `Do NOT invent any other source, URL, or news outlet. ` +
-            `If these sources do not contain enough information, ` +
-            `say so honestly.`;
+            `STRICT RULES:\n` +
+            `- Use ONLY these real sources.\n` +
+            `- Cite them as [1], [2], [3] when you use their info.\n` +
+            `- Do NOT invent any URL, source, or news outlet.\n` +
+            `- If the sources do not contain enough information, ` +
+            `say so honestly instead of guessing.`;
 
           enrichedMessages =
             safeMessages.length >= 1
