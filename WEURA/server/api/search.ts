@@ -29,8 +29,9 @@ export async function searchTavily(
       api_key: apiKey,
       query,
       max_results: limit,
-      search_depth: 'basic',
+      search_depth: 'advanced',
       include_answer: false,
+      include_raw_content: true,
     }),
     signal: AbortSignal.timeout(20000),
   });
@@ -51,11 +52,21 @@ export async function searchTavily(
     : [];
 
   return results
-    .map((item: any) => ({
-      title: String(item?.title ?? 'Untitled'),
-      url: String(item?.url ?? ''),
-      snippet: String(item?.content ?? ''),
-    }))
+    .map((item: any) => {
+      // Prefer raw_content when available (fuller text), fall back
+      // to the short snippet.
+      const raw =
+        typeof item?.raw_content === 'string' &&
+        item.raw_content.trim().length > 0
+          ? item.raw_content
+          : String(item?.content ?? '');
+
+      return {
+        title: String(item?.title ?? 'Untitled'),
+        url: String(item?.url ?? ''),
+        snippet: raw.trim(),
+      };
+    })
     .filter((item: TavilyResult) => item.url.length > 0)
     .slice(0, limit);
 }
