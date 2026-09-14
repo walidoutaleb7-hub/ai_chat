@@ -30,6 +30,12 @@ class WeuraApp extends StatelessWidget {
           themeMode: settings.themeMode,
           theme: _buildLightTheme(),
           darkTheme: _buildDarkTheme(),
+          builder: (context, child) {
+            return Directionality(
+              textDirection: settings.textDirection,
+              child: child ?? const SizedBox.shrink(),
+            );
+          },
           home: const _WeuraEntry(),
         );
       },
