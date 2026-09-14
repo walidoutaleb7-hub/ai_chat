@@ -22,13 +22,10 @@ function currentTimeContext(): string {
   );
 }
 
-/// Returns the current date as YYYY-MM-DD.
 function todayISO(): string {
   return new Date().toISOString().split('T')[0];
 }
 
-/// Returns true when the message is likely to need up-to-date
-/// information from the web.
 function needsSearch(message: string): boolean {
   const text = message.toLowerCase().trim();
 
@@ -60,7 +57,6 @@ function needsSearch(message: string): boolean {
     'injury', 'injured', 'roster', 'lineup', 'transfer',
     'real madrid', 'barcelona', 'psg', 'liverpool', 'chelsea',
 
-    // Arabic
     'اخبار', 'أخبار', 'خبر', 'اليوم', 'الآن', 'حاليا', 'حاليًا',
     'آخر', 'أحدث', 'الأخبار', 'الجديد', 'الجديدة', 'حديث', 'حديثة',
     'سعر', 'أسعار', 'تكلفة', 'طقس', 'حرارة',
@@ -83,9 +79,6 @@ function needsSearch(message: string): boolean {
   return false;
 }
 
-/// Returns true when the query clearly asks for the most recent
-/// information (news, latest match, current price, etc.).
-/// Used to restrict Tavily to fresh results.
 function isTimeSensitive(message: string): boolean {
   const text = message.toLowerCase();
 
@@ -175,6 +168,7 @@ router.post('/chat', async (req, res) => {
 
     let enrichedMessages: GrokMessage[];
     let searchSucceeded = false;
+    let searchResultCount = 0;
 
     if (shouldSearch) {
       try {
@@ -186,6 +180,7 @@ router.post('/chat', async (req, res) => {
 
         if (results.length > 0) {
           searchSucceeded = true;
+          searchResultCount = results.length;
 
           const today = todayISO();
 
@@ -212,31 +207,31 @@ router.post('/chat', async (req, res) => {
             `the search results above.\n` +
             `2. You MUST NOT use your own training knowledge about ` +
             `this topic, even if you are confident.\n` +
-            `3. If a specific detail (a name, a score, a date, an ` +
-            `injury, a scorer, a statistic) is NOT written in the ` +
-            `search results, you MUST reply exactly:\n` +
+            `3. If a specific detail is NOT written in the search ` +
+            `results, reply with exactly this sentence and nothing else ` +
+            `(no "المصادر:" section, no extra text):\n` +
             `"هذه المعلومة غير موجودة في المصادر المتاحة."\n` +
-            `(or "This detail is not in the available sources." ` +
-            `in English).\n` +
             `4. NEVER invent players, coaches, scores, minutes, ` +
             `injuries, lineups, transfers, dates, or quotes.\n` +
-            `5. When you do use a source, cite it inline as [1], [2], ` +
-            `etc.\n` +
-            `6. At the end of every search-based answer, add a section ` +
-            `titled "المصادر:" followed by the URLs you actually used.\n` +
+            `5. When you use a source, cite it inline as [1], [2], etc.\n` +
+            `6. IF AND ONLY IF you actually cite at least one source ` +
+            `with [N], add at the very end of your answer a section ` +
+            `titled "المصادر:" followed by the list of URLs you cited. ` +
+            `If you did not cite any source (for example because the ` +
+            `answer was "هذه المعلومة غير موجودة في المصادر المتاحة"), ` +
+            `DO NOT add a "المصادر:" section at all.\n` +
             `7. If the user asks a follow-up question about the same ` +
-            `topic and the answer is not in the sources above, you ` +
-            `MUST again say that it is not in the available sources. ` +
-            `Do not switch to your training data.\n` +
+            `topic and the answer is not in the sources above, again ` +
+            `reply with the exact sentence from rule 3. Do not switch ` +
+            `to your training data.\n` +
             `8. CRITICAL — DATE CHECK:\n` +
             `   Today is ${today}.\n` +
             `   If the user asks for "latest", "last", "recent", ` +
             `"آخر", "أحدث", or "اليوم", and the most relevant result ` +
-            `in the search results is OLDER than 3 months, you MUST ` +
-            `say clearly: "لم أجد معلومات حديثة في المصادر المتاحة" ` +
-            `(or "I could not find recent information in the ` +
-            `available sources."). Do NOT present old information ` +
-            `as if it were current.\n` +
+            `is OLDER than 3 months, reply ONLY with:\n` +
+            `"لم أجد معلومات حديثة في المصادر المتاحة."\n` +
+            `   Do NOT present old information as if it were current, ` +
+            `and do NOT add a "المصادر:" section in that case.\n` +
             `9. If a result explicitly shows a "Published:" date, ` +
             `compare it to today's date (${today}) and prefer the ` +
             `most recent result.`;
@@ -269,6 +264,7 @@ router.post('/chat', async (req, res) => {
       usage: result.usage,
       requestId,
       searchUsed: searchSucceeded,
+      searchResultCount,
       timeSensitive,
     });
   } catch (error) {
