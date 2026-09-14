@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
-enum ResponseDetail {
-  auto,
-  concise,
-  balanced,
-  detailed,
-}
+import '../../core/Settings/app_settings.dart';
+import '../../services/Storage/storage_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
@@ -22,22 +19,63 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  ThemeMode _themeMode = ThemeMode.dark;
-  String _language = 'English';
-  String _direction = 'Auto';
-  ResponseDetail _responseDetail = ResponseDetail.auto;
+  final AppSettingsManager _settings = AppSettingsManager.instance;
 
   bool _memoryEnabled = true;
   bool _voiceInput = true;
   bool _voiceOutput = false;
   bool _autoSaveHistory = true;
   bool _sendOnEnter = true;
-  bool _hapticFeedback = true;
   bool _streamResponses = true;
-  bool _showStatusMessages = true;
+
+  static const String _memoryKey = 'weura_memory_enabled';
+  static const String _voiceInputKey = 'weura_voice_input';
+  static const String _voiceOutputKey = 'weura_voice_output';
+  static const String _autoSaveKey = 'weura_auto_save';
+  static const String _sendOnEnterKey = 'weura_send_on_enter';
+  static const String _streamKey = 'weura_stream';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadExtras();
+  }
+
+  Future<void> _loadExtras() async {
+    final storage = StorageService.instance;
+
+    final mem = await storage.read<bool>(_memoryKey);
+    final vIn = await storage.read<bool>(_voiceInputKey);
+    final vOut = await storage.read<bool>(_voiceOutputKey);
+    final auto = await storage.read<bool>(_autoSaveKey);
+    final send = await storage.read<bool>(_sendOnEnterKey);
+    final strm = await storage.read<bool>(_streamKey);
+
+    if (!mounted) return;
+
+    setState(() {
+      if (mem != null) _memoryEnabled = mem;
+      if (vIn != null) _voiceInput = vIn;
+      if (vOut != null) _voiceOutput = vOut;
+      if (auto != null) _autoSaveHistory = auto;
+      if (send != null) _sendOnEnter = send;
+      if (strm != null) _streamResponses = strm;
+    });
+  }
+
+  String get _themeName {
+    switch (_settings.themeMode) {
+      case ThemeMode.system:
+        return 'System';
+      case ThemeMode.light:
+        return 'Light';
+      case ThemeMode.dark:
+        return 'Dark';
+    }
+  }
 
   String get _responseDetailName {
-    switch (_responseDetail) {
+    switch (_settings.responseDetail) {
       case ResponseDetail.auto:
         return 'Auto';
       case ResponseDetail.concise:
@@ -49,17 +87,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  String get _themeName {
-    switch (_themeMode) {
-      case ThemeMode.system:
-        return 'System';
-      case ThemeMode.light:
-        return 'Light';
-      case ThemeMode.dark:
-        return 'Dark';
-    }
-  }
-
   Future<void> _selectTheme() async {
     final result = await showModalBottomSheet<ThemeMode>(
       context: context,
@@ -67,7 +94,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (_) {
         return _SelectionSheet<ThemeMode>(
           title: 'Appearance',
-          value: _themeMode,
+          value: _settings.themeMode,
           options: const [
             _SelectionOption(
               value: ThemeMode.system,
@@ -86,10 +113,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       },
     );
 
-    if (result != null && mounted) {
-      setState(() => _themeMode = result);
-      _showChanged('Appearance changed');
-    }
+    if (result == null) return;
+
+    await _settings.setThemeMode(result);
+    if (mounted) setState(() {});
   }
 
   Future<void> _selectLanguage() async {
@@ -99,29 +126,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (_) {
         return _SelectionSheet<String>(
           title: 'Language',
-          value: _language,
+          value: _settings.language,
           options: const [
-            _SelectionOption(
-              value: 'English',
-              title: 'English',
-            ),
-            _SelectionOption(
-              value: 'Arabic',
-              title: 'العربية',
-            ),
-            _SelectionOption(
-              value: 'Auto',
-              title: 'Auto',
-            ),
+            _SelectionOption(value: 'English', title: 'English'),
+            _SelectionOption(value: 'Arabic', title: 'العربية'),
+            _SelectionOption(value: 'Auto', title: 'Auto'),
           ],
         );
       },
     );
 
-    if (result != null && mounted) {
-      setState(() => _language = result);
-      _showChanged('Language changed');
-    }
+    if (result == null) return;
+
+    await _settings.setLanguage(result);
+    if (mounted) setState(() {});
   }
 
   Future<void> _selectDirection() async {
@@ -131,40 +149,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (_) {
         return _SelectionSheet<String>(
           title: 'Text direction',
-          value: _direction,
+          value: _settings.direction,
           options: const [
-            _SelectionOption(
-              value: 'Auto',
-              title: 'Auto',
-            ),
-            _SelectionOption(
-              value: 'LTR',
-              title: 'Left to right',
-            ),
-            _SelectionOption(
-              value: 'RTL',
-              title: 'Right to left',
-            ),
+            _SelectionOption(value: 'Auto', title: 'Auto'),
+            _SelectionOption(value: 'LTR', title: 'Left to right'),
+            _SelectionOption(value: 'RTL', title: 'Right to left'),
           ],
         );
       },
     );
 
-    if (result != null && mounted) {
-      setState(() => _direction = result);
-      _showChanged('Text direction changed');
-    }
+    if (result == null) return;
+
+    await _settings.setDirection(result);
+    if (mounted) setState(() {});
   }
 
   Future<void> _selectResponseDetail() async {
-    final result =
-        await showModalBottomSheet<ResponseDetail>(
+    final result = await showModalBottomSheet<ResponseDetail>(
       context: context,
       backgroundColor: const Color(0xFF15151D),
       builder: (_) {
         return _SelectionSheet<ResponseDetail>(
           title: 'Response detail',
-          value: _responseDetail,
+          value: _settings.responseDetail,
           options: const [
             _SelectionOption(
               value: ResponseDetail.auto,
@@ -187,10 +195,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
       },
     );
 
-    if (result != null && mounted) {
-      setState(() => _responseDetail = result);
-      _showChanged('Response detail changed');
-    }
+    if (result == null) return;
+
+    await _settings.setResponseDetail(result);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _toggleExtra(
+    String key,
+    bool value,
+    ValueChanged<bool> setter,
+  ) async {
+    setter(value);
+    await StorageService.instance.write(key, value);
   }
 
   void _showChanged(String message) {
@@ -216,10 +233,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           content: const Text(
             'All WEURA preferences will return to their defaults.',
-            style: TextStyle(
-              color: Colors.white70,
-              height: 1.4,
-            ),
+            style: TextStyle(color: Colors.white70, height: 1.4),
           ),
           actions: [
             TextButton(
@@ -227,23 +241,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: const Text('Cancel'),
             ),
             TextButton(
-              onPressed: () {
+              onPressed: () async {
                 Navigator.pop(dialogContext);
 
-                setState(() {
-                  _themeMode = ThemeMode.dark;
-                  _language = 'English';
-                  _direction = 'Auto';
-                  _responseDetail = ResponseDetail.auto;
+                await _settings.reset();
 
+                if (!mounted) return;
+
+                setState(() {
                   _memoryEnabled = true;
                   _voiceInput = true;
                   _voiceOutput = false;
                   _autoSaveHistory = true;
                   _sendOnEnter = true;
-                  _hapticFeedback = true;
                   _streamResponses = true;
-                  _showStatusMessages = true;
                 });
 
                 _showChanged('Settings reset');
@@ -270,12 +281,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             style: TextStyle(color: Colors.white),
           ),
           content: const Text(
-            'This can remove locally stored conversations, '
-            'memory and preferences.',
-            style: TextStyle(
-              color: Colors.white70,
-              height: 1.4,
-            ),
+            'This will remove locally stored conversations, memory and preferences.',
+            style: TextStyle(color: Colors.white70, height: 1.4),
           ),
           actions: [
             TextButton(
@@ -283,8 +290,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: const Text('Cancel'),
             ),
             TextButton(
-              onPressed: () {
+              onPressed: () async {
+                await StorageService.instance.clear();
+                await _settings.reset();
+
                 widget.onClearLocalData?.call();
+
+                if (!mounted) return;
+
                 Navigator.pop(dialogContext);
                 _showChanged('Local data cleared');
               },
@@ -308,14 +321,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       applicationIcon: Container(
         width: 48,
         height: 48,
+        padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
           color: const Color(0xFF1D4ED8),
           borderRadius: BorderRadius.circular(14),
         ),
-        child: const Icon(
-          Icons.auto_awesome,
-          color: Colors.white,
-        ),
+        child: SvgPicture.asset('assets/logo/weura.svg'),
       ),
       children: const [
         Text(
@@ -347,25 +358,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                _infoRow(
-                  Icons.cloud_done_outlined,
-                  'AI Engine',
-                  'Grok',
-                ),
-                _infoRow(
-                  Icons.security_outlined,
-                  'API key',
-                  'Server-side',
-                ),
-                _infoRow(
-                  Icons.shield_outlined,
-                  'Security',
-                  'Protected',
-                ),
+                _infoRow('AI Engine', 'Groq'),
+                _infoRow('API key', 'Server-side'),
+                _infoRow('Security', 'Protected'),
                 const SizedBox(height: 10),
                 const Text(
-                  'Connection availability depends on the '
-                  'WEURA backend configuration.',
+                  'Connection availability depends on the WEURA backend configuration.',
                   style: TextStyle(
                     color: Colors.white54,
                     height: 1.4,
@@ -379,17 +377,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _infoRow(
-    IconData icon,
-    String title,
-    String value,
-  ) {
+  Widget _infoRow(String title, String value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         children: [
-          Icon(icon, color: Colors.white60),
-          const SizedBox(width: 12),
           Expanded(
             child: Text(
               title,
@@ -416,11 +408,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         backgroundColor: const Color(0xFF07070C),
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back_ios_new,
-            color: Colors.white,
-            size: 20,
-          ),
           onPressed: () {
             if (widget.onBack != null) {
               widget.onBack!();
@@ -428,6 +415,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Navigator.pop(context);
             }
           },
+          icon: SvgPicture.asset(
+            'assets/icons/back.svg',
+            width: 23,
+            height: 23,
+          ),
         ),
         title: const Text(
           'Settings',
@@ -440,41 +432,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
           IconButton(
             tooltip: 'Reset settings',
             onPressed: _confirmResetSettings,
-            icon: const Icon(
-              Icons.restart_alt,
-              color: Colors.white70,
+            icon: SvgPicture.asset(
+              'assets/icons/history.svg',
+              width: 22,
+              height: 22,
             ),
           ),
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(
-          16,
-          10,
-          16,
-          40,
-        ),
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 40),
         children: [
           _sectionTitle('Appearance'),
           _card([
             _settingTile(
-              icon: Icons.dark_mode_outlined,
               title: 'Appearance',
               subtitle: _themeName,
               onTap: _selectTheme,
             ),
             _divider(),
             _settingTile(
-              icon: Icons.language,
               title: 'Language',
-              subtitle: _language,
+              subtitle: _settings.language,
               onTap: _selectLanguage,
             ),
             _divider(),
             _settingTile(
-              icon: Icons.format_textdirection_l_to_r,
               title: 'Text direction',
-              subtitle: _direction,
+              subtitle: _settings.direction,
               onTap: _selectDirection,
             ),
           ]),
@@ -483,39 +468,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _sectionTitle('AI'),
           _card([
             _settingTile(
-              icon: Icons.tune,
               title: 'Response detail',
               subtitle: _responseDetailName,
               onTap: _selectResponseDetail,
             ),
             _divider(),
             _switchTile(
-              icon: Icons.psychology_outlined,
               title: 'Memory',
               subtitle: 'Allow WEURA to use saved memories',
               value: _memoryEnabled,
               onChanged: (value) {
-                setState(() => _memoryEnabled = value);
+                _toggleExtra(
+                  _memoryKey,
+                  value,
+                  (v) => setState(() => _memoryEnabled = v),
+                );
               },
             ),
             _divider(),
             _switchTile(
-              icon: Icons.bolt_outlined,
               title: 'Stream responses',
               subtitle: 'Show responses as they are generated',
               value: _streamResponses,
               onChanged: (value) {
-                setState(() => _streamResponses = value);
-              },
-            ),
-            _divider(),
-            _switchTile(
-              icon: Icons.sync_outlined,
-              title: 'Status messages',
-              subtitle: 'Show analyzing and processing states',
-              value: _showStatusMessages,
-              onChanged: (value) {
-                setState(() => _showStatusMessages = value);
+                _toggleExtra(
+                  _streamKey,
+                  value,
+                  (v) => setState(() => _streamResponses = v),
+                );
               },
             ),
           ]),
@@ -524,22 +504,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _sectionTitle('Voice'),
           _card([
             _switchTile(
-              icon: Icons.mic_none,
               title: 'Voice input',
               subtitle: 'Use your microphone for messages',
               value: _voiceInput,
               onChanged: (value) {
-                setState(() => _voiceInput = value);
+                _toggleExtra(
+                  _voiceInputKey,
+                  value,
+                  (v) => setState(() => _voiceInput = v),
+                );
               },
             ),
             _divider(),
             _switchTile(
-              icon: Icons.volume_up_outlined,
               title: 'Voice output',
               subtitle: 'Read AI responses aloud',
               value: _voiceOutput,
               onChanged: (value) {
-                setState(() => _voiceOutput = value);
+                _toggleExtra(
+                  _voiceOutputKey,
+                  value,
+                  (v) => setState(() => _voiceOutput = v),
+                );
               },
             ),
           ]),
@@ -548,32 +534,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _sectionTitle('Chat'),
           _card([
             _switchTile(
-              icon: Icons.save_outlined,
               title: 'Auto-save history',
               subtitle: 'Automatically save conversations',
               value: _autoSaveHistory,
               onChanged: (value) {
-                setState(() => _autoSaveHistory = value);
+                _toggleExtra(
+                  _autoSaveKey,
+                  value,
+                  (v) => setState(() => _autoSaveHistory = v),
+                );
               },
             ),
             _divider(),
             _switchTile(
-              icon: Icons.keyboard_return,
               title: 'Send on Enter',
               subtitle: 'Press Enter to send a message',
               value: _sendOnEnter,
               onChanged: (value) {
-                setState(() => _sendOnEnter = value);
-              },
-            ),
-            _divider(),
-            _switchTile(
-              icon: Icons.vibration_outlined,
-              title: 'Haptic feedback',
-              subtitle: 'Use subtle vibration for interactions',
-              value: _hapticFeedback,
-              onChanged: (value) {
-                setState(() => _hapticFeedback = value);
+                _toggleExtra(
+                  _sendOnEnterKey,
+                  value,
+                  (v) => setState(() => _sendOnEnter = v),
+                );
               },
             ),
           ]),
@@ -582,9 +564,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _sectionTitle('Connection'),
           _card([
             _settingTile(
-              icon: Icons.cloud_outlined,
               title: 'AI connection',
-              subtitle: 'Grok • Server-side API',
+              subtitle: 'Groq • Server-side API',
               onTap: _showConnectionInfo,
             ),
           ]),
@@ -593,7 +574,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _sectionTitle('Privacy'),
           _card([
             _settingTile(
-              icon: Icons.delete_outline,
               title: 'Clear local data',
               subtitle: 'Remove locally stored WEURA data',
               destructive: true,
@@ -605,7 +585,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _sectionTitle('About'),
           _card([
             _settingTile(
-              icon: Icons.info_outline,
               title: 'About WEURA',
               subtitle: 'WEURA AI • Version 1.0.0',
               onTap: _showAbout,
@@ -618,10 +597,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _sectionTitle(String title) {
     return Padding(
-      padding: const EdgeInsets.only(
-        left: 4,
-        bottom: 9,
-      ),
+      padding: const EdgeInsets.only(left: 4, bottom: 9),
       child: Text(
         title.toUpperCase(),
         style: const TextStyle(
@@ -648,7 +624,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _settingTile({
-    required IconData icon,
     required String title,
     required String subtitle,
     required VoidCallback onTap,
@@ -656,31 +631,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }) {
     return ListTile(
       onTap: onTap,
-      contentPadding: const EdgeInsets.symmetric(
-        horizontal: 15,
-        vertical: 4,
-      ),
-      leading: Icon(
-        icon,
-        color: destructive
-            ? Colors.redAccent
-            : Colors.white70,
-      ),
+      contentPadding:
+          const EdgeInsets.symmetric(horizontal: 15, vertical: 4),
       title: Text(
         title,
         style: TextStyle(
-          color: destructive
-              ? Colors.redAccent
-              : Colors.white,
+          color: destructive ? Colors.redAccent : Colors.white,
           fontWeight: FontWeight.w600,
         ),
       ),
       subtitle: Text(
         subtitle,
-        style: const TextStyle(
-          color: Colors.white38,
-          fontSize: 12,
-        ),
+        style: const TextStyle(color: Colors.white38, fontSize: 12),
       ),
       trailing: const Icon(
         Icons.chevron_right,
@@ -690,21 +652,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _switchTile({
-    required IconData icon,
     required String title,
     required String subtitle,
     required bool value,
     required ValueChanged<bool> onChanged,
   }) {
     return ListTile(
-      contentPadding: const EdgeInsets.symmetric(
-        horizontal: 15,
-        vertical: 4,
-      ),
-      leading: Icon(
-        icon,
-        color: Colors.white70,
-      ),
+      contentPadding:
+          const EdgeInsets.symmetric(horizontal: 15, vertical: 4),
       title: Text(
         title,
         style: const TextStyle(
@@ -714,22 +669,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       subtitle: Text(
         subtitle,
-        style: const TextStyle(
-          color: Colors.white38,
-          fontSize: 12,
-        ),
+        style: const TextStyle(color: Colors.white38, fontSize: 12),
       ),
-      trailing: Switch(
-        value: value,
-        onChanged: onChanged,
-      ),
+      trailing: Switch(value: value, onChanged: onChanged),
     );
   }
 
   Widget _divider() {
     return Divider(
       height: 1,
-      indent: 60,
+      indent: 16,
       color: Colors.white.withValues(alpha: 0.05),
     );
   }
@@ -760,12 +709,7 @@ class _SelectionSheet<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          20,
-          18,
-          20,
-          20,
-        ),
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -785,9 +729,7 @@ class _SelectionSheet<T> extends StatelessWidget {
                 ),
                 title: Text(
                   option.title,
-                  style: const TextStyle(
-                    color: Colors.white,
-                  ),
+                  style: const TextStyle(color: Colors.white),
                 ),
                 trailing: option.value == value
                     ? const Icon(
@@ -796,10 +738,7 @@ class _SelectionSheet<T> extends StatelessWidget {
                       )
                     : null,
                 onTap: () {
-                  Navigator.pop(
-                    context,
-                    option.value,
-                  );
+                  Navigator.pop(context, option.value);
                 },
               ),
             ),
