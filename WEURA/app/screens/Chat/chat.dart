@@ -4,6 +4,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../../components/Composer/comppser.dart';
 import '../../core/AI/ai_router.dart';
 import '../../core/History/chat_history.dart';
+import '../../core/Memory/memory_manager.dart';
 import '../../services/Grok/grok_service.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -39,6 +40,7 @@ class _ChatScreenState extends State<ChatScreen>
   final ScrollController _scrollController = ScrollController();
   final AIRouter _router = const AIRouter();
   final HistoryManager _history = HistoryManager();
+  final MemoryManager _memory = MemoryManager();
 
   late final GrokService _grok;
 
@@ -62,7 +64,10 @@ class _ChatScreenState extends State<ChatScreen>
   }
 
   Future<void> _initialize() async {
-    await _history.load();
+    await Future.wait([
+      _history.load(),
+      _memory.load(),
+    ]);
 
     if (widget.sessionId != null) {
       final existing = _history.findById(widget.sessionId!);
@@ -129,6 +134,52 @@ class _ChatScreenState extends State<ChatScreen>
     await _history.save(session);
   }
 
+  /// Detects explicit "remember this" requests in Arabic and English.
+  /// Only stores when the user clearly wants WEURA to remember something.
+  Future<void> _maybeStoreMemory(String userMessage) async {
+    final text = userMessage.toLowerCase().trim();
+
+    final triggers = [
+      'remember that',
+      'remember:',
+      'remember ',
+      'note that',
+      'save this',
+      'تذكر أن',
+      'تذكر ان',
+      'تذكر:',
+      'احفظ أن',
+      'احفظ ان',
+      'احفظ:',
+      'خلي في بالك',
+      'خليك فاكر',
+      'سجل أن',
+      'سجل ان',
+    ];
+
+    String? content;
+
+    for (final trigger in triggers) {
+      final index = text.indexOf(trigger);
+
+      if (index != -1) {
+        content = userMessage
+            .substring(index + trigger.length)
+            .trim();
+
+        break;
+      }
+    }
+
+    if (content == null || content.isEmpty) return;
+
+    try {
+      await _memory.add(content);
+    } catch (_) {
+      // Memory storage failures must never break the chat.
+    }
+  }
+
   Future<void> _sendMessage(String text) async {
     if (_isLoading) return;
 
@@ -141,6 +192,7 @@ class _ChatScreenState extends State<ChatScreen>
     );
 
     await _ensureSession(message);
+    await _maybeStoreMemory(message);
 
     setState(() {
       _messages.add(_ChatMessage(text: message, isUser: true));
@@ -152,12 +204,31 @@ class _ChatScreenState extends State<ChatScreen>
     _scrollToBottom();
 
     try {
+      final memoryContext =
+          _memory.buildRelevantContext(message);
+
       final conversation = <GrokMessage>[
         GrokMessage(
           role: 'system',
           content: _router.systemPromptFor(resolvedMode),
         ),
-        ..._messages
+      ];
+
+      if (memoryContext.isNotEmpty) {
+        conversation.add(
+          GrokMessage(
+            role: 'system',
+            content:
+                'Relevant memory about the user:\n'
+                '$memoryContext\n\n'
+                'Use this information only when it is directly '
+                'relevant to the current request.',
+          ),
+        );
+      }
+
+      conversation.addAll(
+        _messages
             .where((m) => !m.isError)
             .map(
               (m) => GrokMessage(
@@ -165,7 +236,7 @@ class _ChatScreenState extends State<ChatScreen>
                 content: m.text,
               ),
             ),
-      ];
+      );
 
       final result = await _grok.sendMessage(messages: conversation);
 
