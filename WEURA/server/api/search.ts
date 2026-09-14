@@ -11,10 +11,41 @@ export type TavilyResult = {
   publishedDate?: string;
 };
 
+/// Trusted football sites used to filter sports queries.
+const FOOTBALL_DOMAINS = [
+  'espn.com',
+  'bbc.com',
+  'skysports.com',
+  'marca.com',
+  'as.com',
+  'goal.com',
+  'fotmob.com',
+  'transfermarkt.com',
+  'sofascore.com',
+  'realmadrid.com',
+  'fcbarcelona.com',
+  'liverpoolfc.com',
+  'manutd.com',
+  'chelseafc.com',
+  'juventus.com',
+  'acmilan.com',
+  'psg.fr',
+  'fifa.com',
+  'uefa.com',
+  'premierleague.com',
+  'laliga.com',
+  'bundesliga.com',
+  'legaseriea.it',
+  'ligue1.com',
+];
+
 export async function searchTavily(
   query: string,
   limit: number = 5,
-  timeSensitive: boolean = false,
+  options: {
+    timeSensitive?: boolean;
+    football?: boolean;
+  } = {},
 ): Promise<TavilyResult[]> {
   const apiKey = process.env.TAVILY_API_KEY?.trim();
 
@@ -22,30 +53,30 @@ export async function searchTavily(
     throw new Error('TAVILY_API_KEY is not configured.');
   }
 
-  // For time-sensitive queries, restrict to recent news to avoid
-  // returning outdated pages from the general web index.
   const body: Record<string, unknown> = {
     api_key: apiKey,
     query,
     max_results: limit,
     include_answer: false,
     include_raw_content: true,
+    search_depth: 'advanced',
   };
 
-  if (timeSensitive) {
+  if (options.timeSensitive) {
     body.topic = 'news';
     body.days = 30;
-    body.search_depth = 'advanced';
   } else {
     body.topic = 'general';
-    body.search_depth = 'advanced';
+  }
+
+  // For football queries, restrict to trusted sports sites.
+  if (options.football) {
+    body.include_domains = FOOTBALL_DOMAINS;
   }
 
   const response = await fetch(TAVILY_URL, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(20000),
   });
