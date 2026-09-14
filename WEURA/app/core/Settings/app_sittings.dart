@@ -96,8 +96,6 @@ class AppSettingsManager extends ChangeNotifier {
     ]);
   }
 
-  /// System-prompt fragment injected based on the user's chosen
-  /// response detail level. Empty when "Auto" is selected.
   String responseDetailPrompt() {
     switch (_responseDetail) {
       case ResponseDetail.auto:
@@ -113,7 +111,6 @@ class AppSettingsManager extends ChangeNotifier {
     }
   }
 
-  /// System-prompt fragment for the user's language preference.
   String languagePrompt() {
     if (_language == 'Arabic') {
       return 'Always respond in Arabic.';
