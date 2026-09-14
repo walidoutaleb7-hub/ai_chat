@@ -12,8 +12,6 @@ type Provider = {
   model: string;
 };
 
-/// Picks the best available provider based on env vars.
-/// Cerebras is preferred (1M TPD), Groq is the fallback (200K TPD).
 function pickProvider(): Provider {
   const cerebrasKey = process.env.CEREBRAS_API_KEY?.trim();
 
@@ -44,6 +42,10 @@ function pickProvider(): Provider {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Non-streaming (used by /api/chat)
+// ---------------------------------------------------------------------------
+
 export async function askGrok(messages: GrokMessage[]) {
   if (messages.length === 0) {
     throw new Error('No messages were provided.');
@@ -52,9 +54,7 @@ export async function askGrok(messages: GrokMessage[]) {
   const provider = pickProvider();
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => {
-    controller.abort();
-  }, 120000);
+  const timeout = setTimeout(() => controller.abort(), 120000);
 
   try {
     const response = await fetch(provider.url, {
@@ -74,15 +74,13 @@ export async function askGrok(messages: GrokMessage[]) {
     });
 
     const raw = await response.text();
-
     let data: any;
 
     try {
       data = JSON.parse(raw);
     } catch {
       throw new Error(
-        `Invalid response from ${provider.name} `
-        + `(HTTP ${response.status}).`,
+        `Invalid response from ${provider.name} (HTTP ${response.status}).`,
       );
     }
 
@@ -91,19 +89,13 @@ export async function askGrok(messages: GrokMessage[]) {
         data?.error?.message ??
         data?.error ??
         `${provider.name} request failed with HTTP ${response.status}.`;
-
       throw new Error(String(providerError));
     }
 
     const content = data?.choices?.[0]?.message?.content;
 
-    if (
-      typeof content !== 'string' ||
-      content.trim().length === 0
-    ) {
-      throw new Error(
-        `${provider.name} returned an empty response.`,
-      );
+    if (typeof content !== 'string' || content.trim().length === 0) {
+      throw new Error(`${provider.name} returned an empty response.`);
     }
 
     return {
@@ -112,15 +104,97 @@ export async function askGrok(messages: GrokMessage[]) {
       usage: data?.usage ?? null,
     };
   } catch (error) {
-    if (
-      error instanceof Error &&
-      error.name === 'AbortError'
-    ) {
+    if (error instanceof Error && error.name === 'AbortError') {
       throw new Error(
         `${provider.name} request timed out after 120 seconds.`,
       );
     }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
+// ---------------------------------------------------------------------------
+// Streaming (used by /api/chat/stream)
+// ---------------------------------------------------------------------------
+
+/// Streams the answer token-by-token. Yields raw text chunks.
+export async function* streamGrok(
+  messages: GrokMessage[],
+): AsyncGenerator<string, void, unknown> {
+  if (messages.length === 0) {
+    throw new Error('No messages were provided.');
+  }
+
+  const provider = pickProvider();
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 180000);
+
+  try {
+    const response = await fetch(provider.url, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'text/event-stream',
+        Authorization: `Bearer ${provider.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: provider.model,
+        messages,
+        temperature: 0.7,
+        stream: true,
+      }),
+    });
+
+    if (!response.ok || !response.body) {
+      const raw = await response.text().catch(() => '');
+      throw new Error(
+        `${provider.name} streaming failed (HTTP ${response.status}): ${raw.slice(0, 200)}`,
+      );
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+
+      // SSE events are separated by newlines.
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+
+      for (const rawLine of lines) {
+        const line = rawLine.trim();
+        if (!line.startsWith('data:')) continue;
+
+        const payload = line.slice(5).trim();
+        if (!payload) continue;
+        if (payload === '[DONE]') return;
+
+        try {
+          const parsed = JSON.parse(payload);
+          const delta = parsed?.choices?.[0]?.delta?.content;
+          if (typeof delta === 'string' && delta.length > 0) {
+            yield delta;
+          }
+        } catch {
+          // Ignore malformed chunks.
+        }
+      }
+    }
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(
+        `${provider.name} streaming timed out after 180 seconds.`,
+      );
+    }
     throw error;
   } finally {
     clearTimeout(timeout);
