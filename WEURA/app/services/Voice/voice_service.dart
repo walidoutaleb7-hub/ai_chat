@@ -2,8 +2,6 @@ import 'package:speech_to_text/speech_recognition_result.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
 /// WEURA AI — Voice Input Service.
-///
-/// Wraps the platform speech-to-text engine.
 class VoiceService {
   VoiceService._();
 
@@ -13,9 +11,11 @@ class VoiceService {
 
   bool _initialized = false;
   bool _available = false;
+  List<LocaleName> _cachedLocales = [];
 
   bool get isAvailable => _available;
   bool get isListening => _speech.isListening;
+  List<LocaleName> get locales => List.unmodifiable(_cachedLocales);
 
   Future<bool> init() async {
     if (_initialized) return _available;
@@ -24,6 +24,10 @@ class VoiceService {
 
     try {
       _available = await _speech.initialize();
+
+      if (_available) {
+        _cachedLocales = await _speech.locales();
+      }
     } catch (_) {
       _available = false;
     }
@@ -31,30 +35,50 @@ class VoiceService {
     return _available;
   }
 
-  /// Returns the locales supported by the device's speech engine.
-  Future<List<LocaleName>> getLocales() async {
-    if (!_initialized) await init();
-    if (!_available) return [];
-
-    try {
-      return await _speech.locales();
-    } catch (_) {
-      return [];
-    }
+  /// Returns the list of Arabic locales available on this device.
+  List<String> arabicLocales() {
+    return _cachedLocales
+        .where((l) => l.localeId.toLowerCase().startsWith('ar'))
+        .map((l) => l.localeId)
+        .toList();
   }
 
-  /// Finds the best available locale for the given BCP-47 prefix,
-  /// e.g. "ar" for Arabic, "en" for English.
-  ///
-  /// Returns the full locale ID (like "ar-SA") or null if not found.
-  Future<String?> findBestLocale(String prefix) async {
-    final locales = await getLocales();
-    if (locales.isEmpty) return null;
+  /// Returns the list of English locales available on this device.
+  List<String> englishLocales() {
+    return _cachedLocales
+        .where((l) => l.localeId.toLowerCase().startsWith('en'))
+        .map((l) => l.localeId)
+        .toList();
+  }
 
+  /// Picks the best Arabic or English locale for the requested prefix.
+  ///
+  /// Returns:
+  /// - the locale ID if the prefix is available
+  /// - null if the prefix is not available
+  String? findLocale(String prefix) {
     final lowerPrefix = prefix.toLowerCase();
 
-    // 1. Exact prefix match.
-    for (final locale in locales) {
+    // 1. Try a preferred full locale.
+    final preferred = <String>[
+      if (prefix == 'ar') ...[
+        'ar-sa', 'ar-eg', 'ar-dz', 'ar-ma', 'ar-tn', 'ar-ae', 'ar-qa',
+      ],
+      if (prefix == 'en') ...[
+        'en-us', 'en-gb', 'en-au', 'en-ca', 'en-in',
+      ],
+    ];
+
+    for (final code in preferred) {
+      for (final locale in _cachedLocales) {
+        if (locale.localeId.toLowerCase() == code) {
+          return locale.localeId;
+        }
+      }
+    }
+
+    // 2. Fall back to any locale that starts with the prefix.
+    for (final locale in _cachedLocales) {
       if (locale.localeId.toLowerCase().startsWith(lowerPrefix)) {
         return locale.localeId;
       }
@@ -63,13 +87,10 @@ class VoiceService {
     return null;
   }
 
-  /// Starts listening in the given language.
-  ///
-  /// [languagePrefix] is "ar", "en", or null for the device default.
   Future<bool> startListening({
     required void Function(String text, bool isFinal) onResult,
     void Function(String message)? onError,
-    String? languagePrefix,
+    String? localeId,
   }) async {
     if (!_initialized) await init();
 
@@ -78,19 +99,6 @@ class VoiceService {
         'Voice recognition is not available on this device.',
       );
       return false;
-    }
-
-    String? localeId;
-
-    if (languagePrefix != null && languagePrefix.isNotEmpty) {
-      localeId = await findBestLocale(languagePrefix);
-
-      if (localeId == null) {
-        onError?.call(
-          'This language is not supported by your device voice engine.',
-        );
-        return false;
-      }
     }
 
     try {
