@@ -1,0 +1,30 @@
+name: Keep WEURA Server Alive
+
+on:
+  schedule:
+    # Every 14 minutes (Render free tier sleeps after 15 min)
+    - cron: "*/14 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    name: Ping WEURA backend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Ping /health
+        run: |
+          URL="https://ai-chat-tlol.onrender.com/health"
+          echo "Pinging $URL"
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
+            --max-time 60 "$URL" || echo "000")
+          echo "HTTP status: $RESPONSE"
+
+          if [ "$RESPONSE" = "200" ]; then
+            echo "✅ Server is alive"
+          else
+            echo "⚠️ Server returned $RESPONSE (may be waking up)"
+          fi
