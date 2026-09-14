@@ -5,9 +5,6 @@ import '../../core/Settings/app_settings.dart';
 import '../../core/Theme/weura_theme.dart';
 import '../../services/Voice/voice_service.dart';
 
-/// Bottom sheet that listens to the microphone and shows a live
-/// transcript. When the user confirms, [onSend] is called with the
-/// final text.
 class VoiceInputSheet extends StatefulWidget {
   const VoiceInputSheet({
     super.key,
@@ -30,6 +27,7 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
   bool _isListening = false;
   bool _isAvailable = true;
   String? _error;
+  String _languagePrefix = 'ar'; // 'ar' or 'en'
 
   @override
   void initState() {
@@ -40,6 +38,17 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
       duration: const Duration(milliseconds: 1400),
     )..repeat();
 
+    // Default: use the app's language preference.
+    final appLang = AppSettingsManager.instance.language;
+    if (appLang == 'Arabic') {
+      _languagePrefix = 'ar';
+    } else if (appLang == 'English') {
+      _languagePrefix = 'en';
+    } else {
+      // Auto: default to Arabic (WEURA is an Arabic-first product).
+      _languagePrefix = 'ar';
+    }
+
     _start();
   }
 
@@ -49,16 +58,6 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
     _controller.dispose();
     _voice.cancel();
     super.dispose();
-  }
-
-  String? _localeId() {
-    final language = AppSettingsManager.instance.language;
-
-    if (language == 'Arabic') return 'ar-SA';
-    if (language == 'English') return 'en-US';
-
-    // Auto: let the platform pick.
-    return null;
   }
 
   Future<void> _start() async {
@@ -82,7 +81,7 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
     });
 
     await _voice.startListening(
-      localeId: _localeId(),
+      languagePrefix: _languagePrefix,
       onResult: (text, isFinal) {
         if (!mounted) return;
 
@@ -102,6 +101,27 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
         });
       },
     );
+  }
+
+  Future<void> _switchLanguage(String prefix) async {
+    if (_languagePrefix == prefix) return;
+
+    await _voice.cancel();
+
+    if (!mounted) return;
+
+    setState(() {
+      _languagePrefix = prefix;
+      _controller.clear();
+      _error = null;
+      _isListening = false;
+    });
+
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+
+    if (!mounted) return;
+
+    await _start();
   }
 
   Future<void> _stopAndKeep() async {
@@ -137,6 +157,11 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Language toggle
+              _languageToggle(colors),
+
+              const SizedBox(height: 18),
+
               // Title
               Text(
                 _isListening ? 'Listening...' : 'Voice input',
@@ -146,12 +171,13 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
                   fontWeight: FontWeight.w700,
                 ),
               ),
-              const SizedBox(height: 24),
+
+              const SizedBox(height: 20),
 
               // Animated mic
               _buildMic(colors),
 
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
 
               // Live transcript
               if (_controller.text.isNotEmpty)
@@ -185,7 +211,9 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
               else
                 Text(
                   _isListening
-                      ? 'Speak now...'
+                      ? (_languagePrefix == 'ar'
+                          ? 'اتكلم الآن بالعربية...'
+                          : 'Speak now in English...')
                       : 'No speech detected.',
                   style: TextStyle(
                     color: colors.textMuted,
@@ -226,6 +254,65 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
                 ],
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _languageToggle(WeuraColors colors) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colors.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _langChip(
+            colors: colors,
+            label: 'العربية',
+            code: 'ar',
+          ),
+          const SizedBox(width: 4),
+          _langChip(
+            colors: colors,
+            label: 'English',
+            code: 'en',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _langChip({
+    required WeuraColors colors,
+    required String label,
+    required String code,
+  }) {
+    final selected = _languagePrefix == code;
+
+    return GestureDetector(
+      onTap: () => _switchLanguage(code),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 8,
+        ),
+        decoration: BoxDecoration(
+          color: selected ? colors.accent : Colors.transparent,
+          borderRadius: BorderRadius.circular(9),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? Colors.white : colors.textSecondary,
+            fontSize: 13,
+            fontWeight:
+                selected ? FontWeight.w700 : FontWeight.w500,
           ),
         ),
       ),
