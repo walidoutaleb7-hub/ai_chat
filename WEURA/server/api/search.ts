@@ -9,10 +9,28 @@ export type TavilyResult = {
   url: string;
   snippet: string;
   publishedDate?: string;
+  query?: string;
 };
 
-/// Trusted football sites used to filter sports queries.
-const FOOTBALL_DOMAINS = [
+/// Trusted sources — general.
+const TRUSTED_GENERAL = [
+  'reuters.com',
+  'apnews.com',
+  'bbc.com',
+  'aljazeera.net',
+  'aljazeera.com',
+  'cnn.com',
+  'nytimes.com',
+  'theguardian.com',
+  'euronews.com',
+  'france24.com',
+  'lemonde.fr',
+  'wikipedia.org',
+  'britannica.com',
+];
+
+/// Trusted sources — football / sports.
+const TRUSTED_FOOTBALL = [
   'espn.com',
   'bbc.com',
   'skysports.com',
@@ -37,15 +55,50 @@ const FOOTBALL_DOMAINS = [
   'bundesliga.com',
   'legaseriea.it',
   'ligue1.com',
+  'thesportsdb.com',
 ];
 
-export async function searchTavily(
+/// Trusted sources — tech / code.
+const TRUSTED_TECH = [
+  'github.com',
+  'stackoverflow.com',
+  'developer.mozilla.org',
+  'flutter.dev',
+  'dart.dev',
+  'pub.dev',
+  'docs.flutter.dev',
+  'medium.com',
+  'dev.to',
+  'freecodecamp.org',
+];
+
+export type SearchOptions = {
+  timeSensitive?: boolean;
+  football?: boolean;
+  tech?: boolean;
+};
+
+function buildDomainList(options: SearchOptions): string[] | null {
+  const lists: string[][] = [];
+
+  if (options.football) lists.push(TRUSTED_FOOTBALL);
+  if (options.tech) lists.push(TRUSTED_TECH);
+  if (options.timeSensitive) lists.push(TRUSTED_GENERAL);
+
+  if (lists.length === 0) return null;
+
+  const merged = new Set<string>();
+  for (const list of lists) {
+    for (const d of list) merged.add(d);
+  }
+
+  return Array.from(merged);
+}
+
+async function runSearch(
   query: string,
-  limit: number = 5,
-  options: {
-    timeSensitive?: boolean;
-    football?: boolean;
-  } = {},
+  limit: number,
+  options: SearchOptions,
 ): Promise<TavilyResult[]> {
   const apiKey = process.env.TAVILY_API_KEY?.trim();
 
@@ -69,9 +122,9 @@ export async function searchTavily(
     body.topic = 'general';
   }
 
-  // For football queries, restrict to trusted sports sites.
-  if (options.football) {
-    body.include_domains = FOOTBALL_DOMAINS;
+  const domains = buildDomainList(options);
+  if (domains) {
+    body.include_domains = domains;
   }
 
   const response = await fetch(TAVILY_URL, {
@@ -87,7 +140,7 @@ export async function searchTavily(
       `[WEURA] Tavily error ${response.status}:`,
       errorText,
     );
-    throw new Error('Search provider returned an error.');
+    return [];
   }
 
   const data = await response.json();
@@ -96,25 +149,75 @@ export async function searchTavily(
     ? data.results
     : [];
 
-  return results
-    .map((item: any) => {
-      const raw =
-        typeof item?.raw_content === 'string' &&
-        item.raw_content.trim().length > 0
-          ? item.raw_content
-          : String(item?.content ?? '');
+  return results.map((item: any) => {
+    const raw =
+      typeof item?.raw_content === 'string' &&
+      item.raw_content.trim().length > 0
+        ? item.raw_content
+        : String(item?.content ?? '');
 
-      return {
-        title: String(item?.title ?? 'Untitled'),
-        url: String(item?.url ?? ''),
-        snippet: raw.trim(),
-        publishedDate: item?.published_date
-          ? String(item.published_date)
-          : undefined,
-      };
-    })
-    .filter((item: TavilyResult) => item.url.length > 0)
-    .slice(0, limit);
+    return {
+      title: String(item?.title ?? 'Untitled'),
+      url: String(item?.url ?? ''),
+      snippet: raw.trim(),
+      publishedDate: item?.published_date
+        ? String(item.published_date)
+        : undefined,
+      query,
+    };
+  });
+}
+
+/// Runs 2-3 targeted searches in parallel and merges the results.
+export async function searchTavily(
+  query: string,
+  limit: number = 5,
+  options: SearchOptions = {},
+): Promise<TavilyResult[]> {
+  const variants: { q: string; opts: SearchOptions }[] = [
+    { q: query, opts: options },
+  ];
+
+  // Generate complementary queries based on the intent.
+  if (options.football) {
+    variants.push({
+      q: `${query} نتيجة المباراة`,
+      opts: { ...options, timeSensitive: false },
+    });
+    variants.push({
+      q: `${query} score result 2026`,
+      opts: { ...options, timeSensitive: true },
+    });
+  } else if (options.timeSensitive) {
+    variants.push({
+      q: `${query} آخر التطورات`,
+      opts: { ...options, timeSensitive: true },
+    });
+  }
+
+  // Cap at 3 to stay within rate limits.
+  const batch = variants.slice(0, 3);
+
+  const settled = await Promise.all(
+    batch.map((v) =>
+      runSearch(v.q, Math.max(limit, 3), v.opts).catch(() => []),
+    ),
+  );
+
+  // Merge and deduplicate by URL.
+  const seen = new Set<string>();
+  const merged: TavilyResult[] = [];
+
+  for (const list of settled) {
+    for (const r of list) {
+      if (!r.url) continue;
+      if (seen.has(r.url)) continue;
+      seen.add(r.url);
+      merged.push(r);
+    }
+  }
+
+  return merged.slice(0, Math.max(limit, 6));
 }
 
 router.get('/search', async (req, res) => {
