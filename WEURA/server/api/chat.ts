@@ -9,6 +9,20 @@ import {
 
 const router = express.Router();
 
+/// Returns the current date/time in a stable format.
+function currentTimeContext(): string {
+  const now = new Date();
+  const utc = now.toUTCString();
+  const iso = now.toISOString();
+
+  return (
+    `Current date and time (server):\n` +
+    `- ISO: ${iso}\n` +
+    `- UTC: ${utc}\n\n` +
+    `If the user asks for the current time, date or day, use this value.`
+  );
+}
+
 /// Returns true when the message is likely to need up-to-date
 /// information from the web.
 function needsSearch(message: string): boolean {
@@ -25,13 +39,13 @@ function needsSearch(message: string): boolean {
     if (pattern.test(text)) return false;
   }
 
-  // Very short messages (< 4 words) rarely need search.
+  // Very short messages (< 3 words) rarely need search.
   const wordCount = text.split(/\s+/).filter(Boolean).length;
   if (wordCount < 3) return false;
 
   // Keywords that strongly suggest the user wants fresh information.
   const searchTriggers = [
-    // English
+    // English — general
     'latest', 'today', 'tonight', 'news', 'current', 'currently',
     'recent', 'recently', 'now', 'right now', 'this year',
     'this week', 'this month', 'new', 'update', 'updates',
@@ -40,14 +54,26 @@ function needsSearch(message: string): boolean {
     'release', 'released', 'launch', 'launched', 'announced',
     'who is', 'what is', 'where is', 'when did', 'how much',
     'how many', 'is there', 'are there', 'was there',
-    // Arabic
+
+    // English — sports & events
+    'match summary', 'game summary', 'league', 'standings',
+    'scorers', 'championship', 'tournament', 'fixture', 'fixtures',
+    'real madrid', 'barcelona', 'psg', 'liverpool', 'chelsea',
+
+    // Arabic — general
     'اخبار', 'أخبار', 'خبر', 'اليوم', 'الآن', 'حاليا', 'حاليًا',
     'آخر', 'الأخبار', 'الجديد', 'الجديدة', 'حديث', 'حديثة',
-    'سعر', 'أسعار', 'تكلفة', 'طقس', 'حرارة', 'مباراة', 'نتيجة',
-    'فاز', 'انتخابات', 'إصدار', 'أعلن', 'أطلقت',
+    'سعر', 'أسعار', 'تكلفة', 'طقس', 'حرارة',
+    'إصدار', 'أعلن', 'أطلقت', 'نتيجة', 'نتائج',
     'من هو', 'من هي', 'ما هو', 'ما هي', 'وين', 'أين', 'متى',
     'كم', 'بشحال', 'واش صرا', 'واش صار',
-    // Years (recent)
+
+    // Arabic — sports & events
+    'ملخص', 'مباراة', 'مباريات', 'ماتش', 'الدوري',
+    'الترتيب', 'هداف', 'كأس', 'بطولة', 'منتخب',
+    'ريال مدريد', 'برشلونة', 'ليفربول', 'تشيلسي',
+
+    // Recent years
     '2026', '2025', '2024',
   ];
 
@@ -106,7 +132,15 @@ router.post('/chat', async (req, res) => {
       });
     }
 
-    let enrichedMessages: GrokMessage[] = safeMessages;
+    const timeMessage: GrokMessage = {
+      role: 'system',
+      content: currentTimeContext(),
+    };
+
+    let enrichedMessages: GrokMessage[] = [
+      timeMessage,
+      ...safeMessages,
+    ];
 
     const lastUserMessage = getLastUserMessage(safeMessages);
     const tavilyConfigured = Boolean(
@@ -141,17 +175,12 @@ router.post('/chat', async (req, res) => {
             `- If the sources do not contain enough information, ` +
             `say so honestly instead of guessing.`;
 
-          enrichedMessages =
-            safeMessages.length >= 1
-              ? [
-                  safeMessages[0],
-                  { role: 'system', content: searchContext },
-                  ...safeMessages.slice(1),
-                ]
-              : [
-                  { role: 'system', content: searchContext },
-                  ...safeMessages,
-                ];
+          enrichedMessages = [
+            timeMessage,
+            safeMessages[0],
+            { role: 'system', content: searchContext },
+            ...safeMessages.slice(1),
+          ];
         }
       } catch (error) {
         console.error(
