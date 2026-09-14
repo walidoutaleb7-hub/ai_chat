@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../core/Theme/weura_theme.dart';
+
 class WeuraComposer extends StatefulWidget {
   const WeuraComposer({
     super.key,
@@ -29,9 +31,7 @@ class WeuraComposer extends StatefulWidget {
 }
 
 class _WeuraComposerState extends State<WeuraComposer> {
-  final TextEditingController _controller =
-      TextEditingController();
-
+  final TextEditingController _controller = TextEditingController();
   final FocusNode _focusNode = FocusNode();
 
   bool get _canSend =>
@@ -61,7 +61,6 @@ class _WeuraComposerState extends State<WeuraComposer> {
 
   void _send() {
     final text = _controller.text.trim();
-
     if (!_canSend || text.isEmpty) return;
 
     widget.onSend?.call(text);
@@ -77,6 +76,8 @@ class _WeuraComposerState extends State<WeuraComposer> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = WeuraColors.of(context);
+
     return SafeArea(
       top: false,
       child: Padding(
@@ -85,17 +86,16 @@ class _WeuraComposerState extends State<WeuraComposer> {
           duration: const Duration(milliseconds: 180),
           padding: const EdgeInsets.fromLTRB(7, 5, 7, 6),
           decoration: BoxDecoration(
-            color: const Color(0xFF111119),
+            color: colors.surface,
             borderRadius: BorderRadius.circular(22),
             border: Border.all(
               color: _focusNode.hasFocus
-                  ? const Color(0xFF315DFF)
-                      .withValues(alpha: 0.45)
-                  : Colors.white.withValues(alpha: 0.07),
+                  ? colors.accent.withValues(alpha: 0.45)
+                  : colors.border,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.18),
+                color: Colors.black.withValues(alpha: 0.08),
                 blurRadius: 20,
                 offset: const Offset(0, 8),
               ),
@@ -107,29 +107,27 @@ class _WeuraComposerState extends State<WeuraComposer> {
               TextField(
                 controller: _controller,
                 focusNode: _focusNode,
-                enabled:
-                    widget.enabled && !widget.isLoading,
+                enabled: widget.enabled && !widget.isLoading,
                 minLines: 1,
                 maxLines: 7,
                 keyboardType: TextInputType.multiline,
                 textInputAction: TextInputAction.newline,
                 onSubmitted: _handleSubmitted,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: colors.textPrimary,
                   fontSize: 15.5,
                   height: 1.45,
                 ),
-                cursorColor: Color(0xFF5B7CFF),
+                cursorColor: colors.accent,
                 decoration: InputDecoration(
                   hintText: widget.hintText,
-                  hintStyle: const TextStyle(
-                    color: Colors.white30,
+                  hintStyle: TextStyle(
+                    color: colors.textFaint,
                     fontSize: 15,
                   ),
                   border: InputBorder.none,
                   isDense: true,
-                  contentPadding:
-                      const EdgeInsets.symmetric(
+                  contentPadding: const EdgeInsets.symmetric(
                     horizontal: 10,
                     vertical: 8,
                   ),
@@ -138,36 +136,33 @@ class _WeuraComposerState extends State<WeuraComposer> {
               Row(
                 children: [
                   _svgButton(
+                    colors: colors,
                     asset: 'assets/icons/attachment.svg',
                     tooltip: 'Attach',
-                    onPressed:
-                        widget.enabled &&
-                                !widget.isLoading
-                            ? widget.onAttach
-                            : null,
+                    onPressed: widget.enabled && !widget.isLoading
+                        ? widget.onAttach
+                        : null,
                   ),
                   _svgButton(
+                    colors: colors,
                     asset: 'assets/icons/mode.svg',
                     tooltip: 'AI mode',
-                    onPressed:
-                        widget.enabled &&
-                                !widget.isLoading
-                            ? widget.onMode
-                            : null,
+                    onPressed: widget.enabled && !widget.isLoading
+                        ? widget.onMode
+                        : null,
                   ),
                   const Spacer(),
                   if (widget.isLoading)
-                    _stopButton()
+                    _stopButton(colors)
                   else ...[
                     _svgButton(
+                      colors: colors,
                       asset: 'assets/icons/microphone.svg',
                       tooltip: 'Voice',
-                      onPressed: widget.enabled
-                          ? widget.onVoice
-                          : null,
+                      onPressed: widget.enabled ? widget.onVoice : null,
                     ),
                     const SizedBox(width: 4),
-                    _sendButton(),
+                    _sendButton(colors),
                   ],
                 ],
               ),
@@ -179,6 +174,7 @@ class _WeuraComposerState extends State<WeuraComposer> {
   }
 
   Widget _svgButton({
+    required WeuraColors colors,
     required String asset,
     required String tooltip,
     required VoidCallback? onPressed,
@@ -201,7 +197,7 @@ class _WeuraComposerState extends State<WeuraComposer> {
     );
   }
 
-  Widget _sendButton() {
+  Widget _sendButton(WeuraColors colors) {
     return AnimatedScale(
       scale: _canSend ? 1 : 0.92,
       duration: const Duration(milliseconds: 140),
@@ -213,8 +209,8 @@ class _WeuraComposerState extends State<WeuraComposer> {
           height: 42,
           decoration: BoxDecoration(
             color: _canSend
-                ? const Color(0xFF315DFF)
-                : const Color(0xFF24242D),
+                ? colors.accent
+                : colors.surfaceAlt,
             shape: BoxShape.circle,
           ),
           child: Center(
@@ -232,19 +228,17 @@ class _WeuraComposerState extends State<WeuraComposer> {
     );
   }
 
-  Widget _stopButton() {
+  Widget _stopButton(WeuraColors colors) {
     return GestureDetector(
       onTap: widget.onStop,
       child: Container(
         width: 42,
         height: 42,
         decoration: BoxDecoration(
-          color: const Color(0xFF315DFF)
-              .withValues(alpha: 0.12),
+          color: colors.accentSoft,
           shape: BoxShape.circle,
           border: Border.all(
-            color: const Color(0xFF3B82F6)
-                .withValues(alpha: 0.3),
+            color: colors.accentGlow.withValues(alpha: 0.30),
           ),
         ),
         child: SvgPicture.asset(
