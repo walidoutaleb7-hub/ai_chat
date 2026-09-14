@@ -1,90 +1,99 @@
-import 'dart:async';
+import 'package:speech_to_text/speech_recognition_result.dart';
+import 'package:speech_to_text/speech_to_text.dart';
 
-enum VoiceState {
-  idle,
-  listening,
-  processing,
-  error,
-}
-
-class VoiceResult {
-  const VoiceResult({
-    required this.text,
-    this.isFinal = true,
-  });
-
-  final String text;
-  final bool isFinal;
-}
-
+/// WEURA AI — Voice Input Service.
+///
+/// Wraps the platform speech-to-text engine (Google on Android,
+/// Apple on iOS). Handles initialization, permission request,
+/// live transcription and cleanup.
 class VoiceService {
-  VoiceState _state = VoiceState.idle;
+  VoiceService._();
 
-  VoiceState get state => _state;
+  static final VoiceService instance = VoiceService._();
 
-  final StreamController<VoiceState> _stateController =
-      StreamController<VoiceState>.broadcast();
+  final SpeechToText _speech = SpeechToText();
 
-  Stream<VoiceState> get stateStream => _stateController.stream;
+  bool _initialized = false;
+  bool _available = false;
 
-  bool get isListening => _state == VoiceState.listening;
+  bool get isAvailable => _available;
+  bool get isListening => _speech.isListening;
 
-  Future<bool> initialize() async {
-    // The real speech-recognition provider can be connected here.
-    _setState(VoiceState.idle);
-    return true;
+  /// Initializes the engine. Safe to call many times — only the
+  /// first call touches the platform.
+  Future<bool> init() async {
+    if (_initialized) return _available;
+
+    _initialized = true;
+
+    try {
+      _available = await _speech.initialize();
+    } catch (_) {
+      _available = false;
+    }
+
+    return _available;
   }
 
-  Future<void> startListening({
-    Duration timeout = const Duration(seconds: 30),
-    void Function(VoiceResult result)? onResult,
-    void Function(Object error)? onError,
+  /// Starts listening.
+  ///
+  /// [onResult] is called repeatedly with the live transcript.
+  /// The second argument is `true` when the engine is confident
+  /// this is the final result.
+  ///
+  /// [onError] receives a short, user-safe message.
+  ///
+  /// [localeId] is a BCP-47 tag like 'ar-SA' or 'en-US'. When null,
+  /// the device's default locale is used.
+  Future<bool> startListening({
+    required void Function(String text, bool isFinal) onResult,
+    void Function(String message)? onError,
+    String? localeId,
   }) async {
-    if (_state == VoiceState.listening) {
-      return;
+    if (!_initialized) await init();
+
+    if (!_available) {
+      onError?.call(
+        'Voice recognition is not available on this device.',
+      );
+      return false;
     }
 
     try {
-      _setState(VoiceState.listening);
+      await _speech.listen(
+        localeId: localeId,
+        onResult: (SpeechRecognitionResult result) {
+          onResult(result.recognizedWords, result.finalResult);
+        },
+        listenOptions: SpeechListenOptions(
+          partialResults: true,
+          cancelOnError: true,
+          listenMode: ListenMode.dictation,
+        ),
+      );
 
-      // Provider-independent placeholder.
-      // No fake transcript is generated.
-      await Future<void>.delayed(timeout);
-
-      if (_state == VoiceState.listening) {
-        await stopListening();
-      }
-    } catch (error) {
-      _setState(VoiceState.error);
-      onError?.call(error);
+      return true;
+    } catch (_) {
+      onError?.call('Could not start listening.');
+      return false;
     }
   }
 
-  Future<void> stopListening() async {
-    if (_state != VoiceState.listening) {
-      return;
+  /// Stops listening and keeps whatever has been recognized.
+  Future<void> stop() async {
+    try {
+      await _speech.stop();
+    } catch (_) {
+      // Ignore.
     }
-
-    _setState(VoiceState.processing);
-
-    // A real speech-to-text provider will return the transcript here.
-    // Until one is configured, WEURA does not invent a transcript.
-    _setState(VoiceState.idle);
   }
 
+  /// Cancels listening and discards the current transcript.
   Future<void> cancel() async {
-    _setState(VoiceState.idle);
-  }
-
-  void _setState(VoiceState value) {
-    _state = value;
-
-    if (!_stateController.isClosed) {
-      _stateController.add(value);
+    try {
+      await _speech.cancel();
+    } catch (_) {
+      // Ignore.
     }
-  }
-
-  void dispose() {
-    _stateController.close();
   }
 }
