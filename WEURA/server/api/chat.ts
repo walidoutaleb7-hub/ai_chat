@@ -89,7 +89,7 @@ function getLastUserMessage(messages: GrokMessage[]): string {
   return '';
 }
 
-function cleanSnippet(raw: string, maxLen = 400): string {
+function cleanSnippet(raw: string, maxLen = 500): string {
   return raw
     .replace(/<[^>]+>/g, ' ')
     .replace(/\s+/g, ' ')
@@ -161,8 +161,6 @@ router.post('/chat', async (req, res) => {
             )
             .join('\n\n');
 
-          // STRICT MODE: WEURA must answer ONLY from these sources.
-          // No training knowledge allowed for the current question.
           const searchContext =
             `You have been given real web search results for the ` +
             `user's question. These results are your ONLY source of ` +
