@@ -1346,6 +1346,8 @@ class _ChatScreenState extends State<ChatScreen>
             ClipRRect(
               borderRadius: BorderRadius.circular(16),
               child: Container(
+                width: 320,
+                height: 320,
                 decoration: BoxDecoration(
                   color: colors.surface,
                   borderRadius: BorderRadius.circular(16),
@@ -1365,7 +1367,7 @@ class _ChatScreenState extends State<ChatScreen>
                   _actionIcon(
                     colors: colors,
                     icon: Icons.download_rounded,
-                    tooltip: 'Save URL',
+                    tooltip: 'Copy image URL',
                     onPressed: () =>
                         _copyMessage(message.imageUrl ?? ''),
                   ),
@@ -1730,7 +1732,7 @@ class _ChatScreenState extends State<ChatScreen>
 }
 
 // ---------------------------------------------------------------------------
-// Image loading widget
+// Image loading
 // ---------------------------------------------------------------------------
 
 class _NetworkImageWithLoader extends StatelessWidget {
@@ -1746,6 +1748,8 @@ class _NetworkImageWithLoader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Image.network(
       url,
+      width: 320,
+      height: 320,
       fit: BoxFit.cover,
       loadingBuilder: (context, child, progress) {
         if (progress == null) return child;
@@ -1753,19 +1757,19 @@ class _NetworkImageWithLoader extends StatelessWidget {
       },
       errorBuilder: (context, error, stackTrace) {
         return Container(
-          width: 300,
-          height: 200,
-          padding: const EdgeInsets.all(20),
+          width: 320,
+          height: 320,
+          padding: const EdgeInsets.all(24),
           child: Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(
                   Icons.broken_image_outlined,
-                  size: 44,
+                  size: 52,
                   color: colors.danger,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 14),
                 Text(
                   'Image generation failed',
                   style: TextStyle(
@@ -1774,13 +1778,14 @@ class _NetworkImageWithLoader extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 6),
                 Text(
-                  'Try again with a different prompt',
+                  'The image service may be busy.\nTry again.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: colors.textMuted,
-                    fontSize: 11,
+                    fontSize: 12,
+                    height: 1.4,
                   ),
                 ),
               ],
@@ -1845,16 +1850,15 @@ class _ImageGeneratingLoaderState extends State<_ImageGeneratingLoader>
     final colors = widget.colors;
 
     return Container(
-      width: double.infinity,
-      constraints: const BoxConstraints(maxWidth: 340),
-      padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 24),
+      width: 320,
+      height: 320,
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: colors.surfaceAlt,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: colors.border),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           SizedBox(
             width: 140,
@@ -1883,7 +1887,7 @@ class _ImageGeneratingLoaderState extends State<_ImageGeneratingLoader>
             'Creating your image',
             style: TextStyle(
               color: colors.textPrimary,
-              fontSize: 15,
+              fontSize: 14,
               fontWeight: FontWeight.w700,
               letterSpacing: 0.3,
             ),
@@ -1893,7 +1897,7 @@ class _ImageGeneratingLoaderState extends State<_ImageGeneratingLoader>
             'This can take 5-15 seconds',
             style: TextStyle(
               color: colors.textMuted,
-              fontSize: 12,
+              fontSize: 11,
             ),
           ),
         ],
