@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:gal/gal.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -157,6 +158,35 @@ class _ChatScreenState extends State<ChatScreen>
           duration: Duration(milliseconds: 1200),
         ),
       );
+  }
+
+  Future<void> _saveImageToGallery(String imageUrl) async {
+    try {
+      final hasAccess = await Gal.hasAccess();
+      if (!hasAccess) {
+        final granted = await Gal.requestAccess();
+        if (!granted) {
+          if (!mounted) return;
+          _showMessage('Gallery permission denied.');
+          return;
+        }
+      }
+
+      await Gal.putImage(imageUrl, album: 'WEURA');
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text('Saved to WEURA album'),
+            duration: Duration(milliseconds: 1600),
+          ),
+        );
+    } catch (error) {
+      if (!mounted) return;
+      _showMessage('Could not save image.');
+    }
   }
 
   Future<void> _shareMessage(String text) async {
@@ -343,11 +373,11 @@ class _ChatScreenState extends State<ChatScreen>
     return null;
   }
 
-  String _buildPollinationsUrl(String prompt) {
+  String _buildImageUrl(String prompt) {
     final encoded = Uri.encodeComponent(prompt);
     final seed = DateTime.now().millisecondsSinceEpoch % 999983;
-    return 'https://image.pollinations.ai/prompt/$encoded'
-        '?width=1024&height=1024&seed=$seed&model=flux&nologo=true';
+    return '$_serverUrl/api/image?prompt=$encoded'
+        '&width=1024&height=1024&seed=$seed';
   }
 
   Future<void> _handleImageGeneration(
@@ -356,7 +386,7 @@ class _ChatScreenState extends State<ChatScreen>
   ) async {
     await _ensureSession(userMessage);
 
-    final imageUrl = _buildPollinationsUrl(prompt);
+    final imageUrl = _buildImageUrl(prompt);
 
     setState(() {
       _messages.add(_ChatMessage(text: userMessage, isUser: true));
@@ -1366,7 +1396,14 @@ class _ChatScreenState extends State<ChatScreen>
                 children: [
                   _actionIcon(
                     colors: colors,
-                    icon: Icons.download_rounded,
+                    icon: Icons.save_alt_rounded,
+                    tooltip: 'Save to gallery',
+                    onPressed: () =>
+                        _saveImageToGallery(message.imageUrl ?? ''),
+                  ),
+                  _actionIcon(
+                    colors: colors,
+                    icon: Icons.link_rounded,
                     tooltip: 'Copy image URL',
                     onPressed: () =>
                         _copyMessage(message.imageUrl ?? ''),
@@ -1381,7 +1418,7 @@ class _ChatScreenState extends State<ChatScreen>
                       if (idx == -1) return;
 
                       final newUrl =
-                          _buildPollinationsUrl(message.imagePrompt!);
+                          _buildImageUrl(message.imagePrompt!);
 
                       setState(() {
                         _messages[idx] = _ChatMessage(
@@ -1780,7 +1817,7 @@ class _NetworkImageWithLoader extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'The image service may be busy.\nTry again.',
+                  'The model may be loading.\nTap refresh to retry.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: colors.textMuted,
@@ -1796,10 +1833,6 @@ class _NetworkImageWithLoader extends StatelessWidget {
     );
   }
 }
-
-// ---------------------------------------------------------------------------
-// Animated "creating image" loader
-// ---------------------------------------------------------------------------
 
 class _ImageGeneratingLoader extends StatefulWidget {
   const _ImageGeneratingLoader({required this.colors});
@@ -1894,7 +1927,7 @@ class _ImageGeneratingLoaderState extends State<_ImageGeneratingLoader>
           ),
           const SizedBox(height: 6),
           Text(
-            'This can take 5-15 seconds',
+            'This can take 5-30 seconds',
             style: TextStyle(
               color: colors.textMuted,
               fontSize: 11,
@@ -2066,10 +2099,6 @@ class _ImageLoadingPainter extends CustomPainter {
         oldDelegate.sparkle != sparkle;
   }
 }
-
-// ---------------------------------------------------------------------------
-// Thinking indicator for text chat
-// ---------------------------------------------------------------------------
 
 class _WeuraThinking extends StatefulWidget {
   const _WeuraThinking({required this.colors});
