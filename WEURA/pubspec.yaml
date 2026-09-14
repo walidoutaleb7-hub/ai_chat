@@ -26,6 +26,9 @@ dependencies:
   # Open URLs from source cards
   url_launcher: ^6.3.0
 
+  # Voice input (speech-to-text)
+  speech_to_text: ^7.0.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
