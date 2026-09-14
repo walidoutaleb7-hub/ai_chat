@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
@@ -9,6 +10,7 @@ import '../../core/Memory/memory_manager.dart';
 import '../../core/Settings/app_settings.dart';
 import '../../core/Theme/weura_theme.dart';
 import '../../services/Grok/grok_service.dart';
+import '../../services/Storage/storage_service.dart';
 import '../History/history.dart';
 import '../Memory/memory.dart';
 import '../Settings/settings.dart';
@@ -55,6 +57,9 @@ class _ChatScreenState extends State<ChatScreen>
 
   final List<_ChatMessage> _messages = [];
 
+  /// Map of message-index -> rating ("up" or "down").
+  final Map<int, String> _ratings = {};
+
   AIMode _mode = AIMode.auto;
   bool _isLoading = false;
   bool _requestCancelled = false;
@@ -62,6 +67,7 @@ class _ChatScreenState extends State<ChatScreen>
 
   static const String _serverUrl =
       'https://ai-chat-tlol.onrender.com';
+  static const String _feedbackKey = 'weura_message_feedback';
 
   @override
   void initState() {
@@ -77,6 +83,8 @@ class _ChatScreenState extends State<ChatScreen>
       _history.load(),
       _memory.load(),
     ]);
+
+    await _loadRatings();
 
     if (widget.sessionId != null) {
       final existing = _history.findById(widget.sessionId!);
@@ -103,6 +111,62 @@ class _ChatScreenState extends State<ChatScreen>
         _sendMessage(widget.initialMessage!);
       });
     }
+  }
+
+  Future<void> _loadRatings() async {
+    try {
+      final data = await StorageService.instance
+          .read<Map<String, dynamic>>(_feedbackKey);
+
+      if (data != null) {
+        data.forEach((key, value) {
+          final index = int.tryParse(key);
+          if (index != null && value is String) {
+            _ratings[index] = value;
+          }
+        });
+      }
+    } catch (_) {
+      // Ignore corrupted feedback data.
+    }
+  }
+
+  Future<void> _saveRatings() async {
+    final map = <String, dynamic>{};
+
+    _ratings.forEach((key, value) {
+      map[key.toString()] = value;
+    });
+
+    await StorageService.instance.write(_feedbackKey, map);
+  }
+
+  void _rateMessage(int index, String rating) {
+    setState(() {
+      if (_ratings[index] == rating) {
+        _ratings.remove(index);
+      } else {
+        _ratings[index] = rating;
+      }
+    });
+
+    _saveRatings();
+    HapticFeedback.selectionClick();
+  }
+
+  Future<void> _copyMessage(String text) async {
+    await Clipboard.setData(ClipboardData(text: text));
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        const SnackBar(
+          content: Text('Copied'),
+          duration: Duration(milliseconds: 1200),
+        ),
+      );
   }
 
   @override
@@ -307,6 +371,132 @@ class _ChatScreenState extends State<ChatScreen>
         'Please check the connection and try again.';
   }
 
+  /// Regenerates the LAST assistant message.
+  void _regenerateLast() {
+    if (_isLoading || _messages.isEmpty) return;
+
+    // Find the last user message.
+    int lastUserIndex = -1;
+    for (int i = _messages.length - 1; i >= 0; i--) {
+      if (_messages[i].isUser) {
+        lastUserIndex = i;
+        break;
+      }
+    }
+
+    if (lastUserIndex == -1) return;
+
+    final userText = _messages[lastUserIndex].text;
+
+    // Remove everything after the last user message.
+    _messages.removeRange(lastUserIndex + 1, _messages.length);
+
+    // Reset ratings for removed indices.
+    _ratings.removeWhere((key, _) => key > lastUserIndex);
+
+    setState(() {});
+
+    // Re-send without duplicating the user bubble.
+    _regenerate(userText);
+  }
+
+  Future<void> _regenerate(String userText) async {
+    if (_isLoading) return;
+
+    final resolvedMode = _router.resolve(
+      message: userText,
+      selectedMode: _mode,
+    );
+
+    setState(() {
+      _isLoading = true;
+      _requestCancelled = false;
+    });
+
+    await _persistMessages();
+    _scrollToBottom();
+
+    try {
+      final settings = AppSettingsManager.instance;
+
+      final baseSystem = _router.systemPromptFor(resolvedMode);
+      final languagePrompt = settings.languagePrompt();
+      final detailPrompt = settings.responseDetailPrompt();
+
+      final combinedSystem = [
+        baseSystem,
+        if (languagePrompt.isNotEmpty) languagePrompt,
+        if (detailPrompt.isNotEmpty) detailPrompt,
+      ].join('\n\n');
+
+      final memoryContext = _memory.buildRelevantContext(userText);
+
+      final conversation = <GrokMessage>[
+        GrokMessage(
+          role: 'system',
+          content: combinedSystem,
+        ),
+      ];
+
+      if (memoryContext.isNotEmpty) {
+        conversation.add(
+          GrokMessage(
+            role: 'system',
+            content:
+                'Relevant memory about the user:\n'
+                '$memoryContext\n\n'
+                'Use this information only when it is directly '
+                'relevant to the current request.',
+          ),
+        );
+      }
+
+      conversation.addAll(
+        _messages
+            .where((m) => !m.isError)
+            .map(
+              (m) => GrokMessage(
+                role: m.isUser ? 'user' : 'assistant',
+                content: m.text,
+              ),
+            ),
+      );
+
+      final result = await _grok.sendMessage(messages: conversation);
+
+      if (!mounted || _requestCancelled) return;
+
+      setState(() {
+        _messages.add(
+          _ChatMessage(text: result.content, isUser: false),
+        );
+      });
+
+      await _persistMessages();
+      _scrollToBottom();
+    } catch (error) {
+      if (!mounted || _requestCancelled) return;
+
+      setState(() {
+        _messages.add(
+          _ChatMessage(
+            text: _cleanError(error),
+            isUser: false,
+            isError: true,
+          ),
+        );
+      });
+
+      _scrollToBottom();
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
   void _retryLastMessage() {
     if (_isLoading || _messages.isEmpty) return;
 
@@ -321,7 +511,7 @@ class _ChatScreenState extends State<ChatScreen>
 
     setState(() {});
 
-    _sendMessage(lastUserMessage.text);
+    _regenerate(lastUserMessage.text);
   }
 
   void _scrollToBottom() {
@@ -856,7 +1046,15 @@ class _ChatScreenState extends State<ChatScreen>
                         return _WeuraThinking(colors: colors);
                       }
 
-                      return _messageBubble(colors, _messages[index]);
+                      final isLastAssistant = !_messages[index].isUser &&
+                          index == _messages.length - 1;
+
+                      return _messageBubble(
+                        colors,
+                        _messages[index],
+                        index,
+                        isLastAssistant,
+                      );
                     },
                   ),
           ),
@@ -921,7 +1119,12 @@ class _ChatScreenState extends State<ChatScreen>
     );
   }
 
-  Widget _messageBubble(WeuraColors colors, _ChatMessage message) {
+  Widget _messageBubble(
+    WeuraColors colors,
+    _ChatMessage message,
+    int index,
+    bool isLastAssistant,
+  ) {
     final alignment = message.isUser
         ? Alignment.centerRight
         : Alignment.centerLeft;
@@ -935,64 +1138,160 @@ class _ChatScreenState extends State<ChatScreen>
       child: Container(
         constraints: const BoxConstraints(maxWidth: 650),
         margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 13,
-        ),
-        decoration: BoxDecoration(
-          color: background,
-          borderRadius: BorderRadius.circular(18),
-          border: message.isUser
-              ? null
-              : Border.all(
-                  color: message.isError
-                      ? colors.danger.withValues(alpha: 0.35)
-                      : colors.border,
-                ),
-        ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: message.isUser
+              ? CrossAxisAlignment.end
+              : CrossAxisAlignment.start,
           children: [
-            if (message.isUser)
-              SelectableText(
-                message.text,
-                style: TextStyle(
-                  color: colors.userBubbleText,
-                  fontSize: 15.5,
-                  height: 1.5,
-                ),
-              )
-            else
-              MarkdownBody(
-                data: message.text,
-                selectable: true,
-                styleSheet: _markdownStyle(colors),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 13,
               ),
-            if (message.isError) ...[
-              const SizedBox(height: 10),
-              GestureDetector(
-                onTap: _retryLastMessage,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    SvgPicture.asset(
-                      'assets/icons/history.svg',
-                      width: 18,
-                      height: 18,
-                    ),
-                    const SizedBox(width: 7),
-                    Text(
-                      'Retry',
-                      style: TextStyle(
-                        color: colors.accentGlow,
-                        fontWeight: FontWeight.w600,
+              decoration: BoxDecoration(
+                color: background,
+                borderRadius: BorderRadius.circular(18),
+                border: message.isUser
+                    ? null
+                    : Border.all(
+                        color: message.isError
+                            ? colors.danger.withValues(alpha: 0.35)
+                            : colors.border,
                       ),
+              ),
+              child: message.isUser
+                  ? SelectableText(
+                      message.text,
+                      style: TextStyle(
+                        color: colors.userBubbleText,
+                        fontSize: 15.5,
+                        height: 1.5,
+                      ),
+                    )
+                  : MarkdownBody(
+                      data: message.text,
+                      selectable: true,
+                      styleSheet: _markdownStyle(colors),
                     ),
-                  ],
+            ),
+
+            // Action bar (assistant messages only, non-error)
+            if (!message.isUser && !message.isError)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: _actionBar(
+                  colors,
+                  message,
+                  index,
+                  isLastAssistant,
                 ),
               ),
-            ],
+
+            // Retry (error messages only)
+            if (message.isError)
+              Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: GestureDetector(
+                  onTap: _retryLastMessage,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SvgPicture.asset(
+                        'assets/icons/history.svg',
+                        width: 18,
+                        height: 18,
+                      ),
+                      const SizedBox(width: 7),
+                      Text(
+                        'Retry',
+                        style: TextStyle(
+                          color: colors.accentGlow,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _actionBar(
+    WeuraColors colors,
+    _ChatMessage message,
+    int index,
+    bool isLastAssistant,
+  ) {
+    final rating = _ratings[index];
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _actionIcon(
+          colors: colors,
+          asset: 'assets/icons/file.svg',
+          tooltip: 'Copy',
+          onPressed: () => _copyMessage(message.text),
+        ),
+        const SizedBox(width: 2),
+        _actionIcon(
+          colors: colors,
+          asset: 'assets/icons/check.svg',
+          tooltip: 'Good response',
+          active: rating == 'up',
+          onPressed: () => _rateMessage(index, 'up'),
+        ),
+        const SizedBox(width: 2),
+        _actionIcon(
+          colors: colors,
+          asset: 'assets/icons/close.svg',
+          tooltip: 'Bad response',
+          active: rating == 'down',
+          onPressed: () => _rateMessage(index, 'down'),
+        ),
+        if (isLastAssistant) ...[
+          const SizedBox(width: 2),
+          _actionIcon(
+            colors: colors,
+            asset: 'assets/icons/history.svg',
+            tooltip: 'Regenerate',
+            onPressed: _regenerateLast,
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _actionIcon({
+    required WeuraColors colors,
+    required String asset,
+    required String tooltip,
+    required VoidCallback onPressed,
+    bool active = false,
+  }) {
+    return IconButton(
+      tooltip: tooltip,
+      onPressed: onPressed,
+      splashRadius: 16,
+      padding: const EdgeInsets.all(6),
+      constraints: const BoxConstraints(
+        minWidth: 32,
+        minHeight: 32,
+      ),
+      icon: AnimatedOpacity(
+        duration: const Duration(milliseconds: 140),
+        opacity: active ? 1 : 0.55,
+        child: SvgPicture.asset(
+          asset,
+          width: 16,
+          height: 16,
+          colorFilter: ColorFilter.mode(
+            active ? colors.accentGlow : colors.textSecondary,
+            BlendMode.srcIn,
+          ),
         ),
       ),
     );
