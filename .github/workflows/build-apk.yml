@@ -66,34 +66,28 @@ jobs:
         working-directory: WEURA
         run: |
           MANIFEST="android/app/src/main/AndroidManifest.xml"
-
           if [ ! -f "$MANIFEST" ]; then
             echo "Manifest not found!"
             exit 1
           fi
 
-          # Add RECORD_AUDIO if missing
+          # Add permissions
           if ! grep -q "android.permission.RECORD_AUDIO" "$MANIFEST"; then
             sed -i 's|<manifest[^>]*>|&\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>|' "$MANIFEST"
-            echo "Added RECORD_AUDIO"
           fi
-
-          # Add INTERNET if missing
           if ! grep -q "android.permission.INTERNET" "$MANIFEST"; then
             sed -i 's|<manifest[^>]*>|&\n    <uses-permission android:name="android.permission.INTERNET"/>|' "$MANIFEST"
-            echo "Added INTERNET"
           fi
-
-          # Add BLUETOOTH permissions
           if ! grep -q "android.permission.BLUETOOTH" "$MANIFEST"; then
             sed -i 's|<manifest[^>]*>|&\n    <uses-permission android:name="android.permission.BLUETOOTH"/>\n    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"/>\n    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>|' "$MANIFEST"
-            echo "Added BLUETOOTH"
+          fi
+          if ! grep -q "WRITE_EXTERNAL_STORAGE" "$MANIFEST"; then
+            sed -i 's|<manifest[^>]*>|&\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29"/>\n    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>|' "$MANIFEST"
           fi
 
-          # Add <queries> block for speech recognition
+          # Add queries for speech recognition
           if ! grep -q "android.speech.RecognitionService" "$MANIFEST"; then
             sed -i 's|<application|    <queries>\n        <intent>\n            <action android:name="android.speech.RecognitionService" />\n        </intent>\n    </queries>\n\n    <application|' "$MANIFEST"
-            echo "Added queries block"
           fi
 
           echo "=== Final Manifest ==="
