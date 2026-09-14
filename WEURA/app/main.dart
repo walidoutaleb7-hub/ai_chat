@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'core/Settings/app_settings.dart';
+import 'core/Theme/weura_theme.dart';
 import 'screens/Home/home.dart';
 import 'screens/Splash/splash.dart';
 import 'services/Storage/storage_service.dart';
@@ -28,8 +29,8 @@ class WeuraApp extends StatelessWidget {
           debugShowCheckedModeBanner: false,
           title: 'WEURA AI',
           themeMode: settings.themeMode,
-          theme: _buildLightTheme(),
-          darkTheme: _buildDarkTheme(),
+          theme: weuraLightTheme(),
+          darkTheme: weuraDarkTheme(),
           builder: (context, child) {
             return Directionality(
               textDirection: settings.textDirection,
@@ -39,32 +40,6 @@ class WeuraApp extends StatelessWidget {
           home: const _WeuraEntry(),
         );
       },
-    );
-  }
-
-  ThemeData _buildDarkTheme() {
-    return ThemeData(
-      brightness: Brightness.dark,
-      scaffoldBackgroundColor: const Color(0xFF07070C),
-      fontFamily: 'sans',
-      useMaterial3: true,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: const Color(0xFF315DFF),
-        brightness: Brightness.dark,
-      ),
-    );
-  }
-
-  ThemeData _buildLightTheme() {
-    return ThemeData(
-      brightness: Brightness.light,
-      scaffoldBackgroundColor: const Color(0xFFF5F6FA),
-      fontFamily: 'sans',
-      useMaterial3: true,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: const Color(0xFF315DFF),
-        brightness: Brightness.light,
-      ),
     );
   }
 }
