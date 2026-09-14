@@ -73,6 +73,65 @@ jobs:
           echo "assets/logo:"
           ls -la assets/logo
 
+      - name: Patch AndroidManifest for voice + permissions
+        working-directory: WEURA
+        run: |
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+
+          if [ ! -f "$MANIFEST" ]; then
+            echo "Manifest not found!"
+            exit 1
+          fi
+
+          python3 - <<'PY'
+import re
+path = "android/app/src/main/AndroidManifest.xml"
+src = open(path, encoding="utf-8").read()
+
+# --- 1. Ensure RECORD_AUDIO + INTERNET + BLUETOOTH permissions ---
+needed_perms = [
+    "android.permission.RECORD_AUDIO",
+    "android.permission.INTERNET",
+    "android.permission.BLUETOOTH",
+    "android.permission.BLUETOOTH_ADMIN",
+    "android.permission.BLUETOOTH_CONNECT",
+]
+
+for perm in needed_perms:
+    if perm not in src:
+        tag = f'<uses-permission android:name="{perm}"/>'
+        # Insert right after <manifest ...> opening tag
+        m = re.search(r"(<manifest[^>]*>)", src)
+        if m:
+            src = src[:m.end()] + "\n    " + tag + src[m.end():]
+            print(f"Added permission: {perm}")
+        else:
+            print("Manifest opening tag not found!")
+
+# --- 2. Ensure <queries> block for speech recognition ---
+if "<queries>" not in src:
+    queries_block = (
+        "\n    <queries>\n"
+        "        <intent>\n"
+        '            <action android:name="android.speech.RecognitionService" />\n'
+        "        </intent>\n"
+        "    </queries>\n"
+    )
+    # Insert before <application
+    m = re.search(r"(<application)", src)
+    if m:
+        src = src[:m.start()] + queries_block + src[m.start():]
+        print("Added <queries> block for speech.")
+    else:
+        print("<application> tag not found!")
+
+open(path, "w", encoding="utf-8").write(src)
+print("AndroidManifest patched.")
+PY
+
+          echo "=== Final AndroidManifest.xml ==="
+          cat "$MANIFEST"
+
       - name: Install dependencies
         working-directory: WEURA
         run: flutter pub get
