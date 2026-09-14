@@ -96,6 +96,8 @@ class AppSettingsManager extends ChangeNotifier {
     ]);
   }
 
+  /// Response-detail fragment injected into the system prompt.
+  /// Empty when "Auto" is selected.
   String responseDetailPrompt() {
     switch (_responseDetail) {
       case ResponseDetail.auto:
@@ -111,14 +113,18 @@ class AppSettingsManager extends ChangeNotifier {
     }
   }
 
+  /// Language fragment injected into the system prompt.
+  ///
+  /// - "Arabic"  -> force Arabic output regardless of input.
+  /// - "English" -> match the user's message language.
+  /// - "Auto"    -> match the user's message language.
   String languagePrompt() {
     if (_language == 'Arabic') {
-      return 'Always respond in Arabic.';
+      return 'Always respond in Arabic, regardless of the language the '
+          'user writes in.';
     }
-    if (_language == 'English') {
-      return 'Always respond in English.';
-    }
-    return '';
+    return 'Always match the language and dialect of the user\'s last '
+        'message.';
   }
 
   static ThemeMode _parseTheme(String? raw) {
