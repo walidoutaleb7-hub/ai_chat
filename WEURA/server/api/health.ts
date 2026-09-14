@@ -2,20 +2,20 @@ import express from 'express';
 
 const router = express.Router();
 
+function activeProvider(): string {
+  if (process.env.CEREBRAS_API_KEY?.trim()) return 'cerebras';
+  if (process.env.GROQ_API_KEY?.trim()) return 'groq';
+  return 'none';
+}
+
 router.get('/health', (_req, res) => {
-  const groqConfigured = Boolean(
-    process.env.GROQ_API_KEY?.trim(),
-  );
+  const provider = activeProvider();
 
   const searchConfigured = Boolean(
     process.env.TAVILY_API_KEY?.trim(),
   );
 
-  const footballConfigured = Boolean(
-    process.env.FOOTBALL_DATA_API_KEY?.trim(),
-  );
-
-  const ready = groqConfigured;
+  const ready = provider !== 'none';
 
   return res.status(ready ? 200 : 503).json({
     success: ready,
@@ -23,15 +23,8 @@ router.get('/health', (_req, res) => {
     status: ready ? 'connected' : 'misconfigured',
 
     services: {
-      groq: groqConfigured
-        ? 'configured'
-        : 'missing_api_key',
-
+      ai: provider === 'none' ? 'missing_api_key' : `configured (${provider})`,
       search: searchConfigured
-        ? 'configured'
-        : 'not_configured',
-
-      football: footballConfigured
         ? 'configured'
         : 'not_configured',
     },
@@ -47,6 +40,8 @@ router.get('/health', (_req, res) => {
 });
 
 router.get('/status', (_req, res) => {
+  const provider = activeProvider();
+
   return res.json({
     success: true,
     service: 'WEURA AI',
@@ -54,18 +49,13 @@ router.get('/status', (_req, res) => {
     status: 'online',
 
     provider: {
-      name: 'Groq',
-      configured: Boolean(
-        process.env.GROQ_API_KEY?.trim(),
-      ),
+      name: provider,
+      configured: provider !== 'none',
     },
 
     tools: {
       search: Boolean(
         process.env.TAVILY_API_KEY?.trim(),
-      ),
-      football: Boolean(
-        process.env.FOOTBALL_DATA_API_KEY?.trim(),
       ),
       calculator: true,
       memory: true,
