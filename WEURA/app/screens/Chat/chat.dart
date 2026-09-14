@@ -40,11 +40,15 @@ class _ChatMessage {
     required this.text,
     required this.isUser,
     this.isError = false,
+    this.imageUrl,
+    this.imagePrompt,
   });
 
   final String text;
   final bool isUser;
   final bool isError;
+  final String? imageUrl;
+  final String? imagePrompt;
 }
 
 class _ChatScreenState extends State<ChatScreen>
@@ -196,10 +200,12 @@ class _ChatScreenState extends State<ChatScreen>
     session.messages.clear();
     for (final msg in _messages) {
       if (msg.isError) continue;
-      if (msg.text.trim().isEmpty) continue;
+      if (msg.text.trim().isEmpty && msg.imageUrl == null) continue;
       session.messages.add(
         ChatMessageData(
-          text: msg.text,
+          text: msg.imageUrl != null
+              ? '🖼️ ${msg.imagePrompt ?? ''}'
+              : msg.text,
           isUser: msg.isUser,
           timestamp: DateTime.now(),
         ),
@@ -231,11 +237,158 @@ class _ChatScreenState extends State<ChatScreen>
     } catch (_) {}
   }
 
+  // ---------------------------------------------------------------------------
+  // Image generation
+  // ---------------------------------------------------------------------------
+
+  String? _detectImageIntent(String message) {
+    final text = message.trim();
+    final lower = text.toLowerCase();
+
+    const arabicTriggers = [
+      'ارسم لي', 'ارسملي', 'ارسم لنا', 'ارسم',
+      'رسم لي', 'رسملي', 'رسم',
+      'أنشئ لي صورة', 'انشئ لي صورة', 'أنشئلي صورة', 'انشئلي صورة',
+      'أنشئ صورة', 'انشئ صورة',
+      'أنشئ لي رسمة', 'انشئ لي رسمة', 'أنشئ رسمة', 'انشئ رسمة',
+      'أنشئ لي تصميم', 'انشئ لي تصميم', 'أنشئ تصميم', 'انشئ تصميم',
+      'أنشئ لي خلفية', 'انشئ لي خلفية',
+      'أنشئ لي شعار', 'انشئ لي شعار',
+      'صمم لي', 'صمملي', 'صمم لنا', 'صمم',
+      'صممي لي', 'صمميلي', 'صممي',
+      'اعمل لي صورة', 'اعملي صورة', 'اعمل صورة', 'اعمللي صورة',
+      'اعمل لي رسمة', 'اعمللي رسمة',
+      'اعمل لي تصميم', 'اعمللي تصميم',
+      'اعمل لي شعار', 'اعمللي شعار',
+      'اعمل لي خلفية', 'اعمللي خلفية',
+      'سوي لي صورة', 'سويلي صورة', 'سوي صورة', 'سويلي',
+      'سوي لي رسمة', 'سويلي رسمة',
+      'سوي لي تصميم', 'سويلي تصميم',
+      'دير لي صورة', 'ديرلي صورة', 'دير صورة',
+      'دير لي رسمة', 'ديرلي رسمة',
+      'ولد لي صورة', 'ولدي صورة', 'ولد صورة', 'ولدلي صورة',
+      'ولد لي رسمة', 'ولدي رسمة', 'ولد رسمة',
+      'ولد لي تصميم', 'ولدي تصميم',
+      'وريني صورة', 'ورينيلي صورة', 'وريني رسمة', 'ورينيلي رسمة',
+      'وريني',
+      'صورة لـ', 'صورة ل', 'صورة عن', 'صورة من',
+      'رسمة لـ', 'رسمة ل', 'رسمة عن',
+      'تصميم لـ', 'تصميم ل', 'تصميم عن',
+      'شعار لـ', 'شعار ل',
+      'خلفية لـ', 'خلفية ل',
+      'تقدر ترسم', 'تقدر ترسملي', 'تقدر تصمملي', 'تقدر تعملي صورة',
+      'تقدر تعمل لي صورة', 'تقدر تولد', 'تقدر تسويلي',
+      'واش تقدر ترسم', 'واش تقدر تصمم',
+      'حضّرلي صورة', 'حضرلي صورة',
+      'جيبلي صورة', 'جيب لي صورة',
+      'جبلنا صورة', 'جبلنا', 'جيبلي',
+    ];
+
+    const englishTriggers = [
+      'draw me ', 'draw us ', 'draw ',
+      'generate an image of ', 'generate an image ', 'generate a picture of ',
+      'generate image of ', 'generate image ', 'generate a photo of ',
+      'generate a picture ', 'generate me ',
+      'create an image of ', 'create an image ', 'create a picture of ',
+      'create image of ', 'create image ', 'create a photo of ',
+      'create a picture ', 'create me ',
+      'make me an image of ', 'make me an image ', 'make me a picture of ',
+      'make me a picture ', 'make an image of ', 'make a picture of ',
+      'make a picture ', 'make me a drawing of ', 'make me a drawing ',
+      'make me a wallpaper ', 'make me a logo of ', 'make me a logo ',
+      'show me an image of ', 'show me a picture of ', 'show me an image ',
+      'produce an image of ', 'produce image of ',
+      'render an image of ', 'render ',
+      'design me a ', 'design me an ', 'design a logo ',
+      'design an image ', 'design a picture ',
+      'paint me ', 'paint a ', 'paint an ',
+      'sketch me ', 'sketch a ', 'sketch an ',
+      'illustrate ', 'illustration of ',
+      'can you draw ', 'can you generate ', 'can you create an image ',
+      'could you draw ', 'could you generate ',
+      'picture of ', 'image of ', 'photo of ',
+      'wallpaper of ', 'poster of ', 'banner of ',
+    ];
+
+    final sortedArabic = [...arabicTriggers]
+      ..sort((a, b) => b.length.compareTo(a.length));
+
+    for (final trigger in sortedArabic) {
+      final idx = text.indexOf(trigger);
+      if (idx != -1) {
+        final prompt = text.substring(idx + trigger.length).trim();
+        final cleaned = prompt
+            .replaceFirst(RegExp(r'^[\s:\-,\.]+'), '')
+            .trim();
+        if (cleaned.length >= 2) return cleaned;
+      }
+    }
+
+    final sortedEnglish = [...englishTriggers]
+      ..sort((a, b) => b.length.compareTo(a.length));
+
+    for (final trigger in sortedEnglish) {
+      final idx = lower.indexOf(trigger);
+      if (idx != -1) {
+        final prompt = text.substring(idx + trigger.length).trim();
+        final cleaned = prompt
+            .replaceFirst(RegExp(r'^[\s:\-,\.]+'), '')
+            .trim();
+        if (cleaned.length >= 2) return cleaned;
+      }
+    }
+
+    return null;
+  }
+
+  String _buildPollinationsUrl(String prompt) {
+    final encoded = Uri.encodeComponent(prompt);
+    final seed = DateTime.now().millisecondsSinceEpoch % 999983;
+    return 'https://image.pollinations.ai/prompt/$encoded'
+        '?width=1024&height=1024&seed=$seed&model=flux&nologo=true';
+  }
+
+  Future<void> _handleImageGeneration(
+    String userMessage,
+    String prompt,
+  ) async {
+    await _ensureSession(userMessage);
+
+    final imageUrl = _buildPollinationsUrl(prompt);
+
+    setState(() {
+      _messages.add(_ChatMessage(text: userMessage, isUser: true));
+      _messages.add(
+        _ChatMessage(
+          text: '',
+          isUser: false,
+          imageUrl: imageUrl,
+          imagePrompt: prompt,
+        ),
+      );
+      _isLoading = false;
+    });
+
+    await _persistMessages();
+    _scrollToBottom();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Send
+  // ---------------------------------------------------------------------------
+
   Future<void> _sendMessage(String text) async {
     if (_isLoading) return;
 
     final message = text.trim();
     if (message.isEmpty) return;
+
+    final imagePrompt = _detectImageIntent(message);
+    if (imagePrompt != null) {
+      await _maybeStoreMemory(message);
+      await _handleImageGeneration(message, imagePrompt);
+      return;
+    }
 
     final resolvedMode = _router.resolve(
       message: message,
@@ -287,7 +440,7 @@ class _ChatScreenState extends State<ChatScreen>
       }
 
       final recent = _messages
-          .where((m) => !m.isError)
+          .where((m) => !m.isError && m.imageUrl == null)
           .where((m) => m.text.trim().isNotEmpty)
           .toList();
 
@@ -392,7 +545,6 @@ class _ChatScreenState extends State<ChatScreen>
         _messages.where((m) => m.isUser).toList();
     if (userMessages.isEmpty) return;
 
-    final lastUserMessage = userMessages.last;
     _messages.removeWhere((m) => !m.isUser && m.isError);
     setState(() {});
 
@@ -1038,6 +1190,10 @@ class _ChatScreenState extends State<ChatScreen>
     int index,
     bool isLastAssistant,
   ) {
+    if (message.imageUrl != null) {
+      return _imageBubble(colors, message, index);
+    }
+
     final alignment =
         message.isUser ? Alignment.centerRight : Alignment.centerLeft;
     final background =
@@ -1133,6 +1289,109 @@ class _ChatScreenState extends State<ChatScreen>
                   ),
                 ),
               ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _imageBubble(
+    WeuraColors colors,
+    _ChatMessage message,
+    int index,
+  ) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 650),
+        margin: const EdgeInsets.only(bottom: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (message.imagePrompt != null &&
+                message.imagePrompt!.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(left: 4, bottom: 8),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 22,
+                      height: 22,
+                      decoration: BoxDecoration(
+                        color: colors.accentSoft,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Icon(
+                        Icons.image_outlined,
+                        size: 14,
+                        color: colors.accentGlow,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        message.imagePrompt!,
+                        style: TextStyle(
+                          color: colors.textSecondary,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: colors.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: colors.border),
+                ),
+                child: _NetworkImageWithLoader(
+                  url: message.imageUrl!,
+                  colors: colors,
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _actionIcon(
+                    colors: colors,
+                    icon: Icons.download_rounded,
+                    tooltip: 'Save URL',
+                    onPressed: () =>
+                        _copyMessage(message.imageUrl ?? ''),
+                  ),
+                  _actionIcon(
+                    colors: colors,
+                    icon: Icons.refresh_rounded,
+                    tooltip: 'Regenerate',
+                    onPressed: () {
+                      if (message.imagePrompt == null) return;
+                      final idx = _messages.indexOf(message);
+                      if (idx == -1) return;
+
+                      final newUrl =
+                          _buildPollinationsUrl(message.imagePrompt!);
+
+                      setState(() {
+                        _messages[idx] = _ChatMessage(
+                          text: '',
+                          isUser: false,
+                          imageUrl: newUrl,
+                          imagePrompt: message.imagePrompt,
+                        );
+                      });
+                    },
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -1464,6 +1723,110 @@ class _ChatScreenState extends State<ChatScreen>
       ),
       tableBorder: TableBorder.all(color: colors.borderStrong),
       tableCellsPadding: const EdgeInsets.all(8),
+    );
+  }
+}
+
+class _NetworkImageWithLoader extends StatelessWidget {
+  const _NetworkImageWithLoader({
+    required this.url,
+    required this.colors,
+  });
+
+  final String url;
+  final WeuraColors colors;
+
+  @override
+  Widget build(BuildContext context) {
+    return Image.network(
+      url,
+      fit: BoxFit.cover,
+      loadingBuilder: (context, child, progress) {
+        if (progress == null) return child;
+
+        final total = progress.expectedTotalBytes;
+        final loaded = progress.cumulativeBytesLoaded;
+        final pct = (total != null && total > 0)
+            ? (loaded / total)
+            : null;
+
+        return Container(
+          width: 300,
+          height: 300,
+          padding: const EdgeInsets.all(20),
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 44,
+                  height: 44,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 3,
+                    color: colors.accentGlow,
+                    value: pct,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  pct != null
+                      ? 'Generating... ${(pct * 100).toInt()}%'
+                      : 'Generating image...',
+                  style: TextStyle(
+                    color: colors.textMuted,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'This can take 5-15 seconds',
+                  style: TextStyle(
+                    color: colors.textFaint,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+      errorBuilder: (context, error, stackTrace) {
+        return Container(
+          width: 300,
+          height: 200,
+          padding: const EdgeInsets.all(20),
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.broken_image_outlined,
+                  size: 44,
+                  color: colors.danger,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Image generation failed',
+                  style: TextStyle(
+                    color: colors.danger,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Try again with a different prompt',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: colors.textMuted,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }
