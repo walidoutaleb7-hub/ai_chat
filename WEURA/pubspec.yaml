@@ -29,6 +29,12 @@ dependencies:
   # Voice input (speech-to-text)
   speech_to_text: ^7.0.0
 
+  # Voice output (text-to-speech)
+  flutter_tts: ^4.2.0
+
+  # Share assistant messages
+  share_plus: ^10.1.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
