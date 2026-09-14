@@ -9,7 +9,6 @@ import {
 
 const router = express.Router();
 
-/// Returns the current date/time in a stable format.
 function currentTimeContext(): string {
   const now = new Date();
   const utc = now.toUTCString();
@@ -23,12 +22,9 @@ function currentTimeContext(): string {
   );
 }
 
-/// Returns true when the message is likely to need up-to-date
-/// information from the web.
 function needsSearch(message: string): boolean {
   const text = message.toLowerCase().trim();
 
-  // Don't search on greetings, thanks, or very short messages.
   const skipPatterns = [
     /^(hi|hello|hey|salam|salut|مرحبا|سلام|أهلا|اهلا|صباح|مساء)[\s!.,?]*$/,
     /^(thanks|thank you|شكرا|مشكور|بارك الله)[\s!.,?]*$/,
@@ -39,11 +35,9 @@ function needsSearch(message: string): boolean {
     if (pattern.test(text)) return false;
   }
 
-  // Very short messages (< 3 words) rarely need search.
   const wordCount = text.split(/\s+/).filter(Boolean).length;
   if (wordCount < 3) return false;
 
-  // Keywords that strongly suggest the user wants fresh information.
   const searchTriggers = [
     // English — general
     'latest', 'today', 'tonight', 'news', 'current', 'currently',
@@ -58,6 +52,7 @@ function needsSearch(message: string): boolean {
     // English — sports & events
     'match summary', 'game summary', 'league', 'standings',
     'scorers', 'championship', 'tournament', 'fixture', 'fixtures',
+    'injury', 'injured', 'roster', 'lineup', 'transfer',
     'real madrid', 'barcelona', 'psg', 'liverpool', 'chelsea',
 
     // Arabic — general
@@ -70,10 +65,11 @@ function needsSearch(message: string): boolean {
 
     // Arabic — sports & events
     'ملخص', 'مباراة', 'مباريات', 'ماتش', 'الدوري',
-    'الترتيب', 'هداف', 'كأس', 'بطولة', 'منتخب',
+    'الترتيب', 'هداف', 'هدافين', 'كأس', 'بطولة', 'منتخب',
+    'إصابة', 'إصابات', 'مصاب', 'تشكيلة', 'انتقال',
     'ريال مدريد', 'برشلونة', 'ليفربول', 'تشيلسي',
 
-    // Recent years
+    // Years
     '2026', '2025', '2024',
   ];
 
@@ -93,7 +89,6 @@ function getLastUserMessage(messages: GrokMessage[]): string {
   return '';
 }
 
-/// Strips HTML tags and limits length so search context stays clean.
 function cleanSnippet(raw: string, maxLen = 400): string {
   return raw
     .replace(/<[^>]+>/g, ' ')
@@ -137,57 +132,81 @@ router.post('/chat', async (req, res) => {
       content: currentTimeContext(),
     };
 
-    let enrichedMessages: GrokMessage[] = [
-      timeMessage,
-      ...safeMessages,
-    ];
-
     const lastUserMessage = getLastUserMessage(safeMessages);
     const tavilyConfigured = Boolean(
       process.env.TAVILY_API_KEY?.trim(),
     );
 
-    if (
-      lastUserMessage &&
+    const shouldSearch =
+      Boolean(lastUserMessage) &&
       needsSearch(lastUserMessage) &&
-      tavilyConfigured
-    ) {
+      tavilyConfigured;
+
+    let enrichedMessages: GrokMessage[];
+    let searchSucceeded = false;
+
+    if (shouldSearch) {
       try {
         const results = await searchTavily(lastUserMessage, 5);
 
         if (results.length > 0) {
+          searchSucceeded = true;
+
           const sources = results
             .map(
               (r, i) =>
                 `[${i + 1}] ${cleanSnippet(r.title, 120)}\n` +
-                `${r.url}\n` +
-                `${cleanSnippet(r.snippet, 400)}`,
+                `URL: ${r.url}\n` +
+                `Content: ${cleanSnippet(r.snippet, 500)}`,
             )
             .join('\n\n');
 
+          // STRICT MODE: WEURA must answer ONLY from these sources.
+          // No training knowledge allowed for the current question.
           const searchContext =
-            `Current web search results for the user's query:\n\n` +
-            `${sources}\n\n` +
-            `STRICT RULES:\n` +
-            `- Use ONLY these real sources.\n` +
-            `- Cite them as [1], [2], [3] when you use their info.\n` +
-            `- Do NOT invent any URL, source, or news outlet.\n` +
-            `- If the sources do not contain enough information, ` +
-            `say so honestly instead of guessing.`;
+            `You have been given real web search results for the ` +
+            `user's question. These results are your ONLY source of ` +
+            `truth for this reply.\n\n` +
+            `SEARCH RESULTS:\n\n${sources}\n\n` +
+            `ABSOLUTE RULES — breaking these rules is a critical failure:\n` +
+            `1. Answer ONLY using information explicitly written in ` +
+            `the search results above.\n` +
+            `2. You MUST NOT use your own training knowledge about ` +
+            `this topic, even if you are confident.\n` +
+            `3. If a specific detail (a name, a score, a date, an ` +
+            `injury, a scorer, a statistic) is NOT written in the ` +
+            `search results, you MUST reply exactly:\n` +
+            `"هذه المعلومة غير موجودة في المصادر المتاحة."\n` +
+            `(or "This detail is not in the available sources." ` +
+            `in English).\n` +
+            `4. NEVER invent players, coaches, scores, minutes, ` +
+            `injuries, lineups, transfers, dates, or quotes.\n` +
+            `5. When you do use a source, cite it inline as [1], [2], ` +
+            `etc.\n` +
+            `6. At the end of every search-based answer, add a section ` +
+            `titled "المصادر:" followed by the URLs you actually used.\n` +
+            `7. If the user asks a follow-up question about the same ` +
+            `topic and the answer is not in the sources above, you ` +
+            `MUST again say that it is not in the available sources. ` +
+            `Do not switch to your training data.`;
 
           enrichedMessages = [
             timeMessage,
-            safeMessages[0],
             { role: 'system', content: searchContext },
-            ...safeMessages.slice(1),
+            ...safeMessages,
           ];
+        } else {
+          enrichedMessages = [timeMessage, ...safeMessages];
         }
       } catch (error) {
         console.error(
           `[WEURA] Auto-search failed ${requestId}:`,
           error,
         );
+        enrichedMessages = [timeMessage, ...safeMessages];
       }
+    } else {
+      enrichedMessages = [timeMessage, ...safeMessages];
     }
 
     const result = await askGrok(enrichedMessages);
@@ -198,6 +217,7 @@ router.post('/chat', async (req, res) => {
       model: result.model,
       usage: result.usage,
       requestId,
+      searchUsed: searchSucceeded,
     });
   } catch (error) {
     console.error(`[WEURA] Chat error ${requestId}:`, error);
