@@ -5,6 +5,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../components/Composer/comppser.dart';
+import '../../components/Voice/voice_input_sheet.dart';
 import '../../core/AI/ai_router.dart';
 import '../../core/History/chat_history.dart';
 import '../../core/Memory/memory_manager.dart';
@@ -969,9 +970,22 @@ class _ChatScreenState extends State<ChatScreen>
     }
   }
 
-  void _handleVoice() {
-    _showMessage(
-      'Voice input will be connected in the Voice step.',
+  /// Opens the voice input bottom sheet. When the user confirms a
+  /// transcript, it is sent as a normal chat message.
+  void _handleVoice(WeuraColors colors) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: colors.surfaceAlt,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (_) {
+        return VoiceInputSheet(
+          onSend: (text) {
+            if (text.trim().isEmpty) return;
+            _sendMessage(text);
+          },
+        );
+      },
     );
   }
 
@@ -1058,7 +1072,7 @@ class _ChatScreenState extends State<ChatScreen>
             onSend: _sendMessage,
             onAttach: () => _showAttachmentSheet(colors),
             onMode: () => _showModePicker(colors),
-            onVoice: _handleVoice,
+            onVoice: () => _handleVoice(colors),
             onStop: _cancelRequest,
           ),
         ],
@@ -1133,9 +1147,6 @@ class _ChatScreenState extends State<ChatScreen>
     return TextDirection.ltr;
   }
 
-  /// Splits the assistant text into the main answer and the sources
-  /// section. Returns `(mainText, sources)` where `sources` is a list
-  /// of URLs extracted from the "المصادر:" / "Sources:" block.
   (String, List<String>) _splitSources(String raw) {
     final markers = <String>['المصادر:', 'المصدر:', 'Sources:', 'Source:'];
 
@@ -1159,7 +1170,6 @@ class _ChatScreenState extends State<ChatScreen>
     final sourcesBlock =
         raw.substring(splitIndex + matchedMarker.length);
 
-    // Extract URLs from the sources block.
     final urlRegex = RegExp(r'https?://[^\s\)\]\>,]+');
     final matches = urlRegex.allMatches(sourcesBlock);
 
@@ -1169,7 +1179,6 @@ class _ChatScreenState extends State<ChatScreen>
         .where((u) => u.isNotEmpty)
         .toList();
 
-    // Deduplicate.
     final seen = <String>{};
     final uniqueUrls = <String>[];
 
@@ -1196,7 +1205,6 @@ class _ChatScreenState extends State<ChatScreen>
 
     final bubbleDirection = _detectDirection(message.text);
 
-    // Parse sources only for assistant, non-error messages.
     final parsed = (!message.isUser && !message.isError)
         ? _splitSources(message.text)
         : (message.text, const <String>[]);
@@ -1249,14 +1257,12 @@ class _ChatScreenState extends State<ChatScreen>
               ),
             ),
 
-            // Sources cards
             if (sources.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 10),
                 child: _sourcesSection(colors, sources),
               ),
 
-            // Action bar
             if (!message.isUser && !message.isError)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
@@ -1268,7 +1274,6 @@ class _ChatScreenState extends State<ChatScreen>
                 ),
               ),
 
-            // Retry (error messages only)
             if (message.isError)
               Padding(
                 padding: const EdgeInsets.only(top: 10),
@@ -1455,16 +1460,15 @@ class _ChatScreenState extends State<ChatScreen>
   }
 
   Color _colorForDomain(String domain) {
-    // Deterministic palette based on domain hash.
     const palette = <Color>[
-      Color(0xFF3B82F6), // blue
-      Color(0xFF8B5CF6), // purple
-      Color(0xFFEC4899), // pink
-      Color(0xFFEF4444), // red
-      Color(0xFFF59E0B), // amber
-      Color(0xFF10B981), // emerald
-      Color(0xFF06B6D4), // cyan
-      Color(0xFF6366F1), // indigo
+      Color(0xFF3B82F6),
+      Color(0xFF8B5CF6),
+      Color(0xFFEC4899),
+      Color(0xFFEF4444),
+      Color(0xFFF59E0B),
+      Color(0xFF10B981),
+      Color(0xFF06B6D4),
+      Color(0xFF6366F1),
     ];
 
     if (domain.isEmpty) return palette[0];
