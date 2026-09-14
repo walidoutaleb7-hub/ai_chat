@@ -8,7 +8,7 @@ router.get('/health', (_req, res) => {
   );
 
   const searchConfigured = Boolean(
-    process.env.SEARCH_API_URL?.trim(),
+    process.env.TAVILY_API_KEY?.trim(),
   );
 
   const ready = groqConfigured;
@@ -54,7 +54,7 @@ router.get('/status', (_req, res) => {
 
     tools: {
       search: Boolean(
-        process.env.SEARCH_API_URL?.trim(),
+        process.env.TAVILY_API_KEY?.trim(),
       ),
       calculator: true,
       memory: true,
