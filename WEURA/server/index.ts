@@ -5,6 +5,7 @@ import cors from 'cors';
 import chatRouter from './api/chat';
 import searchRouter from './api/search';
 import healthRouter from './api/health';
+import imageRouter from './api/image';
 
 const app = express();
 
@@ -69,6 +70,7 @@ app.use(healthRouter);
 
 app.use('/api', chatRouter);
 app.use('/api', searchRouter);
+app.use('/api', imageRouter);
 
 app.use((_req, res) => {
   res.status(404).json({
@@ -102,12 +104,16 @@ const server = app.listen(PORT, HOST, () => {
     process.env.GROQ_API_KEY?.trim(),
   );
 
+  const cerebrasReady = Boolean(
+    process.env.CEREBRAS_API_KEY?.trim(),
+  );
+
   const tavilyReady = Boolean(
     process.env.TAVILY_API_KEY?.trim(),
   );
 
-  const footballReady = Boolean(
-    process.env.FOOTBALL_DATA_API_KEY?.trim(),
+  const hfReady = Boolean(
+    process.env.HUGGINGFACE_API_KEY?.trim(),
   );
 
   console.log('');
@@ -120,13 +126,16 @@ const server = app.listen(PORT, HOST, () => {
   console.log(`Health: /health`);
   console.log(`Status: /status`);
   console.log(
+    `Cerebras: ${cerebrasReady ? 'READY' : 'MISSING'}`,
+  );
+  console.log(
     `Groq:     ${groqReady ? 'READY' : 'MISSING'}`,
   );
   console.log(
     `Tavily:   ${tavilyReady ? 'READY' : 'MISSING'}`,
   );
   console.log(
-    `Football: ${footballReady ? 'READY' : 'MISSING'}`,
+    `HuggingFace: ${hfReady ? 'READY' : 'MISSING'}`,
   );
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('');
