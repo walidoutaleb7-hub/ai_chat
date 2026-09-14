@@ -96,6 +96,7 @@ class _ChatScreenState extends State<ChatScreen>
         _session = existing;
 
         for (final msg in existing.messages) {
+          if (msg.text.trim().isEmpty) continue;
           _messages.add(
             _ChatMessage(text: msg.text, isUser: msg.isUser),
           );
@@ -211,6 +212,7 @@ class _ChatScreenState extends State<ChatScreen>
 
     for (final msg in _messages) {
       if (msg.isError || msg.isStreaming) continue;
+      if (msg.text.trim().isEmpty) continue; // Skip empty bubbles.
       session.messages.add(
         ChatMessageData(
           text: msg.text,
@@ -315,6 +317,7 @@ class _ChatScreenState extends State<ChatScreen>
 
       final recent = _messages
           .where((m) => !m.isError && !m.isStreaming)
+          .where((m) => m.text.trim().isNotEmpty) // Drop empty bubbles
           .toList();
 
       final trimmed = recent.length > 8
@@ -373,6 +376,22 @@ class _ChatScreenState extends State<ChatScreen>
       await completer.future;
 
       if (!mounted) return;
+
+      // If the response is empty (no chunks received), replace with error.
+      if (!_requestCancelled && buffer.toString().trim().isEmpty) {
+        setState(() {
+          _messages.removeLast();
+          _messages.add(
+            const _ChatMessage(
+              text: 'WEURA did not return an answer. Please try again.',
+              isUser: false,
+              isError: true,
+            ),
+          );
+        });
+        _scrollToBottom();
+        return;
+      }
 
       if (_requestCancelled) {
         if (buffer.toString().trim().isEmpty) {
