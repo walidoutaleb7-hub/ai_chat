@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../components/Composer/comppser.dart';
@@ -13,6 +16,7 @@ import '../../core/Settings/app_settings.dart';
 import '../../core/Theme/weura_theme.dart';
 import '../../services/Grok/grok_service.dart';
 import '../../services/Storage/storage_service.dart';
+import '../../services/Voice/voice_output_service.dart';
 import '../History/history.dart';
 import '../Memory/memory.dart';
 import '../Settings/settings.dart';
@@ -38,11 +42,13 @@ class _ChatMessage {
     required this.text,
     required this.isUser,
     this.isError = false,
+    this.isStreaming = false,
   });
 
   final String text;
   final bool isUser;
   final bool isError;
+  final bool isStreaming;
 }
 
 class _ChatScreenState extends State<ChatScreen>
@@ -54,6 +60,7 @@ class _ChatScreenState extends State<ChatScreen>
   final AIRouter _router = const AIRouter();
   final HistoryManager _history = HistoryManager();
   final MemoryManager _memory = MemoryManager();
+  final VoiceOutputService _voiceOut = VoiceOutputService.instance;
 
   late final GrokService _grok;
 
@@ -63,6 +70,7 @@ class _ChatScreenState extends State<ChatScreen>
 
   AIMode _mode = AIMode.auto;
   bool _isLoading = false;
+  StreamSubscription<GrokStreamEvent>? _streamSub;
   bool _requestCancelled = false;
   ChatSession? _session;
 
@@ -73,18 +81,12 @@ class _ChatScreenState extends State<ChatScreen>
   @override
   void initState() {
     super.initState();
-
     _grok = GrokService(baseUrl: _serverUrl);
-
     _initialize();
   }
 
   Future<void> _initialize() async {
-    await Future.wait([
-      _history.load(),
-      _memory.load(),
-    ]);
-
+    await Future.wait([_history.load(), _memory.load()]);
     await _loadRatings();
 
     if (widget.sessionId != null) {
@@ -95,10 +97,7 @@ class _ChatScreenState extends State<ChatScreen>
 
         for (final msg in existing.messages) {
           _messages.add(
-            _ChatMessage(
-              text: msg.text,
-              isUser: msg.isUser,
-            ),
+            _ChatMessage(text: msg.text, isUser: msg.isUser),
           );
         }
 
@@ -127,18 +126,14 @@ class _ChatScreenState extends State<ChatScreen>
           }
         });
       }
-    } catch (_) {
-      // Ignore corrupted feedback data.
-    }
+    } catch (_) {}
   }
 
   Future<void> _saveRatings() async {
     final map = <String, dynamic>{};
-
     _ratings.forEach((key, value) {
       map[key.toString()] = value;
     });
-
     await StorageService.instance.write(_feedbackKey, map);
   }
 
@@ -150,14 +145,12 @@ class _ChatScreenState extends State<ChatScreen>
         _ratings[index] = rating;
       }
     });
-
     _saveRatings();
     HapticFeedback.selectionClick();
   }
 
   Future<void> _copyMessage(String text) async {
     await Clipboard.setData(ClipboardData(text: text));
-
     if (!mounted) return;
 
     ScaffoldMessenger.of(context)
@@ -170,20 +163,43 @@ class _ChatScreenState extends State<ChatScreen>
       );
   }
 
+  Future<void> _shareMessage(String text) async {
+    try {
+      await SharePlus.instance.share(ShareParams(text: text));
+    } catch (_) {
+      if (!mounted) return;
+      _showMessage('Could not share.');
+    }
+  }
+
+  Future<void> _toggleSpeak(int index, String text) async {
+    final id = 'msg_$index';
+
+    if (_voiceOut.speakingId == id) {
+      await _voiceOut.stop();
+      if (mounted) setState(() {});
+      return;
+    }
+
+    setState(() {});
+    await _voiceOut.speak(id: id, text: text);
+    if (mounted) setState(() {});
+  }
+
   @override
   void dispose() {
+    _streamSub?.cancel();
     _scrollController.dispose();
     _grok.dispose();
+    _voiceOut.stop();
     super.dispose();
   }
 
   Future<void> _ensureSession(String firstMessage) async {
     if (_session != null) return;
-
     final title = firstMessage.length > 40
         ? '${firstMessage.substring(0, 40)}...'
         : firstMessage;
-
     _session = await _history.create(title: title);
   }
 
@@ -194,8 +210,7 @@ class _ChatScreenState extends State<ChatScreen>
     session.messages.clear();
 
     for (final msg in _messages) {
-      if (msg.isError) continue;
-
+      if (msg.isError || msg.isStreaming) continue;
       session.messages.add(
         ChatMessageData(
           text: msg.text,
@@ -210,35 +225,17 @@ class _ChatScreenState extends State<ChatScreen>
 
   Future<void> _maybeStoreMemory(String userMessage) async {
     final text = userMessage.toLowerCase().trim();
-
     final triggers = [
-      'remember that',
-      'remember:',
-      'remember ',
-      'note that',
-      'save this',
-      'تذكر أن',
-      'تذكر ان',
-      'تذكر:',
-      'احفظ أن',
-      'احفظ ان',
-      'احفظ:',
-      'خلي في بالك',
-      'خليك فاكر',
-      'سجل أن',
-      'سجل ان',
+      'remember that', 'remember:', 'remember ', 'note that', 'save this',
+      'تذكر أن', 'تذكر ان', 'تذكر:', 'احفظ أن', 'احفظ ان', 'احفظ:',
+      'خلي في بالك', 'خليك فاكر', 'سجل أن', 'سجل ان',
     ];
 
     String? content;
-
     for (final trigger in triggers) {
       final index = text.indexOf(trigger);
-
       if (index != -1) {
-        content = userMessage
-            .substring(index + trigger.length)
-            .trim();
-
+        content = userMessage.substring(index + trigger.length).trim();
         break;
       }
     }
@@ -247,9 +244,7 @@ class _ChatScreenState extends State<ChatScreen>
 
     try {
       await _memory.add(content);
-    } catch (_) {
-      // Memory storage failures must never break the chat.
-    }
+    } catch (_) {}
   }
 
   Future<void> _sendMessage(String text) async {
@@ -268,6 +263,9 @@ class _ChatScreenState extends State<ChatScreen>
 
     setState(() {
       _messages.add(_ChatMessage(text: message, isUser: true));
+      _messages.add(
+        const _ChatMessage(text: '', isUser: false, isStreaming: true),
+      );
       _isLoading = true;
       _requestCancelled = false;
     });
@@ -275,9 +273,12 @@ class _ChatScreenState extends State<ChatScreen>
     await _persistMessages();
     _scrollToBottom();
 
+    await _runStreaming(resolvedMode);
+  }
+
+  Future<void> _runStreaming(AIMode resolvedMode) async {
     try {
       final settings = AppSettingsManager.instance;
-
       final baseSystem = _router.systemPromptFor(resolvedMode);
       final languagePrompt = settings.languagePrompt();
       final detailPrompt = settings.responseDetailPrompt();
@@ -288,13 +289,15 @@ class _ChatScreenState extends State<ChatScreen>
         if (detailPrompt.isNotEmpty) detailPrompt,
       ].join('\n\n');
 
-      final memoryContext = _memory.buildRelevantContext(message);
+      final lastUser = _messages
+          .lastWhere((m) => m.isUser, orElse: () => _messages.last)
+          .text;
+
+      final memoryContext =
+          _memory.buildRelevantContext(lastUser, maxItems: 3);
 
       final conversation = <GrokMessage>[
-        GrokMessage(
-          role: 'system',
-          content: combinedSystem,
-        ),
+        GrokMessage(role: 'system', content: combinedSystem),
       ];
 
       if (memoryContext.isNotEmpty) {
@@ -310,31 +313,102 @@ class _ChatScreenState extends State<ChatScreen>
         );
       }
 
+      final recent = _messages
+          .where((m) => !m.isError && !m.isStreaming)
+          .toList();
+
+      final trimmed = recent.length > 8
+          ? recent.sublist(recent.length - 8)
+          : recent;
+
       conversation.addAll(
-        _messages
-            .where((m) => !m.isError)
-            .map(
-              (m) => GrokMessage(
-                role: m.isUser ? 'user' : 'assistant',
-                content: m.text,
-              ),
-            ),
+        trimmed.map(
+          (m) => GrokMessage(
+            role: m.isUser ? 'user' : 'assistant',
+            content: m.text,
+          ),
+        ),
       );
 
-      final result = await _grok.sendMessage(messages: conversation);
+      final buffer = StringBuffer();
 
-      if (!mounted || _requestCancelled) return;
+      final completer = Completer<void>();
 
-      setState(() {
-        _messages.add(
-          _ChatMessage(text: result.content, isUser: false),
-        );
-      });
+      _streamSub = _grok
+          .streamMessage(messages: conversation)
+          .listen(
+        (event) {
+          if (_requestCancelled) return;
+
+          if (event.isDone) {
+            if (!completer.isCompleted) completer.complete();
+            return;
+          }
+
+          buffer.write(event.text);
+
+          if (!mounted) return;
+
+          setState(() {
+            final idx = _messages.length - 1;
+            _messages[idx] = _ChatMessage(
+              text: buffer.toString(),
+              isUser: false,
+              isStreaming: true,
+            );
+          });
+
+          _scrollToBottom();
+        },
+        onError: (error) {
+          if (!completer.isCompleted) {
+            completer.completeError(error);
+          }
+        },
+        onDone: () {
+          if (!completer.isCompleted) completer.complete();
+        },
+        cancelOnError: true,
+      );
+
+      await completer.future;
+
+      if (!mounted) return;
+
+      if (_requestCancelled) {
+        // Remove the empty placeholder if the user cancelled early.
+        if (buffer.toString().trim().isEmpty) {
+          setState(() {
+            _messages.removeLast();
+          });
+        } else {
+          setState(() {
+            final idx = _messages.length - 1;
+            _messages[idx] = _ChatMessage(
+              text: buffer.toString(),
+              isUser: false,
+            );
+          });
+        }
+      } else {
+        setState(() {
+          final idx = _messages.length - 1;
+          _messages[idx] = _ChatMessage(
+            text: buffer.toString(),
+            isUser: false,
+          );
+        });
+      }
 
       await _persistMessages();
       _scrollToBottom();
     } catch (error) {
-      if (!mounted || _requestCancelled) return;
+      if (!mounted) return;
+
+      // Replace the streaming placeholder with an error message.
+      if (_messages.isNotEmpty && _messages.last.isStreaming) {
+        _messages.removeLast();
+      }
 
       setState(() {
         _messages.add(
@@ -348,6 +422,7 @@ class _ChatScreenState extends State<ChatScreen>
 
       _scrollToBottom();
     } finally {
+      _streamSub = null;
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -359,10 +434,15 @@ class _ChatScreenState extends State<ChatScreen>
   void _cancelRequest() {
     if (!_isLoading) return;
 
-    setState(() {
-      _requestCancelled = true;
-      _isLoading = false;
-    });
+    _requestCancelled = true;
+    _streamSub?.cancel();
+    _streamSub = null;
+
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 
   String _cleanError(Object error) {
@@ -390,132 +470,45 @@ class _ChatScreenState extends State<ChatScreen>
     _messages.removeRange(lastUserIndex + 1, _messages.length);
     _ratings.removeWhere((key, _) => key > lastUserIndex);
 
-    setState(() {});
-
-    _regenerate(userText);
-  }
-
-  Future<void> _regenerate(String userText) async {
-    if (_isLoading) return;
-
     final resolvedMode = _router.resolve(
       message: userText,
       selectedMode: _mode,
     );
 
     setState(() {
+      _messages.add(
+        const _ChatMessage(text: '', isUser: false, isStreaming: true),
+      );
       _isLoading = true;
       _requestCancelled = false;
     });
 
-    await _persistMessages();
+    _persistMessages();
     _scrollToBottom();
 
-    try {
-      final settings = AppSettingsManager.instance;
-
-      final baseSystem = _router.systemPromptFor(resolvedMode);
-      final languagePrompt = settings.languagePrompt();
-      final detailPrompt = settings.responseDetailPrompt();
-
-      final combinedSystem = [
-        baseSystem,
-        if (languagePrompt.isNotEmpty) languagePrompt,
-        if (detailPrompt.isNotEmpty) detailPrompt,
-      ].join('\n\n');
-
-      final memoryContext = _memory.buildRelevantContext(userText);
-
-      final conversation = <GrokMessage>[
-        GrokMessage(
-          role: 'system',
-          content: combinedSystem,
-        ),
-      ];
-
-      if (memoryContext.isNotEmpty) {
-        conversation.add(
-          GrokMessage(
-            role: 'system',
-            content:
-                'Relevant memory about the user:\n'
-                '$memoryContext\n\n'
-                'Use this information only when it is directly '
-                'relevant to the current request.',
-          ),
-        );
-      }
-
-      conversation.addAll(
-        _messages
-            .where((m) => !m.isError)
-            .map(
-              (m) => GrokMessage(
-                role: m.isUser ? 'user' : 'assistant',
-                content: m.text,
-              ),
-            ),
-      );
-
-      final result = await _grok.sendMessage(messages: conversation);
-
-      if (!mounted || _requestCancelled) return;
-
-      setState(() {
-        _messages.add(
-          _ChatMessage(text: result.content, isUser: false),
-        );
-      });
-
-      await _persistMessages();
-      _scrollToBottom();
-    } catch (error) {
-      if (!mounted || _requestCancelled) return;
-
-      setState(() {
-        _messages.add(
-          _ChatMessage(
-            text: _cleanError(error),
-            isUser: false,
-            isError: true,
-          ),
-        );
-      });
-
-      _scrollToBottom();
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
+    _runStreaming(resolvedMode);
   }
 
   void _retryLastMessage() {
     if (_isLoading || _messages.isEmpty) return;
 
-    final userMessages =
-        _messages.where((m) => m.isUser).toList();
-
+    final userMessages = _messages.where((m) => m.isUser).toList();
     if (userMessages.isEmpty) return;
 
     final lastUserMessage = userMessages.last;
 
     _messages.removeWhere((m) => !m.isUser && m.isError);
-
     setState(() {});
 
-    _regenerate(lastUserMessage.text);
+    _regenerateLast();
   }
 
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollController.hasClients) return;
-
       _scrollController.animateTo(
         _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 260),
+        duration: const Duration(milliseconds: 200),
         curve: Curves.easeOutCubic,
       );
     });
@@ -536,43 +529,31 @@ class _ChatScreenState extends State<ChatScreen>
 
   void _startNewChat() {
     Navigator.of(context).pop();
-
     if (_messages.isEmpty) return;
 
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (_) => const ChatScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const ChatScreen()),
     );
   }
 
   void _openHistory() {
     Navigator.of(context).pop();
-
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => const HistoryScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const HistoryScreen()),
     );
   }
 
   void _openMemory() {
     Navigator.of(context).pop();
-
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => const MemoryScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const MemoryScreen()),
     );
   }
 
   void _openSettings() {
     Navigator.of(context).pop();
-
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => const SettingsScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const SettingsScreen()),
     );
   }
 
@@ -643,9 +624,7 @@ class _ChatScreenState extends State<ChatScreen>
                 color: colors.accentGlow.withValues(alpha: 0.22),
               ),
             ),
-            child: SvgPicture.asset(
-              'assets/logo/weura.svg',
-            ),
+            child: SvgPicture.asset('assets/logo/weura.svg'),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -755,11 +734,7 @@ class _ChatScreenState extends State<ChatScreen>
             ),
             child: Row(
               children: [
-                SvgPicture.asset(
-                  icon,
-                  width: 22,
-                  height: 22,
-                ),
+                SvgPicture.asset(icon, width: 22, height: 22),
                 const SizedBox(width: 14),
                 Text(
                   label,
@@ -936,9 +911,7 @@ class _ChatScreenState extends State<ChatScreen>
                           )
                         : null,
                     onTap: () {
-                      setState(() {
-                        _mode = mode;
-                      });
+                      setState(() => _mode = mode);
                       Navigator.pop(sheetContext);
                     },
                   );
@@ -970,8 +943,6 @@ class _ChatScreenState extends State<ChatScreen>
     }
   }
 
-  /// Opens the voice input bottom sheet. When the user confirms a
-  /// transcript, it is sent as a normal chat message.
   void _handleVoice(WeuraColors colors) {
     showModalBottomSheet<void>(
       context: context,
@@ -1040,26 +1011,16 @@ class _ChatScreenState extends State<ChatScreen>
                     controller: _scrollController,
                     keyboardDismissBehavior:
                         ScrollViewKeyboardDismissBehavior.onDrag,
-                    padding: const EdgeInsets.fromLTRB(
-                      16,
-                      20,
-                      16,
-                      20,
-                    ),
-                    itemCount:
-                        _messages.length + (_isLoading ? 1 : 0),
+                    padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
+                    itemCount: _messages.length,
                     itemBuilder: (context, index) {
-                      if (_isLoading &&
-                          index == _messages.length) {
-                        return _WeuraThinking(colors: colors);
-                      }
-
-                      final isLastAssistant = !_messages[index].isUser &&
+                      final message = _messages[index];
+                      final isLastAssistant = !message.isUser &&
                           index == _messages.length - 1;
 
                       return _messageBubble(
                         colors,
-                        _messages[index],
+                        message,
                         index,
                         isLastAssistant,
                       );
@@ -1143,19 +1104,16 @@ class _ChatScreenState extends State<ChatScreen>
         return TextDirection.ltr;
       }
     }
-
     return TextDirection.ltr;
   }
 
   (String, List<String>) _splitSources(String raw) {
     final markers = <String>['المصادر:', 'المصدر:', 'Sources:', 'Source:'];
-
     int splitIndex = -1;
     String? matchedMarker;
 
     for (final marker in markers) {
       final idx = raw.lastIndexOf(marker);
-
       if (idx != -1 && idx > splitIndex) {
         splitIndex = idx;
         matchedMarker = marker;
@@ -1167,8 +1125,7 @@ class _ChatScreenState extends State<ChatScreen>
     }
 
     final mainText = raw.substring(0, splitIndex).trimRight();
-    final sourcesBlock =
-        raw.substring(splitIndex + matchedMarker.length);
+    final sourcesBlock = raw.substring(splitIndex + matchedMarker.length);
 
     final urlRegex = RegExp(r'https?://[^\s\)\]\>,]+');
     final matches = urlRegex.allMatches(sourcesBlock);
@@ -1195,13 +1152,11 @@ class _ChatScreenState extends State<ChatScreen>
     int index,
     bool isLastAssistant,
   ) {
-    final alignment = message.isUser
-        ? Alignment.centerRight
-        : Alignment.centerLeft;
+    final alignment =
+        message.isUser ? Alignment.centerRight : Alignment.centerLeft;
 
-    final background = message.isUser
-        ? colors.userBubble
-        : colors.surfaceAlt;
+    final background =
+        message.isUser ? colors.userBubble : colors.surfaceAlt;
 
     final bubbleDirection = _detectDirection(message.text);
 
@@ -1249,21 +1204,17 @@ class _ChatScreenState extends State<ChatScreen>
                           height: 1.5,
                         ),
                       )
-                    : MarkdownBody(
-                        data: mainText,
-                        selectable: true,
-                        styleSheet: _markdownStyle(colors),
-                      ),
+                    : _assistantContent(colors, message),
               ),
             ),
 
-            if (sources.isNotEmpty)
+            if (sources.isNotEmpty && !message.isStreaming)
               Padding(
                 padding: const EdgeInsets.only(top: 10),
                 child: _sourcesSection(colors, sources),
               ),
 
-            if (!message.isUser && !message.isError)
+            if (!message.isUser && !message.isError && !message.isStreaming)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
                 child: _actionBar(
@@ -1305,6 +1256,19 @@ class _ChatScreenState extends State<ChatScreen>
     );
   }
 
+  Widget _assistantContent(WeuraColors colors, _ChatMessage message) {
+    // While streaming and text is empty, show the thinking dots.
+    if (message.isStreaming && message.text.trim().isEmpty) {
+      return _InlineThinking(colors: colors);
+    }
+
+    return MarkdownBody(
+      data: message.text,
+      selectable: !message.isStreaming,
+      styleSheet: _markdownStyle(colors),
+    );
+  }
+
   Widget _sourcesSection(WeuraColors colors, List<String> urls) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1324,11 +1288,7 @@ class _ChatScreenState extends State<ChatScreen>
         ...urls.asMap().entries.map((entry) {
           return Padding(
             padding: const EdgeInsets.only(bottom: 6),
-            child: _sourceCard(
-              colors,
-              entry.key + 1,
-              entry.value,
-            ),
+            child: _sourceCard(colors, entry.key + 1, entry.value),
           );
         }),
       ],
@@ -1340,26 +1300,23 @@ class _ChatScreenState extends State<ChatScreen>
     final domain = uri?.host ?? url;
     final path = uri?.path ?? '';
 
-    final displayDomain = domain.startsWith('www.')
-        ? domain.substring(4)
-        : domain;
+    final displayDomain =
+        domain.startsWith('www.') ? domain.substring(4) : domain;
 
-    final letter = displayDomain.isNotEmpty
-        ? displayDomain[0].toUpperCase()
-        : '?';
+    final letter =
+        displayDomain.isNotEmpty ? displayDomain[0].toUpperCase() : '?';
 
     final color = _colorForDomain(displayDomain);
 
-    final shortPath = path.length > 28
-        ? '${path.substring(0, 28)}...'
-        : path;
+    final shortPath =
+        path.length > 28 ? '${path.substring(0, 28)}...' : path;
 
     return Material(
       color: colors.surface,
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
-        onTap: () => _openUrl(url, colors),
+        onTap: () => _openUrl(url),
         onLongPress: () => _copyMessage(url),
         child: Container(
           padding: const EdgeInsets.all(12),
@@ -1441,7 +1398,7 @@ class _ChatScreenState extends State<ChatScreen>
     );
   }
 
-  Future<void> _openUrl(String url, WeuraColors colors) async {
+  Future<void> _openUrl(String url) async {
     final uri = Uri.tryParse(url);
     if (uri == null) return;
 
@@ -1450,10 +1407,7 @@ class _ChatScreenState extends State<ChatScreen>
         uri,
         mode: LaunchMode.externalApplication,
       );
-
-      if (!ok && mounted) {
-        _showMessage('Could not open link.');
-      }
+      if (!ok && mounted) _showMessage('Could not open link.');
     } catch (_) {
       if (mounted) _showMessage('Could not open link.');
     }
@@ -1488,6 +1442,7 @@ class _ChatScreenState extends State<ChatScreen>
     bool isLastAssistant,
   ) {
     final rating = _ratings[index];
+    final isSpeaking = _voiceOut.speakingId == 'msg_$index';
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -1497,6 +1452,21 @@ class _ChatScreenState extends State<ChatScreen>
           icon: Icons.copy_rounded,
           tooltip: 'Copy',
           onPressed: () => _copyMessage(message.text),
+        ),
+        _actionIcon(
+          colors: colors,
+          icon: Icons.share_outlined,
+          tooltip: 'Share',
+          onPressed: () => _shareMessage(message.text),
+        ),
+        _actionIcon(
+          colors: colors,
+          icon: isSpeaking
+              ? Icons.stop_circle_outlined
+              : Icons.volume_up_outlined,
+          tooltip: isSpeaking ? 'Stop' : 'Read aloud',
+          active: isSpeaking,
+          onPressed: () => _toggleSpeak(index, message.text),
         ),
         _actionIcon(
           colors: colors,
@@ -1543,11 +1513,7 @@ class _ChatScreenState extends State<ChatScreen>
             message: tooltip,
             child: Padding(
               padding: const EdgeInsets.all(6),
-              child: Icon(
-                icon,
-                size: 17,
-                color: color,
-              ),
+              child: Icon(icon, size: 17, color: color),
             ),
           ),
         ),
@@ -1612,10 +1578,7 @@ class _ChatScreenState extends State<ChatScreen>
       blockquoteDecoration: BoxDecoration(
         color: colors.accentSoft,
         border: Border(
-          left: BorderSide(
-            color: colors.accentGlow,
-            width: 3,
-          ),
+          left: BorderSide(color: colors.accentGlow, width: 3),
         ),
       ),
       blockquotePadding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
@@ -1644,23 +1607,23 @@ class _ChatScreenState extends State<ChatScreen>
   }
 }
 
-class _WeuraThinking extends StatefulWidget {
-  const _WeuraThinking({required this.colors});
+/// Inline thinking indicator (3 animated dots).
+class _InlineThinking extends StatefulWidget {
+  const _InlineThinking({required this.colors});
 
   final WeuraColors colors;
 
   @override
-  State<_WeuraThinking> createState() => _WeuraThinkingState();
+  State<_InlineThinking> createState() => _InlineThinkingState();
 }
 
-class _WeuraThinkingState extends State<_WeuraThinking>
+class _InlineThinkingState extends State<_InlineThinking>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
 
   @override
   void initState() {
     super.initState();
-
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
@@ -1675,53 +1638,35 @@ class _WeuraThinkingState extends State<_WeuraThinking>
 
   @override
   Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Container(
-        width: 66,
-        height: 44,
-        margin: const EdgeInsets.only(bottom: 12),
-        decoration: BoxDecoration(
-          color: widget.colors.surface,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: widget.colors.accentGlow.withValues(alpha: 0.10),
-          ),
-        ),
-        child: AnimatedBuilder(
-          animation: _controller,
-          builder: (context, child) {
-            return Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(
-                3,
-                (index) {
-                  final value = (_controller.value * 3 - index)
-                      .clamp(0.0, 1.0);
+    return SizedBox(
+      width: 48,
+      height: 16,
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) {
+          return Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(3, (index) {
+              final value = (_controller.value * 3 - index).clamp(0.0, 1.0);
+              final scale = 0.65 + (value * 0.45);
 
-                  final scale = 0.65 + (value * 0.45);
-
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 3,
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 3),
+                child: Transform.scale(
+                  scale: scale,
+                  child: Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: widget.colors.accentGlow,
                     ),
-                    child: Transform.scale(
-                      scale: scale,
-                      child: Container(
-                        width: 6,
-                        height: 6,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: widget.colors.accentGlow,
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            );
-          },
-        ),
+                  ),
+                ),
+              );
+            }),
+          );
+        },
       ),
     );
   }
