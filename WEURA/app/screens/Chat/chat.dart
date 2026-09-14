@@ -375,7 +375,6 @@ class _ChatScreenState extends State<ChatScreen>
   void _regenerateLast() {
     if (_isLoading || _messages.isEmpty) return;
 
-    // Find the last user message.
     int lastUserIndex = -1;
     for (int i = _messages.length - 1; i >= 0; i--) {
       if (_messages[i].isUser) {
@@ -388,15 +387,11 @@ class _ChatScreenState extends State<ChatScreen>
 
     final userText = _messages[lastUserIndex].text;
 
-    // Remove everything after the last user message.
     _messages.removeRange(lastUserIndex + 1, _messages.length);
-
-    // Reset ratings for removed indices.
     _ratings.removeWhere((key, _) => key > lastUserIndex);
 
     setState(() {});
 
-    // Re-send without duplicating the user bubble.
     _regenerate(userText);
   }
 
@@ -1119,6 +1114,30 @@ class _ChatScreenState extends State<ChatScreen>
     );
   }
 
+  /// Detects the dominant paragraph direction of a text.
+  /// Simplified UAX #9 P2: first strong directional character wins.
+  TextDirection _detectDirection(String text) {
+    for (final rune in text.runes) {
+      // Arabic block + supplements + extended.
+      if ((rune >= 0x0600 && rune <= 0x06FF) ||
+          (rune >= 0x0750 && rune <= 0x077F) ||
+          (rune >= 0x08A0 && rune <= 0x08FF) ||
+          (rune >= 0xFB50 && rune <= 0xFDFF) ||
+          (rune >= 0xFE70 && rune <= 0xFEFF)) {
+        return TextDirection.rtl;
+      }
+
+      // Latin letters.
+      if ((rune >= 0x0041 && rune <= 0x005A) ||
+          (rune >= 0x0061 && rune <= 0x007A) ||
+          (rune >= 0x00C0 && rune <= 0x024F)) {
+        return TextDirection.ltr;
+      }
+    }
+
+    return TextDirection.ltr;
+  }
+
   Widget _messageBubble(
     WeuraColors colors,
     _ChatMessage message,
@@ -1132,6 +1151,10 @@ class _ChatScreenState extends State<ChatScreen>
     final background = message.isUser
         ? colors.userBubble
         : colors.surfaceAlt;
+
+    // Set the correct paragraph direction per bubble so that
+    // Arabic + Latin mixed text renders in the right visual order.
+    final bubbleDirection = _detectDirection(message.text);
 
     return Align(
       alignment: alignment,
@@ -1159,26 +1182,29 @@ class _ChatScreenState extends State<ChatScreen>
                             : colors.border,
                       ),
               ),
-              child: message.isUser
-                  ? SelectableText(
-                      message.text,
-                      style: TextStyle(
-                        color: colors.userBubbleText,
-                        fontSize: 15.5,
-                        height: 1.5,
+              child: Directionality(
+                textDirection: bubbleDirection,
+                child: message.isUser
+                    ? SelectableText(
+                        message.text,
+                        style: TextStyle(
+                          color: colors.userBubbleText,
+                          fontSize: 15.5,
+                          height: 1.5,
+                        ),
+                      )
+                    : MarkdownBody(
+                        data: message.text,
+                        selectable: true,
+                        styleSheet: _markdownStyle(colors),
                       ),
-                    )
-                  : MarkdownBody(
-                      data: message.text,
-                      selectable: true,
-                      styleSheet: _markdownStyle(colors),
-                    ),
+              ),
             ),
 
             // Action bar (assistant messages only, non-error)
             if (!message.isUser && !message.isError)
               Padding(
-                padding: const EdgeInsets.only(top: 4),
+                padding: const EdgeInsets.only(top: 6),
                 child: _actionBar(
                   colors,
                   message,
@@ -1232,65 +1258,61 @@ class _ChatScreenState extends State<ChatScreen>
       children: [
         _actionIcon(
           colors: colors,
-          asset: 'assets/icons/file.svg',
+          icon: Icons.copy_rounded,
           tooltip: 'Copy',
           onPressed: () => _copyMessage(message.text),
         ),
-        const SizedBox(width: 2),
         _actionIcon(
           colors: colors,
-          asset: 'assets/icons/check.svg',
+          icon: Icons.thumb_up_outlined,
           tooltip: 'Good response',
           active: rating == 'up',
           onPressed: () => _rateMessage(index, 'up'),
         ),
-        const SizedBox(width: 2),
         _actionIcon(
           colors: colors,
-          asset: 'assets/icons/close.svg',
+          icon: Icons.thumb_down_outlined,
           tooltip: 'Bad response',
           active: rating == 'down',
           onPressed: () => _rateMessage(index, 'down'),
         ),
-        if (isLastAssistant) ...[
-          const SizedBox(width: 2),
+        if (isLastAssistant)
           _actionIcon(
             colors: colors,
-            asset: 'assets/icons/history.svg',
+            icon: Icons.refresh_rounded,
             tooltip: 'Regenerate',
             onPressed: _regenerateLast,
           ),
-        ],
       ],
     );
   }
 
   Widget _actionIcon({
     required WeuraColors colors,
-    required String asset,
+    required IconData icon,
     required String tooltip,
     required VoidCallback onPressed,
     bool active = false,
   }) {
-    return IconButton(
-      tooltip: tooltip,
-      onPressed: onPressed,
-      splashRadius: 16,
-      padding: const EdgeInsets.all(6),
-      constraints: const BoxConstraints(
-        minWidth: 32,
-        minHeight: 32,
-      ),
-      icon: AnimatedOpacity(
-        duration: const Duration(milliseconds: 140),
-        opacity: active ? 1 : 0.55,
-        child: SvgPicture.asset(
-          asset,
-          width: 16,
-          height: 16,
-          colorFilter: ColorFilter.mode(
-            active ? colors.accentGlow : colors.textSecondary,
-            BlendMode.srcIn,
+    final color = active ? colors.accentGlow : colors.textMuted;
+
+    return Padding(
+      padding: const EdgeInsets.only(right: 2),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(8),
+          child: Tooltip(
+            message: tooltip,
+            child: Padding(
+              padding: const EdgeInsets.all(6),
+              child: Icon(
+                icon,
+                size: 17,
+                color: color,
+              ),
+            ),
           ),
         ),
       ),
