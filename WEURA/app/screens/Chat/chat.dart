@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../components/Composer/comppser.dart';
@@ -947,14 +948,21 @@ class _ChatScreenState extends State<ChatScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SelectableText(
-              message.text,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 15.5,
-                height: 1.5,
+            if (message.isUser)
+              SelectableText(
+                message.text,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 15.5,
+                  height: 1.5,
+                ),
+              )
+            else
+              MarkdownBody(
+                data: message.text,
+                selectable: true,
+                styleSheet: _markdownStyle(),
               ),
-            ),
             if (message.isError) ...[
               const SizedBox(height: 10),
               GestureDetector(
@@ -982,6 +990,100 @@ class _ChatScreenState extends State<ChatScreen>
           ],
         ),
       ),
+    );
+  }
+
+  MarkdownStyleSheet _markdownStyle() {
+    return MarkdownStyleSheet(
+      p: const TextStyle(
+        color: Colors.white,
+        fontSize: 15.5,
+        height: 1.55,
+      ),
+      h1: const TextStyle(
+        color: Colors.white,
+        fontSize: 22,
+        fontWeight: FontWeight.w700,
+        height: 1.4,
+      ),
+      h2: const TextStyle(
+        color: Colors.white,
+        fontSize: 19,
+        fontWeight: FontWeight.w700,
+        height: 1.4,
+      ),
+      h3: const TextStyle(
+        color: Colors.white,
+        fontSize: 17,
+        fontWeight: FontWeight.w700,
+        height: 1.4,
+      ),
+      strong: const TextStyle(
+        color: Colors.white,
+        fontWeight: FontWeight.w700,
+      ),
+      em: const TextStyle(
+        color: Colors.white,
+        fontStyle: FontStyle.italic,
+      ),
+      a: const TextStyle(
+        color: Color(0xFF7DD3FC),
+        decoration: TextDecoration.underline,
+      ),
+      code: TextStyle(
+        color: const Color(0xFF7DD3FC),
+        backgroundColor: Colors.white.withValues(alpha: 0.06),
+        fontFamily: 'monospace',
+        fontSize: 14,
+      ),
+      codeblockDecoration: BoxDecoration(
+        color: const Color(0xFF0A0B12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.08),
+        ),
+      ),
+      codeblockPadding: const EdgeInsets.all(14),
+      blockquote: TextStyle(
+        color: Colors.white.withValues(alpha: 0.75),
+        fontSize: 15,
+        fontStyle: FontStyle.italic,
+      ),
+      blockquoteDecoration: BoxDecoration(
+        color: const Color(0xFF1D4ED8).withValues(alpha: 0.10),
+        border: const Border(
+          left: BorderSide(
+            color: Color(0xFF3B82F6),
+            width: 3,
+          ),
+        ),
+      ),
+      blockquotePadding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+      listBullet: const TextStyle(
+        color: Colors.white,
+        fontSize: 15.5,
+        height: 1.55,
+      ),
+      listIndent: 22,
+      horizontalRuleDecoration: BoxDecoration(
+        border: Border(
+          top: BorderSide(
+            color: Colors.white.withValues(alpha: 0.10),
+          ),
+        ),
+      ),
+      tableHead: const TextStyle(
+        color: Colors.white,
+        fontWeight: FontWeight.w700,
+      ),
+      tableBody: const TextStyle(
+        color: Colors.white70,
+        fontSize: 14,
+      ),
+      tableBorder: TableBorder.all(
+        color: Colors.white.withValues(alpha: 0.12),
+      ),
+      tableCellsPadding: const EdgeInsets.all(8),
     );
   }
 }
