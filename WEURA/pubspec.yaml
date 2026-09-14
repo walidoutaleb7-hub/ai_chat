@@ -23,6 +23,9 @@ dependencies:
   # Local persistence
   shared_preferences: ^2.3.2
 
+  # Open URLs from source cards
+  url_launcher: ^6.3.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
