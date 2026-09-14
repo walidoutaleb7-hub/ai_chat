@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../core/History/chat_history.dart';
+import '../../core/Theme/weura_theme.dart';
 import '../Chat/chat.dart';
 
 class HistoryScreen extends StatefulWidget {
@@ -13,8 +14,7 @@ class HistoryScreen extends StatefulWidget {
 
 class _HistoryScreenState extends State<HistoryScreen> {
   final HistoryManager _manager = HistoryManager();
-  final TextEditingController _searchController =
-      TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
 
   bool _isLoading = true;
   String _search = '';
@@ -33,17 +33,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   Future<void> _load() async {
     await _manager.load();
-
     if (!mounted) return;
-
-    setState(() {
-      _isLoading = false;
-    });
+    setState(() => _isLoading = false);
   }
 
-  List<ChatSession> get _filteredChats {
-    return _manager.search(_search);
-  }
+  List<ChatSession> get _filteredChats => _manager.search(_search);
 
   Future<void> _openChat(ChatSession chat) async {
     await Navigator.of(context).push(
@@ -51,9 +45,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         builder: (_) => ChatScreen(sessionId: chat.id),
       ),
     );
-
     if (!mounted) return;
-
     await _load();
   }
 
@@ -62,25 +54,25 @@ class _HistoryScreenState extends State<HistoryScreen> {
     if (mounted) setState(() {});
   }
 
-  Future<void> _renameChat(ChatSession chat) async {
+  Future<void> _renameChat(ChatSession chat, WeuraColors colors) async {
     final controller = TextEditingController(text: chat.title);
 
     final result = await showDialog<String>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          backgroundColor: const Color(0xFF15151D),
-          title: const Text(
+          backgroundColor: colors.surfaceAlt,
+          title: Text(
             'Rename chat',
-            style: TextStyle(color: Colors.white),
+            style: TextStyle(color: colors.textPrimary),
           ),
           content: TextField(
             controller: controller,
             autofocus: true,
-            style: const TextStyle(color: Colors.white),
-            decoration: const InputDecoration(
+            style: TextStyle(color: colors.textPrimary),
+            decoration: InputDecoration(
               hintText: 'Chat name',
-              hintStyle: TextStyle(color: Colors.white38),
+              hintStyle: TextStyle(color: colors.textFaint),
             ),
           ),
           actions: [
@@ -89,9 +81,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               child: const Text('Cancel'),
             ),
             TextButton(
-              onPressed: () {
-                Navigator.pop(dialogContext, controller.text);
-              },
+              onPressed: () => Navigator.pop(dialogContext, controller.text),
               child: const Text('Save'),
             ),
           ],
@@ -100,7 +90,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
 
     if (result == null) return;
-
     final title = result.trim();
     if (title.isEmpty) return;
 
@@ -108,21 +97,21 @@ class _HistoryScreenState extends State<HistoryScreen> {
     if (mounted) setState(() {});
   }
 
-  Future<void> _deleteAll() async {
+  Future<void> _deleteAll(WeuraColors colors) async {
     if (_manager.sessions.isEmpty) return;
 
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          backgroundColor: const Color(0xFF15151D),
-          title: const Text(
+          backgroundColor: colors.surfaceAlt,
+          title: Text(
             'Delete all chats?',
-            style: TextStyle(color: Colors.white),
+            style: TextStyle(color: colors.textPrimary),
           ),
-          content: const Text(
+          content: Text(
             'This will remove all conversations from this history.',
-            style: TextStyle(color: Colors.white70),
+            style: TextStyle(color: colors.textSecondary),
           ),
           actions: [
             TextButton(
@@ -131,9 +120,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
             ),
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text(
+              child: Text(
                 'Delete all',
-                style: TextStyle(color: Colors.redAccent),
+                style: TextStyle(color: colors.danger),
               ),
             ),
           ],
@@ -142,7 +131,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
 
     if (confirmed != true) return;
-
     await _manager.clear();
     if (mounted) setState(() {});
   }
@@ -169,12 +157,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = WeuraColors.of(context);
     final chats = _filteredChats;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF07070C),
+      backgroundColor: colors.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF07070C),
+        backgroundColor: colors.background,
         elevation: 0,
         leading: IconButton(
           tooltip: 'Back',
@@ -185,10 +174,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
             height: 23,
           ),
         ),
-        title: const Text(
+        title: Text(
           'History',
           style: TextStyle(
-            color: Colors.white,
+            color: colors.textPrimary,
             fontWeight: FontWeight.w700,
           ),
         ),
@@ -196,7 +185,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           if (_manager.sessions.isNotEmpty)
             IconButton(
               tooltip: 'Delete all',
-              onPressed: _deleteAll,
+              onPressed: () => _deleteAll(colors),
               icon: SvgPicture.asset(
                 'assets/icons/close.svg',
                 width: 22,
@@ -206,38 +195,29 @@ class _HistoryScreenState extends State<HistoryScreen> {
         ],
       ),
       body: _isLoading
-          ? const Center(
+          ? Center(
               child: SizedBox(
                 width: 28,
                 height: 28,
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
-                  color: Color(0xFF3B82F6),
+                  color: colors.accentGlow,
                 ),
               ),
             )
           : Column(
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    16,
-                    8,
-                    16,
-                    12,
-                  ),
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
                   child: TextField(
                     controller: _searchController,
                     onChanged: (value) {
-                      setState(() {
-                        _search = value;
-                      });
+                      setState(() => _search = value);
                     },
-                    style: const TextStyle(color: Colors.white),
+                    style: TextStyle(color: colors.textPrimary),
                     decoration: InputDecoration(
                       hintText: 'Search conversations...',
-                      hintStyle: const TextStyle(
-                        color: Colors.white38,
-                      ),
+                      hintStyle: TextStyle(color: colors.textFaint),
                       prefixIcon: Padding(
                         padding: const EdgeInsets.all(12),
                         child: SvgPicture.asset(
@@ -250,10 +230,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           ? IconButton(
                               onPressed: () {
                                 _searchController.clear();
-
-                                setState(() {
-                                  _search = '';
-                                });
+                                setState(() => _search = '');
                               },
                               icon: SvgPicture.asset(
                                 'assets/icons/close.svg',
@@ -263,7 +240,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                             )
                           : null,
                       filled: true,
-                      fillColor: const Color(0xFF111119),
+                      fillColor: colors.surface,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
                         borderSide: BorderSide.none,
@@ -273,7 +250,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 ),
                 Expanded(
                   child: chats.isEmpty
-                      ? _emptyState()
+                      ? _emptyState(colors)
                       : ListView.separated(
                           padding: const EdgeInsets.fromLTRB(
                             16,
@@ -285,7 +262,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           separatorBuilder: (_, __) =>
                               const SizedBox(height: 8),
                           itemBuilder: (context, index) {
-                            return _chatTile(chats[index]);
+                            return _chatTile(colors, chats[index]);
                           },
                         ),
                 ),
@@ -294,9 +271,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
-  Widget _chatTile(ChatSession chat) {
+  Widget _chatTile(WeuraColors colors, ChatSession chat) {
     return Material(
-      color: const Color(0xFF111119),
+      color: colors.surface,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
@@ -309,8 +286,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 width: 42,
                 height: 42,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1D4ED8)
-                      .withValues(alpha: 0.14),
+                  color: colors.accentSoft,
                   borderRadius: BorderRadius.circular(13),
                 ),
                 child: Padding(
@@ -323,15 +299,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
               const SizedBox(width: 13),
               Expanded(
                 child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       chat.title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: colors.textPrimary,
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
                       ),
@@ -339,8 +314,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     const SizedBox(height: 5),
                     Text(
                       _formatDate(chat.updatedAt),
-                      style: const TextStyle(
-                        color: Colors.white38,
+                      style: TextStyle(
+                        color: colors.textMuted,
                         fontSize: 12,
                       ),
                     ),
@@ -348,31 +323,31 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 ),
               ),
               PopupMenuButton<String>(
-                color: const Color(0xFF181820),
-                icon: const Icon(
+                color: colors.surfaceAlt,
+                icon: Icon(
                   Icons.more_vert,
-                  color: Colors.white54,
+                  color: colors.textMuted,
                 ),
                 onSelected: (value) {
                   if (value == 'rename') {
-                    _renameChat(chat);
+                    _renameChat(chat, colors);
                   } else if (value == 'delete') {
                     _deleteChat(chat);
                   }
                 },
-                itemBuilder: (_) => const [
+                itemBuilder: (_) => [
                   PopupMenuItem(
                     value: 'rename',
                     child: Text(
                       'Rename',
-                      style: TextStyle(color: Colors.white),
+                      style: TextStyle(color: colors.textPrimary),
                     ),
                   ),
                   PopupMenuItem(
                     value: 'delete',
                     child: Text(
                       'Delete',
-                      style: TextStyle(color: Colors.redAccent),
+                      style: TextStyle(color: colors.danger),
                     ),
                   ),
                 ],
@@ -384,7 +359,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
-  Widget _emptyState() {
+  Widget _emptyState(WeuraColors colors) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(30),
@@ -400,20 +375,20 @@ class _HistoryScreenState extends State<HistoryScreen> {
               ),
             ),
             const SizedBox(height: 18),
-            const Text(
+            Text(
               'No conversations yet',
               style: TextStyle(
-                color: Colors.white,
+                color: colors.textPrimary,
                 fontSize: 19,
                 fontWeight: FontWeight.w600,
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               'Your conversations will appear here.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Colors.white38,
+                color: colors.textMuted,
                 fontSize: 14,
               ),
             ),
