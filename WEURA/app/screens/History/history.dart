@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../core/History/chat_history.dart';
+import '../Chat/chat.dart';
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -42,6 +43,18 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   List<ChatSession> get _filteredChats {
     return _manager.search(_search);
+  }
+
+  Future<void> _openChat(ChatSession chat) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ChatScreen(sessionId: chat.id),
+      ),
+    );
+
+    if (!mounted) return;
+
+    await _load();
   }
 
   Future<void> _deleteChat(ChatSession chat) async {
@@ -287,18 +300,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: () {
-          ScaffoldMessenger.of(context)
-            ..hideCurrentSnackBar()
-            ..showSnackBar(
-              const SnackBar(
-                content: Text(
-                  'Opening chats will be enabled in the next step.',
-                ),
-                duration: Duration(milliseconds: 1600),
-              ),
-            );
-        },
+        onTap: () => _openChat(chat),
         child: Padding(
           padding: const EdgeInsets.all(15),
           child: Row(
