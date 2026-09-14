@@ -7,6 +7,7 @@ import '../../core/AI/ai_router.dart';
 import '../../core/History/chat_history.dart';
 import '../../core/Memory/memory_manager.dart';
 import '../../core/Settings/app_settings.dart';
+import '../../core/Theme/weura_theme.dart';
 import '../../services/Grok/grok_service.dart';
 import '../History/history.dart';
 import '../Memory/memory.dart';
@@ -390,31 +391,34 @@ class _ChatScreenState extends State<ChatScreen>
     );
   }
 
-  Widget _buildDrawer() {
+  Widget _buildDrawer(WeuraColors colors) {
     return Drawer(
-      backgroundColor: const Color(0xFF0A0B12),
+      backgroundColor: colors.surfaceElevated,
       width: 285,
       child: SafeArea(
         child: Column(
           children: [
-            _drawerHeader(),
+            _drawerHeader(colors),
             const SizedBox(height: 14),
-            _drawerNewChatButton(),
+            _drawerNewChatButton(colors),
             const SizedBox(height: 18),
-            _drawerSectionTitle('Workspace'),
+            _drawerSectionTitle(colors, 'Workspace'),
             _drawerItem(
+              colors: colors,
               icon: 'assets/icons/history.svg',
               label: 'History',
               onTap: _openHistory,
             ),
             _drawerItem(
+              colors: colors,
               icon: 'assets/icons/mode.svg',
               label: 'Memory',
               onTap: _openMemory,
             ),
             const SizedBox(height: 18),
-            _drawerSectionTitle('App'),
+            _drawerSectionTitle(colors, 'App'),
             _drawerItem(
+              colors: colors,
               icon: 'assets/icons/settings.svg',
               label: 'Settings',
               onTap: _openSettings,
@@ -426,7 +430,7 @@ class _ChatScreenState extends State<ChatScreen>
                 'WEURA AI • v1.0.0\nThink Beyond.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.28),
+                  color: colors.textFaint,
                   fontSize: 11,
                   height: 1.5,
                 ),
@@ -438,7 +442,7 @@ class _ChatScreenState extends State<ChatScreen>
     );
   }
 
-  Widget _drawerHeader() {
+  Widget _drawerHeader(WeuraColors colors) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
       child: Row(
@@ -448,11 +452,10 @@ class _ChatScreenState extends State<ChatScreen>
             height: 44,
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: const Color(0xFF0F1220),
+              color: colors.surface,
               borderRadius: BorderRadius.circular(13),
               border: Border.all(
-                color: const Color(0xFF3B82F6)
-                    .withValues(alpha: 0.22),
+                color: colors.accentGlow.withValues(alpha: 0.22),
               ),
             ),
             child: SvgPicture.asset(
@@ -460,24 +463,24 @@ class _ChatScreenState extends State<ChatScreen>
             ),
           ),
           const SizedBox(width: 12),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'WEURA',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: colors.textPrimary,
                     fontSize: 17,
                     fontWeight: FontWeight.w800,
                     letterSpacing: 1.2,
                   ),
                 ),
-                SizedBox(height: 2),
+                const SizedBox(height: 2),
                 Text(
                   'Think Beyond.',
                   style: TextStyle(
-                    color: Colors.white38,
+                    color: colors.textMuted,
                     fontSize: 11,
                   ),
                 ),
@@ -489,7 +492,7 @@ class _ChatScreenState extends State<ChatScreen>
     );
   }
 
-  Widget _drawerNewChatButton() {
+  Widget _drawerNewChatButton(WeuraColors colors) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14),
       child: Material(
@@ -501,10 +504,8 @@ class _ChatScreenState extends State<ChatScreen>
             height: 48,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(13),
-              color: const Color(0xFF11131D),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.07),
-              ),
+              color: colors.surface,
+              border: Border.all(color: colors.border),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -515,10 +516,10 @@ class _ChatScreenState extends State<ChatScreen>
                   height: 20,
                 ),
                 const SizedBox(width: 8),
-                const Text(
+                Text(
                   'New Chat',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: colors.textPrimary,
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                   ),
@@ -531,15 +532,15 @@ class _ChatScreenState extends State<ChatScreen>
     );
   }
 
-  Widget _drawerSectionTitle(String title) {
+  Widget _drawerSectionTitle(WeuraColors colors, String title) {
     return Align(
       alignment: Alignment.centerLeft,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 6, 20, 8),
         child: Text(
           title.toUpperCase(),
-          style: const TextStyle(
-            color: Colors.white24,
+          style: TextStyle(
+            color: colors.textFaint,
             fontSize: 10,
             fontWeight: FontWeight.w700,
             letterSpacing: 1.2,
@@ -550,13 +551,13 @@ class _ChatScreenState extends State<ChatScreen>
   }
 
   Widget _drawerItem({
+    required WeuraColors colors,
     required String icon,
     required String label,
     required VoidCallback onTap,
   }) {
     return Padding(
-      padding:
-          const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -577,8 +578,8 @@ class _ChatScreenState extends State<ChatScreen>
                 const SizedBox(width: 14),
                 Text(
                   label,
-                  style: const TextStyle(
-                    color: Colors.white70,
+                  style: TextStyle(
+                    color: colors.textSecondary,
                     fontSize: 14,
                     fontWeight: FontWeight.w500,
                   ),
@@ -591,10 +592,10 @@ class _ChatScreenState extends State<ChatScreen>
     );
   }
 
-  void _showAttachmentSheet() {
+  void _showAttachmentSheet(WeuraColors colors) {
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: const Color(0xFF0D0D14),
+      backgroundColor: colors.surfaceAlt,
       showDragHandle: true,
       isScrollControlled: true,
       constraints: BoxConstraints(
@@ -607,16 +608,17 @@ class _ChatScreenState extends State<ChatScreen>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
+                Text(
                   'Add to WEURA',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: colors.textPrimary,
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 14),
                 _attachmentOption(
+                  colors: colors,
                   asset: 'assets/icons/home.svg',
                   title: 'Photos',
                   subtitle: 'Choose an image',
@@ -628,6 +630,7 @@ class _ChatScreenState extends State<ChatScreen>
                   },
                 ),
                 _attachmentOption(
+                  colors: colors,
                   asset: 'assets/icons/camera.svg',
                   title: 'Camera',
                   subtitle: 'Capture an image',
@@ -639,6 +642,7 @@ class _ChatScreenState extends State<ChatScreen>
                   },
                 ),
                 _attachmentOption(
+                  colors: colors,
                   asset: 'assets/icons/file.svg',
                   title: 'Files',
                   subtitle: 'PDF, DOCX, XLSX, TXT, CSV',
@@ -658,6 +662,7 @@ class _ChatScreenState extends State<ChatScreen>
   }
 
   Widget _attachmentOption({
+    required WeuraColors colors,
     required String asset,
     required String title,
     required String subtitle,
@@ -674,14 +679,14 @@ class _ChatScreenState extends State<ChatScreen>
       ),
       title: Text(
         title,
-        style: const TextStyle(
-          color: Colors.white,
+        style: TextStyle(
+          color: colors.textPrimary,
           fontWeight: FontWeight.w600,
         ),
       ),
       subtitle: Text(
         subtitle,
-        style: const TextStyle(color: Colors.white38, fontSize: 12),
+        style: TextStyle(color: colors.textMuted, fontSize: 12),
       ),
       trailing: SvgPicture.asset(
         'assets/icons/send.svg',
@@ -691,10 +696,10 @@ class _ChatScreenState extends State<ChatScreen>
     );
   }
 
-  void _showModePicker() {
+  void _showModePicker(WeuraColors colors) {
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: const Color(0xFF0D0D14),
+      backgroundColor: colors.surfaceAlt,
       showDragHandle: true,
       isScrollControlled: true,
       constraints: BoxConstraints(
@@ -707,10 +712,10 @@ class _ChatScreenState extends State<ChatScreen>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
+                Text(
                   'AI Mode',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: colors.textPrimary,
                     fontSize: 19,
                     fontWeight: FontWeight.w700,
                   ),
@@ -724,8 +729,7 @@ class _ChatScreenState extends State<ChatScreen>
                       borderRadius: BorderRadius.circular(16),
                     ),
                     tileColor: selected
-                        ? const Color(0xFF315DFF)
-                            .withValues(alpha: 0.10)
+                        ? colors.accent.withValues(alpha: 0.10)
                         : null,
                     leading: SvgPicture.asset(
                       'assets/icons/mode.svg',
@@ -734,8 +738,8 @@ class _ChatScreenState extends State<ChatScreen>
                     ),
                     title: Text(
                       _modeName(mode),
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: colors.textPrimary,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -789,12 +793,14 @@ class _ChatScreenState extends State<ChatScreen>
 
   @override
   Widget build(BuildContext context) {
+    final colors = WeuraColors.of(context);
+
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: const Color(0xFF07070C),
-      drawer: _buildDrawer(),
+      backgroundColor: colors.background,
+      drawer: _buildDrawer(colors),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF07070C),
+        backgroundColor: colors.background,
         elevation: 0,
         leading: IconButton(
           tooltip: 'Menu',
@@ -807,9 +813,10 @@ class _ChatScreenState extends State<ChatScreen>
             height: 23,
           ),
         ),
-        title: const Text(
+        title: Text(
           'WEURA',
           style: TextStyle(
+            color: colors.textPrimary,
             fontWeight: FontWeight.w700,
             letterSpacing: 1.2,
           ),
@@ -817,7 +824,7 @@ class _ChatScreenState extends State<ChatScreen>
         actions: [
           IconButton(
             tooltip: 'AI Mode',
-            onPressed: _showModePicker,
+            onPressed: () => _showModePicker(colors),
             icon: SvgPicture.asset(
               'assets/icons/mode.svg',
               width: 23,
@@ -830,7 +837,7 @@ class _ChatScreenState extends State<ChatScreen>
         children: [
           Expanded(
             child: _messages.isEmpty
-                ? _emptyState()
+                ? _emptyState(colors)
                 : ListView.builder(
                     controller: _scrollController,
                     keyboardDismissBehavior:
@@ -846,10 +853,10 @@ class _ChatScreenState extends State<ChatScreen>
                     itemBuilder: (context, index) {
                       if (_isLoading &&
                           index == _messages.length) {
-                        return const _WeuraThinking();
+                        return _WeuraThinking(colors: colors);
                       }
 
-                      return _messageBubble(_messages[index]);
+                      return _messageBubble(colors, _messages[index]);
                     },
                   ),
           ),
@@ -857,8 +864,8 @@ class _ChatScreenState extends State<ChatScreen>
             enabled: true,
             isLoading: _isLoading,
             onSend: _sendMessage,
-            onAttach: _showAttachmentSheet,
-            onMode: _showModePicker,
+            onAttach: () => _showAttachmentSheet(colors),
+            onMode: () => _showModePicker(colors),
             onVoice: _handleVoice,
             onStop: _cancelRequest,
           ),
@@ -867,7 +874,7 @@ class _ChatScreenState extends State<ChatScreen>
     );
   }
 
-  Widget _emptyState() {
+  Widget _emptyState(WeuraColors colors) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(28),
@@ -878,12 +885,10 @@ class _ChatScreenState extends State<ChatScreen>
               width: 68,
               height: 68,
               decoration: BoxDecoration(
-                color: const Color(0xFF1D4ED8)
-                    .withValues(alpha: 0.12),
+                color: colors.accentSoft,
                 borderRadius: BorderRadius.circular(22),
                 border: Border.all(
-                  color: const Color(0xFF3B82F6)
-                      .withValues(alpha: 0.18),
+                  color: colors.accentGlow.withValues(alpha: 0.18),
                 ),
               ),
               child: SvgPicture.asset(
@@ -893,11 +898,11 @@ class _ChatScreenState extends State<ChatScreen>
               ),
             ),
             const SizedBox(height: 20),
-            const Text(
+            Text(
               'Think Beyond.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Colors.white,
+                color: colors.textPrimary,
                 fontSize: 30,
                 fontWeight: FontWeight.w700,
               ),
@@ -906,7 +911,7 @@ class _ChatScreenState extends State<ChatScreen>
             Text(
               'Ask WEURA anything.',
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.55),
+                color: colors.textSecondary,
                 fontSize: 16,
               ),
             ),
@@ -916,14 +921,14 @@ class _ChatScreenState extends State<ChatScreen>
     );
   }
 
-  Widget _messageBubble(_ChatMessage message) {
+  Widget _messageBubble(WeuraColors colors, _ChatMessage message) {
     final alignment = message.isUser
         ? Alignment.centerRight
         : Alignment.centerLeft;
 
     final background = message.isUser
-        ? const Color(0xFF1D4ED8)
-        : const Color(0xFF15151D);
+        ? colors.userBubble
+        : colors.surfaceAlt;
 
     return Align(
       alignment: alignment,
@@ -941,8 +946,8 @@ class _ChatScreenState extends State<ChatScreen>
               ? null
               : Border.all(
                   color: message.isError
-                      ? Colors.redAccent.withValues(alpha: 0.25)
-                      : Colors.white.withValues(alpha: 0.06),
+                      ? colors.danger.withValues(alpha: 0.35)
+                      : colors.border,
                 ),
         ),
         child: Column(
@@ -951,8 +956,8 @@ class _ChatScreenState extends State<ChatScreen>
             if (message.isUser)
               SelectableText(
                 message.text,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: colors.userBubbleText,
                   fontSize: 15.5,
                   height: 1.5,
                 ),
@@ -961,7 +966,7 @@ class _ChatScreenState extends State<ChatScreen>
               MarkdownBody(
                 data: message.text,
                 selectable: true,
-                styleSheet: _markdownStyle(),
+                styleSheet: _markdownStyle(colors),
               ),
             if (message.isError) ...[
               const SizedBox(height: 10),
@@ -976,10 +981,10 @@ class _ChatScreenState extends State<ChatScreen>
                       height: 18,
                     ),
                     const SizedBox(width: 7),
-                    const Text(
+                    Text(
                       'Retry',
                       style: TextStyle(
-                        color: Color(0xFF7DD3FC),
+                        color: colors.accentGlow,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -993,103 +998,99 @@ class _ChatScreenState extends State<ChatScreen>
     );
   }
 
-  MarkdownStyleSheet _markdownStyle() {
+  MarkdownStyleSheet _markdownStyle(WeuraColors colors) {
     return MarkdownStyleSheet(
-      p: const TextStyle(
-        color: Colors.white,
+      p: TextStyle(
+        color: colors.textPrimary,
         fontSize: 15.5,
         height: 1.55,
       ),
-      h1: const TextStyle(
-        color: Colors.white,
+      h1: TextStyle(
+        color: colors.textPrimary,
         fontSize: 22,
         fontWeight: FontWeight.w700,
         height: 1.4,
       ),
-      h2: const TextStyle(
-        color: Colors.white,
+      h2: TextStyle(
+        color: colors.textPrimary,
         fontSize: 19,
         fontWeight: FontWeight.w700,
         height: 1.4,
       ),
-      h3: const TextStyle(
-        color: Colors.white,
+      h3: TextStyle(
+        color: colors.textPrimary,
         fontSize: 17,
         fontWeight: FontWeight.w700,
         height: 1.4,
       ),
-      strong: const TextStyle(
-        color: Colors.white,
+      strong: TextStyle(
+        color: colors.textPrimary,
         fontWeight: FontWeight.w700,
       ),
-      em: const TextStyle(
-        color: Colors.white,
+      em: TextStyle(
+        color: colors.textPrimary,
         fontStyle: FontStyle.italic,
       ),
-      a: const TextStyle(
-        color: Color(0xFF7DD3FC),
+      a: TextStyle(
+        color: colors.accentGlow,
         decoration: TextDecoration.underline,
       ),
       code: TextStyle(
-        color: const Color(0xFF7DD3FC),
-        backgroundColor: Colors.white.withValues(alpha: 0.06),
+        color: colors.accentGlow,
+        backgroundColor: colors.surface,
         fontFamily: 'monospace',
         fontSize: 14,
       ),
       codeblockDecoration: BoxDecoration(
-        color: const Color(0xFF0A0B12),
+        color: colors.surfaceElevated,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.08),
-        ),
+        border: Border.all(color: colors.border),
       ),
       codeblockPadding: const EdgeInsets.all(14),
       blockquote: TextStyle(
-        color: Colors.white.withValues(alpha: 0.75),
+        color: colors.textSecondary,
         fontSize: 15,
         fontStyle: FontStyle.italic,
       ),
       blockquoteDecoration: BoxDecoration(
-        color: const Color(0xFF1D4ED8).withValues(alpha: 0.10),
-        border: const Border(
+        color: colors.accentSoft,
+        border: Border(
           left: BorderSide(
-            color: Color(0xFF3B82F6),
+            color: colors.accentGlow,
             width: 3,
           ),
         ),
       ),
       blockquotePadding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
-      listBullet: const TextStyle(
-        color: Colors.white,
+      listBullet: TextStyle(
+        color: colors.textPrimary,
         fontSize: 15.5,
         height: 1.55,
       ),
       listIndent: 22,
       horizontalRuleDecoration: BoxDecoration(
         border: Border(
-          top: BorderSide(
-            color: Colors.white.withValues(alpha: 0.10),
-          ),
+          top: BorderSide(color: colors.borderStrong),
         ),
       ),
-      tableHead: const TextStyle(
-        color: Colors.white,
+      tableHead: TextStyle(
+        color: colors.textPrimary,
         fontWeight: FontWeight.w700,
       ),
-      tableBody: const TextStyle(
-        color: Colors.white70,
+      tableBody: TextStyle(
+        color: colors.textSecondary,
         fontSize: 14,
       ),
-      tableBorder: TableBorder.all(
-        color: Colors.white.withValues(alpha: 0.12),
-      ),
+      tableBorder: TableBorder.all(color: colors.borderStrong),
       tableCellsPadding: const EdgeInsets.all(8),
     );
   }
 }
 
 class _WeuraThinking extends StatefulWidget {
-  const _WeuraThinking();
+  const _WeuraThinking({required this.colors});
+
+  final WeuraColors colors;
 
   @override
   State<_WeuraThinking> createState() => _WeuraThinkingState();
@@ -1124,10 +1125,10 @@ class _WeuraThinkingState extends State<_WeuraThinking>
         height: 44,
         margin: const EdgeInsets.only(bottom: 12),
         decoration: BoxDecoration(
-          color: const Color(0xFF111119),
+          color: widget.colors.surface,
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: const Color(0xFF3B82F6).withValues(alpha: 0.10),
+            color: widget.colors.accentGlow.withValues(alpha: 0.10),
           ),
         ),
         child: AnimatedBuilder(
@@ -1152,9 +1153,9 @@ class _WeuraThinkingState extends State<_WeuraThinking>
                       child: Container(
                         width: 6,
                         height: 6,
-                        decoration: const BoxDecoration(
+                        decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: Color(0xFF3B82F6),
+                          color: widget.colors.accentGlow,
                         ),
                       ),
                     ),
