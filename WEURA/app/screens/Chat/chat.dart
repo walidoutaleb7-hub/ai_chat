@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../components/Composer/comppser.dart';
 import '../../core/AI/ai_router.dart';
@@ -57,7 +58,6 @@ class _ChatScreenState extends State<ChatScreen>
 
   final List<_ChatMessage> _messages = [];
 
-  /// Map of message-index -> rating ("up" or "down").
   final Map<int, String> _ratings = {};
 
   AIMode _mode = AIMode.auto;
@@ -371,7 +371,6 @@ class _ChatScreenState extends State<ChatScreen>
         'Please check the connection and try again.';
   }
 
-  /// Regenerates the LAST assistant message.
   void _regenerateLast() {
     if (_isLoading || _messages.isEmpty) return;
 
@@ -1114,11 +1113,8 @@ class _ChatScreenState extends State<ChatScreen>
     );
   }
 
-  /// Detects the dominant paragraph direction of a text.
-  /// Simplified UAX #9 P2: first strong directional character wins.
   TextDirection _detectDirection(String text) {
     for (final rune in text.runes) {
-      // Arabic block + supplements + extended.
       if ((rune >= 0x0600 && rune <= 0x06FF) ||
           (rune >= 0x0750 && rune <= 0x077F) ||
           (rune >= 0x08A0 && rune <= 0x08FF) ||
@@ -1127,7 +1123,6 @@ class _ChatScreenState extends State<ChatScreen>
         return TextDirection.rtl;
       }
 
-      // Latin letters.
       if ((rune >= 0x0041 && rune <= 0x005A) ||
           (rune >= 0x0061 && rune <= 0x007A) ||
           (rune >= 0x00C0 && rune <= 0x024F)) {
@@ -1136,6 +1131,53 @@ class _ChatScreenState extends State<ChatScreen>
     }
 
     return TextDirection.ltr;
+  }
+
+  /// Splits the assistant text into the main answer and the sources
+  /// section. Returns `(mainText, sources)` where `sources` is a list
+  /// of URLs extracted from the "المصادر:" / "Sources:" block.
+  (String, List<String>) _splitSources(String raw) {
+    final markers = <String>['المصادر:', 'المصدر:', 'Sources:', 'Source:'];
+
+    int splitIndex = -1;
+    String? matchedMarker;
+
+    for (final marker in markers) {
+      final idx = raw.lastIndexOf(marker);
+
+      if (idx != -1 && idx > splitIndex) {
+        splitIndex = idx;
+        matchedMarker = marker;
+      }
+    }
+
+    if (splitIndex == -1 || matchedMarker == null) {
+      return (raw, const []);
+    }
+
+    final mainText = raw.substring(0, splitIndex).trimRight();
+    final sourcesBlock =
+        raw.substring(splitIndex + matchedMarker.length);
+
+    // Extract URLs from the sources block.
+    final urlRegex = RegExp(r'https?://[^\s\)\]\>,]+');
+    final matches = urlRegex.allMatches(sourcesBlock);
+
+    final urls = matches
+        .map((m) => m.group(0)!)
+        .map((u) => u.replaceAll(RegExp(r'[.,;:]+$'), ''))
+        .where((u) => u.isNotEmpty)
+        .toList();
+
+    // Deduplicate.
+    final seen = <String>{};
+    final uniqueUrls = <String>[];
+
+    for (final url in urls) {
+      if (seen.add(url)) uniqueUrls.add(url);
+    }
+
+    return (mainText, uniqueUrls);
   }
 
   Widget _messageBubble(
@@ -1152,9 +1194,15 @@ class _ChatScreenState extends State<ChatScreen>
         ? colors.userBubble
         : colors.surfaceAlt;
 
-    // Set the correct paragraph direction per bubble so that
-    // Arabic + Latin mixed text renders in the right visual order.
     final bubbleDirection = _detectDirection(message.text);
+
+    // Parse sources only for assistant, non-error messages.
+    final parsed = (!message.isUser && !message.isError)
+        ? _splitSources(message.text)
+        : (message.text, const <String>[]);
+
+    final mainText = parsed.$1;
+    final sources = parsed.$2;
 
     return Align(
       alignment: alignment,
@@ -1194,14 +1242,21 @@ class _ChatScreenState extends State<ChatScreen>
                         ),
                       )
                     : MarkdownBody(
-                        data: message.text,
+                        data: mainText,
                         selectable: true,
                         styleSheet: _markdownStyle(colors),
                       ),
               ),
             ),
 
-            // Action bar (assistant messages only, non-error)
+            // Sources cards
+            if (sources.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: _sourcesSection(colors, sources),
+              ),
+
+            // Action bar
             if (!message.isUser && !message.isError)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
@@ -1243,6 +1298,183 @@ class _ChatScreenState extends State<ChatScreen>
         ),
       ),
     );
+  }
+
+  Widget _sourcesSection(WeuraColors colors, List<String> urls) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 6),
+          child: Text(
+            'المصادر',
+            style: TextStyle(
+              color: colors.textMuted,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.2,
+            ),
+          ),
+        ),
+        ...urls.asMap().entries.map((entry) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: _sourceCard(
+              colors,
+              entry.key + 1,
+              entry.value,
+            ),
+          );
+        }),
+      ],
+    );
+  }
+
+  Widget _sourceCard(WeuraColors colors, int index, String url) {
+    final uri = Uri.tryParse(url);
+    final domain = uri?.host ?? url;
+    final path = uri?.path ?? '';
+
+    final displayDomain = domain.startsWith('www.')
+        ? domain.substring(4)
+        : domain;
+
+    final letter = displayDomain.isNotEmpty
+        ? displayDomain[0].toUpperCase()
+        : '?';
+
+    final color = _colorForDomain(displayDomain);
+
+    final shortPath = path.length > 28
+        ? '${path.substring(0, 28)}...'
+        : path;
+
+    return Material(
+      color: colors.surface,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => _openUrl(url, colors),
+        onLongPress: () => _copyMessage(url),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: colors.border),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: color.withValues(alpha: 0.30),
+                  ),
+                ),
+                child: Center(
+                  child: Text(
+                    letter,
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      displayDomain,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: colors.textPrimary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    if (shortPath.isNotEmpty && shortPath != '/') ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        shortPath,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: colors.textMuted,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                width: 26,
+                height: 26,
+                decoration: BoxDecoration(
+                  color: colors.surfaceAlt,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  Icons.arrow_outward_rounded,
+                  size: 15,
+                  color: colors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openUrl(String url, WeuraColors colors) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+
+    try {
+      final ok = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+
+      if (!ok && mounted) {
+        _showMessage('Could not open link.');
+      }
+    } catch (_) {
+      if (mounted) _showMessage('Could not open link.');
+    }
+  }
+
+  Color _colorForDomain(String domain) {
+    // Deterministic palette based on domain hash.
+    const palette = <Color>[
+      Color(0xFF3B82F6), // blue
+      Color(0xFF8B5CF6), // purple
+      Color(0xFFEC4899), // pink
+      Color(0xFFEF4444), // red
+      Color(0xFFF59E0B), // amber
+      Color(0xFF10B981), // emerald
+      Color(0xFF06B6D4), // cyan
+      Color(0xFF6366F1), // indigo
+    ];
+
+    if (domain.isEmpty) return palette[0];
+
+    int hash = 0;
+    for (final code in domain.codeUnits) {
+      hash = (hash * 31 + code) & 0x7FFFFFFF;
+    }
+
+    return palette[hash % palette.length];
   }
 
   Widget _actionBar(
