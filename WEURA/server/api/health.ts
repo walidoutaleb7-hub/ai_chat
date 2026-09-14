@@ -11,6 +11,10 @@ router.get('/health', (_req, res) => {
     process.env.TAVILY_API_KEY?.trim(),
   );
 
+  const footballConfigured = Boolean(
+    process.env.FOOTBALL_DATA_API_KEY?.trim(),
+  );
+
   const ready = groqConfigured;
 
   return res.status(ready ? 200 : 503).json({
@@ -24,6 +28,10 @@ router.get('/health', (_req, res) => {
         : 'missing_api_key',
 
       search: searchConfigured
+        ? 'configured'
+        : 'not_configured',
+
+      football: footballConfigured
         ? 'configured'
         : 'not_configured',
     },
@@ -55,6 +63,9 @@ router.get('/status', (_req, res) => {
     tools: {
       search: Boolean(
         process.env.TAVILY_API_KEY?.trim(),
+      ),
+      football: Boolean(
+        process.env.FOOTBALL_DATA_API_KEY?.trim(),
       ),
       calculator: true,
       memory: true,
