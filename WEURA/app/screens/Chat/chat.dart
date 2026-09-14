@@ -5,6 +5,7 @@ import '../../components/Composer/comppser.dart';
 import '../../core/AI/ai_router.dart';
 import '../../core/History/chat_history.dart';
 import '../../core/Memory/memory_manager.dart';
+import '../../core/Settings/app_settings.dart';
 import '../../services/Grok/grok_service.dart';
 import '../History/history.dart';
 import '../Memory/memory.dart';
@@ -208,12 +209,24 @@ class _ChatScreenState extends State<ChatScreen>
     _scrollToBottom();
 
     try {
+      final settings = AppSettingsManager.instance;
+
+      final baseSystem = _router.systemPromptFor(resolvedMode);
+      final languagePrompt = settings.languagePrompt();
+      final detailPrompt = settings.responseDetailPrompt();
+
+      final combinedSystem = [
+        baseSystem,
+        if (languagePrompt.isNotEmpty) languagePrompt,
+        if (detailPrompt.isNotEmpty) detailPrompt,
+      ].join('\n\n');
+
       final memoryContext = _memory.buildRelevantContext(message);
 
       final conversation = <GrokMessage>[
         GrokMessage(
           role: 'system',
-          content: _router.systemPromptFor(resolvedMode),
+          content: combinedSystem,
         ),
       ];
 
@@ -334,12 +347,8 @@ class _ChatScreenState extends State<ChatScreen>
       );
   }
 
-  // ---------------------------------------------------------------------------
-  // Drawer actions
-  // ---------------------------------------------------------------------------
-
   void _startNewChat() {
-    Navigator.of(context).pop(); // close drawer
+    Navigator.of(context).pop();
 
     if (_messages.isEmpty) return;
 
@@ -379,10 +388,6 @@ class _ChatScreenState extends State<ChatScreen>
       ),
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // Drawer
-  // ---------------------------------------------------------------------------
 
   Widget _buildDrawer() {
     return Drawer(
@@ -549,7 +554,8 @@ class _ChatScreenState extends State<ChatScreen>
     required VoidCallback onTap,
   }) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+      padding:
+          const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -583,10 +589,6 @@ class _ChatScreenState extends State<ChatScreen>
       ),
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // Attachments / Modes
-  // ---------------------------------------------------------------------------
 
   void _showAttachmentSheet() {
     showModalBottomSheet<void>(
@@ -783,10 +785,6 @@ class _ChatScreenState extends State<ChatScreen>
       'Voice input will be connected in the Voice step.',
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // Build
-  // ---------------------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
