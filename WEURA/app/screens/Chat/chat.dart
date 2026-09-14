@@ -165,7 +165,7 @@ class _ChatScreenState extends State<ChatScreen>
 
   Future<void> _shareMessage(String text) async {
     try {
-      await SharePlus.instance.share(ShareParams(text: text));
+      await Share.share(text);
     } catch (_) {
       if (!mounted) return;
       _showMessage('Could not share.');
@@ -331,7 +331,6 @@ class _ChatScreenState extends State<ChatScreen>
       );
 
       final buffer = StringBuffer();
-
       final completer = Completer<void>();
 
       _streamSub = _grok
@@ -376,7 +375,6 @@ class _ChatScreenState extends State<ChatScreen>
       if (!mounted) return;
 
       if (_requestCancelled) {
-        // Remove the empty placeholder if the user cancelled early.
         if (buffer.toString().trim().isEmpty) {
           setState(() {
             _messages.removeLast();
@@ -405,7 +403,6 @@ class _ChatScreenState extends State<ChatScreen>
     } catch (error) {
       if (!mounted) return;
 
-      // Replace the streaming placeholder with an error message.
       if (_messages.isNotEmpty && _messages.last.isStreaming) {
         _messages.removeLast();
       }
@@ -494,8 +491,6 @@ class _ChatScreenState extends State<ChatScreen>
 
     final userMessages = _messages.where((m) => m.isUser).toList();
     if (userMessages.isEmpty) return;
-
-    final lastUserMessage = userMessages.last;
 
     _messages.removeWhere((m) => !m.isUser && m.isError);
     setState(() {});
@@ -1160,7 +1155,7 @@ class _ChatScreenState extends State<ChatScreen>
 
     final bubbleDirection = _detectDirection(message.text);
 
-    final parsed = (!message.isUser && !message.isError)
+    final parsed = (!message.isUser && !message.isError && !message.isStreaming)
         ? _splitSources(message.text)
         : (message.text, const <String>[]);
 
@@ -1257,7 +1252,6 @@ class _ChatScreenState extends State<ChatScreen>
   }
 
   Widget _assistantContent(WeuraColors colors, _ChatMessage message) {
-    // While streaming and text is empty, show the thinking dots.
     if (message.isStreaming && message.text.trim().isEmpty) {
       return _InlineThinking(colors: colors);
     }
@@ -1607,7 +1601,6 @@ class _ChatScreenState extends State<ChatScreen>
   }
 }
 
-/// Inline thinking indicator (3 animated dots).
 class _InlineThinking extends StatefulWidget {
   const _InlineThinking({required this.colors});
 
