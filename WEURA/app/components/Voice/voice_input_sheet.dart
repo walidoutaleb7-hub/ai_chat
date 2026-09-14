@@ -27,7 +27,12 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
   bool _isListening = false;
   bool _isAvailable = true;
   String? _error;
-  String _languagePrefix = 'ar'; // 'ar' or 'en'
+
+  /// 'ar' or 'en'
+  String _requestedLang = 'ar';
+
+  /// The locale actually being used, or null if unavailable.
+  String? _activeLocale;
 
   @override
   void initState() {
@@ -38,15 +43,14 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
       duration: const Duration(milliseconds: 1400),
     )..repeat();
 
-    // Default: use the app's language preference.
     final appLang = AppSettingsManager.instance.language;
     if (appLang == 'Arabic') {
-      _languagePrefix = 'ar';
+      _requestedLang = 'ar';
     } else if (appLang == 'English') {
-      _languagePrefix = 'en';
+      _requestedLang = 'en';
     } else {
-      // Auto: default to Arabic (WEURA is an Arabic-first product).
-      _languagePrefix = 'ar';
+      // Auto: default to Arabic (WEURA is Arabic-first).
+      _requestedLang = 'ar';
     }
 
     _start();
@@ -75,22 +79,58 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
 
     if (!mounted) return;
 
+    // Try to find a matching locale.
+    final localeId = _voice.findLocale(_requestedLang);
+
+    // If the requested language is not available, fall back to the
+    // other one (ar → en, en → ar) before giving up.
+    String? fallbackLocale;
+    String? fallbackLang;
+
+    if (localeId == null) {
+      final other = _requestedLang == 'ar' ? 'en' : 'ar';
+      fallbackLocale = _voice.findLocale(other);
+
+      if (fallbackLocale != null) {
+        fallbackLang = other;
+      }
+    }
+
+    final activeLocale = localeId ?? fallbackLocale;
+    final activeLang = localeId != null ? _requestedLang : fallbackLang;
+
+    if (activeLocale == null) {
+      // No usable locale at all.
+      if (mounted) {
+        setState(() {
+          _error = 'No speech recognition language is available on this device.\n'
+              'Install Google\'s voice package from Play Store.';
+          _isListening = false;
+        });
+      }
+      return;
+    }
+
     setState(() {
+      _activeLocale = activeLocale;
       _isListening = true;
       _error = null;
+
+      // Inform the user if we fell back.
+      if (localeId == null && fallbackLang != null) {
+        _error = activeLang == 'en'
+            ? 'العربية غير مثبتة في جهازك. جاري الاستماع بالإنجليزية.'
+            : 'English is not installed. Listening in Arabic.';
+      }
     });
 
     await _voice.startListening(
-      languagePrefix: _languagePrefix,
+      localeId: activeLocale,
       onResult: (text, isFinal) {
         if (!mounted) return;
-
-        setState(() {
-          _controller.text = text;
-        });
-
+        setState(() => _controller.text = text);
         if (isFinal) {
-          _isListening = false;
+          setState(() => _isListening = false);
         }
       },
       onError: (message) {
@@ -104,14 +144,14 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
   }
 
   Future<void> _switchLanguage(String prefix) async {
-    if (_languagePrefix == prefix) return;
+    if (_requestedLang == prefix) return;
 
     await _voice.cancel();
 
     if (!mounted) return;
 
     setState(() {
-      _languagePrefix = prefix;
+      _requestedLang = prefix;
       _controller.clear();
       _error = null;
       _isListening = false;
@@ -157,12 +197,8 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Language toggle
               _languageToggle(colors),
-
               const SizedBox(height: 18),
-
-              // Title
               Text(
                 _isListening ? 'Listening...' : 'Voice input',
                 style: TextStyle(
@@ -171,15 +207,9 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
                   fontWeight: FontWeight.w700,
                 ),
               ),
-
-              const SizedBox(height: 20),
-
-              // Animated mic
+              const SizedBox(height: 18),
               _buildMic(colors),
-
-              const SizedBox(height: 20),
-
-              // Live transcript
+              const SizedBox(height: 18),
               if (_controller.text.isNotEmpty)
                 Container(
                   width: double.infinity,
@@ -200,30 +230,39 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
                   ),
                 )
               else if (_error != null)
-                Text(
-                  _error!,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: colors.danger,
-                    fontSize: 13,
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: colors.danger.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: colors.danger.withValues(alpha: 0.30),
+                    ),
+                  ),
+                  child: Text(
+                    _error!,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: colors.danger,
+                      fontSize: 12,
+                      height: 1.4,
+                    ),
                   ),
                 )
               else
                 Text(
                   _isListening
-                      ? (_languagePrefix == 'ar'
-                          ? 'اتكلم الآن بالعربية...'
-                          : 'Speak now in English...')
+                      ? (_requestedLang == 'ar'
+                          ? 'اتكلم الآن...'
+                          : 'Speak now...')
                       : 'No speech detected.',
                   style: TextStyle(
                     color: colors.textMuted,
                     fontSize: 13,
                   ),
                 ),
-
-              const SizedBox(height: 20),
-
-              // Actions
+              const SizedBox(height: 18),
               Row(
                 children: [
                   Expanded(
@@ -252,6 +291,52 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 10),
+              // Helper link
+              GestureDetector(
+                onTap: () {
+                  if (!mounted) return;
+                  showDialog<void>(
+                    context: context,
+                    builder: (dialogContext) {
+                      return AlertDialog(
+                        backgroundColor: colors.surfaceAlt,
+                        title: Text(
+                          'تنشيط اللغة العربية',
+                          style: TextStyle(color: colors.textPrimary),
+                        ),
+                        content: Text(
+                          'باش يتعرف WEURA على صوتك بالعربية:\n\n'
+                          '1. افتح إعدادات التلفون\n'
+                          '2. Google → الإدخال الصوتي\n'
+                          '3. اللغات → أضف العربية (السعودية)\n'
+                          '4. حمّل الحزمة (10 MB)\n\n'
+                          'بعدها رجع للتطبيق وجرب مرة ثانية.',
+                          style: TextStyle(
+                            color: colors.textSecondary,
+                            fontSize: 13,
+                            height: 1.6,
+                          ),
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(dialogContext),
+                            child: const Text('حسناً'),
+                          ),
+                        ],
+                      );
+                    },
+                  );
+                },
+                child: Text(
+                  'اللغة العربية غير مثبتة؟ اضغط هنا',
+                  style: TextStyle(
+                    color: colors.accentGlow,
+                    fontSize: 11,
+                    decoration: TextDecoration.underline,
+                  ),
+                ),
               ),
             ],
           ),
@@ -292,7 +377,7 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
     required String label,
     required String code,
   }) {
-    final selected = _languagePrefix == code;
+    final selected = _requestedLang == code;
 
     return GestureDetector(
       onTap: () => _switchLanguage(code),
@@ -320,13 +405,13 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
   }
 
   Widget _buildMic(WeuraColors colors) {
-    final baseColor = _error != null
+    final baseColor = _error != null && !_isListening
         ? colors.danger
         : (_isListening ? colors.accentGlow : colors.textMuted);
 
     return SizedBox(
-      width: 120,
-      height: 120,
+      width: 110,
+      height: 110,
       child: AnimatedBuilder(
         animation: _pulseController,
         builder: (context, _) {
@@ -337,17 +422,17 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
                 _ring(
                   color: baseColor,
                   progress: _pulseController.value,
-                  size: 120,
+                  size: 110,
                 ),
                 _ring(
                   color: baseColor,
                   progress: (_pulseController.value + 0.5) % 1.0,
-                  size: 120,
+                  size: 110,
                 ),
               ],
               Container(
-                width: 68,
-                height: 68,
+                width: 62,
+                height: 62,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: baseColor.withValues(alpha: 0.12),
@@ -359,8 +444,8 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
                 child: Center(
                   child: SvgPicture.asset(
                     'assets/icons/microphone.svg',
-                    width: 30,
-                    height: 30,
+                    width: 28,
+                    height: 28,
                     colorFilter: ColorFilter.mode(
                       baseColor,
                       BlendMode.srcIn,
