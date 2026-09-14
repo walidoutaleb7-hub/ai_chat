@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../core/Settings/app_settings.dart';
+import '../../core/Theme/weura_theme.dart';
 import '../../services/Storage/storage_service.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -87,44 +88,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  Future<void> _selectTheme() async {
+  Future<void> _selectTheme(WeuraColors colors) async {
     final result = await showModalBottomSheet<ThemeMode>(
       context: context,
-      backgroundColor: const Color(0xFF15151D),
+      backgroundColor: colors.surfaceAlt,
       builder: (_) {
         return _SelectionSheet<ThemeMode>(
+          colors: colors,
           title: 'Appearance',
           value: _settings.themeMode,
           options: const [
-            _SelectionOption(
-              value: ThemeMode.system,
-              title: 'System',
-            ),
-            _SelectionOption(
-              value: ThemeMode.dark,
-              title: 'Dark',
-            ),
-            _SelectionOption(
-              value: ThemeMode.light,
-              title: 'Light',
-            ),
+            _SelectionOption(value: ThemeMode.system, title: 'System'),
+            _SelectionOption(value: ThemeMode.dark, title: 'Dark'),
+            _SelectionOption(value: ThemeMode.light, title: 'Light'),
           ],
         );
       },
     );
 
     if (result == null) return;
-
     await _settings.setThemeMode(result);
     if (mounted) setState(() {});
   }
 
-  Future<void> _selectLanguage() async {
+  Future<void> _selectLanguage(WeuraColors colors) async {
     final result = await showModalBottomSheet<String>(
       context: context,
-      backgroundColor: const Color(0xFF15151D),
+      backgroundColor: colors.surfaceAlt,
       builder: (_) {
         return _SelectionSheet<String>(
+          colors: colors,
           title: 'Language',
           value: _settings.language,
           options: const [
@@ -137,17 +130,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
 
     if (result == null) return;
-
     await _settings.setLanguage(result);
     if (mounted) setState(() {});
   }
 
-  Future<void> _selectDirection() async {
+  Future<void> _selectDirection(WeuraColors colors) async {
     final result = await showModalBottomSheet<String>(
       context: context,
-      backgroundColor: const Color(0xFF15151D),
+      backgroundColor: colors.surfaceAlt,
       builder: (_) {
         return _SelectionSheet<String>(
+          colors: colors,
           title: 'Text direction',
           value: _settings.direction,
           options: const [
@@ -160,28 +153,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
 
     if (result == null) return;
-
     await _settings.setDirection(result);
     if (mounted) setState(() {});
   }
 
-  Future<void> _selectResponseDetail() async {
+  Future<void> _selectResponseDetail(WeuraColors colors) async {
     final result = await showModalBottomSheet<ResponseDetail>(
       context: context,
-      backgroundColor: const Color(0xFF15151D),
+      backgroundColor: colors.surfaceAlt,
       builder: (_) {
         return _SelectionSheet<ResponseDetail>(
+          colors: colors,
           title: 'Response detail',
           value: _settings.responseDetail,
           options: const [
-            _SelectionOption(
-              value: ResponseDetail.auto,
-              title: 'Auto',
-            ),
-            _SelectionOption(
-              value: ResponseDetail.concise,
-              title: 'Concise',
-            ),
+            _SelectionOption(value: ResponseDetail.auto, title: 'Auto'),
+            _SelectionOption(value: ResponseDetail.concise, title: 'Concise'),
             _SelectionOption(
               value: ResponseDetail.balanced,
               title: 'Balanced',
@@ -196,7 +183,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
 
     if (result == null) return;
-
     await _settings.setResponseDetail(result);
     if (mounted) setState(() {});
   }
@@ -221,19 +207,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
       );
   }
 
-  void _confirmResetSettings() {
+  void _confirmResetSettings(WeuraColors colors) {
     showDialog<void>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          backgroundColor: const Color(0xFF15151D),
-          title: const Text(
+          backgroundColor: colors.surfaceAlt,
+          title: Text(
             'Reset settings?',
-            style: TextStyle(color: Colors.white),
+            style: TextStyle(color: colors.textPrimary),
           ),
-          content: const Text(
+          content: Text(
             'All WEURA preferences will return to their defaults.',
-            style: TextStyle(color: Colors.white70, height: 1.4),
+            style: TextStyle(color: colors.textSecondary, height: 1.4),
           ),
           actions: [
             TextButton(
@@ -243,11 +229,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             TextButton(
               onPressed: () async {
                 Navigator.pop(dialogContext);
-
                 await _settings.reset();
-
                 if (!mounted) return;
-
                 setState(() {
                   _memoryEnabled = true;
                   _voiceInput = true;
@@ -256,12 +239,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _sendOnEnter = true;
                   _streamResponses = true;
                 });
-
                 _showChanged('Settings reset');
               },
-              child: const Text(
+              child: Text(
                 'Reset',
-                style: TextStyle(color: Colors.redAccent),
+                style: TextStyle(color: colors.danger),
               ),
             ),
           ],
@@ -270,19 +252,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  void _confirmClearData() {
+  void _confirmClearData(WeuraColors colors) {
     showDialog<void>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          backgroundColor: const Color(0xFF15151D),
-          title: const Text(
+          backgroundColor: colors.surfaceAlt,
+          title: Text(
             'Clear local data?',
-            style: TextStyle(color: Colors.white),
+            style: TextStyle(color: colors.textPrimary),
           ),
-          content: const Text(
+          content: Text(
             'This will remove locally stored conversations, memory and preferences.',
-            style: TextStyle(color: Colors.white70, height: 1.4),
+            style: TextStyle(color: colors.textSecondary, height: 1.4),
           ),
           actions: [
             TextButton(
@@ -293,17 +275,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onPressed: () async {
                 await StorageService.instance.clear();
                 await _settings.reset();
-
                 widget.onClearLocalData?.call();
-
                 if (!mounted) return;
-
                 Navigator.pop(dialogContext);
                 _showChanged('Local data cleared');
               },
-              child: const Text(
+              child: Text(
                 'Clear',
-                style: TextStyle(color: Colors.redAccent),
+                style: TextStyle(color: colors.danger),
               ),
             ),
           ],
@@ -312,7 +291,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  void _showAbout() {
+  void _showAbout(WeuraColors colors) {
     showAboutDialog(
       context: context,
       applicationName: 'WEURA AI',
@@ -323,7 +302,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         height: 48,
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: const Color(0xFF1D4ED8),
+          color: colors.accent,
           borderRadius: BorderRadius.circular(14),
         ),
         child: SvgPicture.asset('assets/logo/weura.svg'),
@@ -337,10 +316,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  void _showConnectionInfo() {
+  void _showConnectionInfo(WeuraColors colors) {
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: const Color(0xFF15151D),
+      backgroundColor: colors.surfaceAlt,
       builder: (_) {
         return SafeArea(
           child: Padding(
@@ -349,23 +328,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Connection',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: colors.textPrimary,
                     fontSize: 20,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 16),
-                _infoRow('AI Engine', 'Groq'),
-                _infoRow('API key', 'Server-side'),
-                _infoRow('Security', 'Protected'),
+                _infoRow(colors, 'AI Engine', 'Groq'),
+                _infoRow(colors, 'Search', 'Tavily'),
+                _infoRow(colors, 'API key', 'Server-side'),
+                _infoRow(colors, 'Security', 'Protected'),
                 const SizedBox(height: 10),
-                const Text(
+                Text(
                   'Connection availability depends on the WEURA backend configuration.',
                   style: TextStyle(
-                    color: Colors.white54,
+                    color: colors.textMuted,
                     height: 1.4,
                   ),
                 ),
@@ -377,7 +357,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _infoRow(String title, String value) {
+  Widget _infoRow(WeuraColors colors, String title, String value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
@@ -385,13 +365,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Expanded(
             child: Text(
               title,
-              style: const TextStyle(color: Colors.white70),
+              style: TextStyle(color: colors.textSecondary),
             ),
           ),
           Text(
             value,
-            style: const TextStyle(
-              color: Colors.white,
+            style: TextStyle(
+              color: colors.textPrimary,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -402,10 +382,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = WeuraColors.of(context);
+
     return Scaffold(
-      backgroundColor: const Color(0xFF07070C),
+      backgroundColor: colors.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF07070C),
+        backgroundColor: colors.background,
         elevation: 0,
         leading: IconButton(
           onPressed: () {
@@ -421,17 +403,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
             height: 23,
           ),
         ),
-        title: const Text(
+        title: Text(
           'Settings',
           style: TextStyle(
-            color: Colors.white,
+            color: colors.textPrimary,
             fontWeight: FontWeight.w700,
           ),
         ),
         actions: [
           IconButton(
             tooltip: 'Reset settings',
-            onPressed: _confirmResetSettings,
+            onPressed: () => _confirmResetSettings(colors),
             icon: SvgPicture.asset(
               'assets/icons/history.svg',
               width: 22,
@@ -443,37 +425,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 10, 16, 40),
         children: [
-          _sectionTitle('Appearance'),
-          _card([
+          _sectionTitle(colors, 'Appearance'),
+          _card(colors, [
             _settingTile(
+              colors,
               title: 'Appearance',
               subtitle: _themeName,
-              onTap: _selectTheme,
+              onTap: () => _selectTheme(colors),
             ),
-            _divider(),
+            _divider(colors),
             _settingTile(
+              colors,
               title: 'Language',
               subtitle: _settings.language,
-              onTap: _selectLanguage,
+              onTap: () => _selectLanguage(colors),
             ),
-            _divider(),
+            _divider(colors),
             _settingTile(
+              colors,
               title: 'Text direction',
               subtitle: _settings.direction,
-              onTap: _selectDirection,
+              onTap: () => _selectDirection(colors),
             ),
           ]),
           const SizedBox(height: 24),
 
-          _sectionTitle('AI'),
-          _card([
+          _sectionTitle(colors, 'AI'),
+          _card(colors, [
             _settingTile(
+              colors,
               title: 'Response detail',
               subtitle: _responseDetailName,
-              onTap: _selectResponseDetail,
+              onTap: () => _selectResponseDetail(colors),
             ),
-            _divider(),
+            _divider(colors),
             _switchTile(
+              colors,
               title: 'Memory',
               subtitle: 'Allow WEURA to use saved memories',
               value: _memoryEnabled,
@@ -485,8 +472,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 );
               },
             ),
-            _divider(),
+            _divider(colors),
             _switchTile(
+              colors,
               title: 'Stream responses',
               subtitle: 'Show responses as they are generated',
               value: _streamResponses,
@@ -501,9 +489,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ]),
           const SizedBox(height: 24),
 
-          _sectionTitle('Voice'),
-          _card([
+          _sectionTitle(colors, 'Voice'),
+          _card(colors, [
             _switchTile(
+              colors,
               title: 'Voice input',
               subtitle: 'Use your microphone for messages',
               value: _voiceInput,
@@ -515,8 +504,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 );
               },
             ),
-            _divider(),
+            _divider(colors),
             _switchTile(
+              colors,
               title: 'Voice output',
               subtitle: 'Read AI responses aloud',
               value: _voiceOutput,
@@ -531,9 +521,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ]),
           const SizedBox(height: 24),
 
-          _sectionTitle('Chat'),
-          _card([
+          _sectionTitle(colors, 'Chat'),
+          _card(colors, [
             _switchTile(
+              colors,
               title: 'Auto-save history',
               subtitle: 'Automatically save conversations',
               value: _autoSaveHistory,
@@ -545,8 +536,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 );
               },
             ),
-            _divider(),
+            _divider(colors),
             _switchTile(
+              colors,
               title: 'Send on Enter',
               subtitle: 'Press Enter to send a message',
               value: _sendOnEnter,
@@ -561,33 +553,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ]),
           const SizedBox(height: 24),
 
-          _sectionTitle('Connection'),
-          _card([
+          _sectionTitle(colors, 'Connection'),
+          _card(colors, [
             _settingTile(
+              colors,
               title: 'AI connection',
-              subtitle: 'Groq • Server-side API',
-              onTap: _showConnectionInfo,
+              subtitle: 'Groq • Tavily • Server-side',
+              onTap: () => _showConnectionInfo(colors),
             ),
           ]),
           const SizedBox(height: 24),
 
-          _sectionTitle('Privacy'),
-          _card([
+          _sectionTitle(colors, 'Privacy'),
+          _card(colors, [
             _settingTile(
+              colors,
               title: 'Clear local data',
               subtitle: 'Remove locally stored WEURA data',
               destructive: true,
-              onTap: _confirmClearData,
+              onTap: () => _confirmClearData(colors),
             ),
           ]),
           const SizedBox(height: 24),
 
-          _sectionTitle('About'),
-          _card([
+          _sectionTitle(colors, 'About'),
+          _card(colors, [
             _settingTile(
+              colors,
               title: 'About WEURA',
               subtitle: 'WEURA AI • Version 1.0.0',
-              onTap: _showAbout,
+              onTap: () => _showAbout(colors),
             ),
           ]),
         ],
@@ -595,13 +590,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _sectionTitle(String title) {
+  Widget _sectionTitle(WeuraColors colors, String title) {
     return Padding(
       padding: const EdgeInsets.only(left: 4, bottom: 9),
       child: Text(
         title.toUpperCase(),
-        style: const TextStyle(
-          color: Colors.white38,
+        style: TextStyle(
+          color: colors.textMuted,
           fontSize: 11,
           fontWeight: FontWeight.w700,
           letterSpacing: 1.2,
@@ -610,20 +605,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _card(List<Widget> children) {
+  Widget _card(WeuraColors colors, List<Widget> children) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF111119),
+        color: colors.surface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.06),
-        ),
+        border: Border.all(color: colors.border),
       ),
       child: Column(children: children),
     );
   }
 
-  Widget _settingTile({
+  Widget _settingTile(
+    WeuraColors colors, {
     required String title,
     required String subtitle,
     required VoidCallback onTap,
@@ -636,22 +630,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
       title: Text(
         title,
         style: TextStyle(
-          color: destructive ? Colors.redAccent : Colors.white,
+          color: destructive ? colors.danger : colors.textPrimary,
           fontWeight: FontWeight.w600,
         ),
       ),
       subtitle: Text(
         subtitle,
-        style: const TextStyle(color: Colors.white38, fontSize: 12),
+        style: TextStyle(color: colors.textMuted, fontSize: 12),
       ),
-      trailing: const Icon(
+      trailing: Icon(
         Icons.chevron_right,
-        color: Colors.white30,
+        color: colors.textFaint,
       ),
     );
   }
 
-  Widget _switchTile({
+  Widget _switchTile(
+    WeuraColors colors, {
     required String title,
     required String subtitle,
     required bool value,
@@ -662,24 +657,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const EdgeInsets.symmetric(horizontal: 15, vertical: 4),
       title: Text(
         title,
-        style: const TextStyle(
-          color: Colors.white,
+        style: TextStyle(
+          color: colors.textPrimary,
           fontWeight: FontWeight.w600,
         ),
       ),
       subtitle: Text(
         subtitle,
-        style: const TextStyle(color: Colors.white38, fontSize: 12),
+        style: TextStyle(color: colors.textMuted, fontSize: 12),
       ),
       trailing: Switch(value: value, onChanged: onChanged),
     );
   }
 
-  Widget _divider() {
+  Widget _divider(WeuraColors colors) {
     return Divider(
       height: 1,
       indent: 16,
-      color: Colors.white.withValues(alpha: 0.05),
+      color: colors.border,
     );
   }
 }
@@ -696,11 +691,13 @@ class _SelectionOption<T> {
 
 class _SelectionSheet<T> extends StatelessWidget {
   const _SelectionSheet({
+    required this.colors,
     required this.title,
     required this.value,
     required this.options,
   });
 
+  final WeuraColors colors;
   final String title;
   final T value;
   final List<_SelectionOption<T>> options;
@@ -715,8 +712,8 @@ class _SelectionSheet<T> extends StatelessWidget {
           children: [
             Text(
               title,
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: colors.textPrimary,
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
               ),
@@ -729,13 +726,10 @@ class _SelectionSheet<T> extends StatelessWidget {
                 ),
                 title: Text(
                   option.title,
-                  style: const TextStyle(color: Colors.white),
+                  style: TextStyle(color: colors.textPrimary),
                 ),
                 trailing: option.value == value
-                    ? const Icon(
-                        Icons.check,
-                        color: Colors.blueAccent,
-                      )
+                    ? Icon(Icons.check, color: colors.accentGlow)
                     : null,
                 onTap: () {
                   Navigator.pop(context, option.value);
