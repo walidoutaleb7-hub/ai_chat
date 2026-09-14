@@ -6,6 +6,9 @@ import '../../core/AI/ai_router.dart';
 import '../../core/History/chat_history.dart';
 import '../../core/Memory/memory_manager.dart';
 import '../../services/Grok/grok_service.dart';
+import '../History/history.dart';
+import '../Memory/memory.dart';
+import '../Settings/settings.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({
@@ -37,6 +40,9 @@ class _ChatMessage {
 
 class _ChatScreenState extends State<ChatScreen>
     with TickerProviderStateMixin {
+  final GlobalKey<ScaffoldState> _scaffoldKey =
+      GlobalKey<ScaffoldState>();
+
   final ScrollController _scrollController = ScrollController();
   final AIRouter _router = const AIRouter();
   final HistoryManager _history = HistoryManager();
@@ -134,8 +140,6 @@ class _ChatScreenState extends State<ChatScreen>
     await _history.save(session);
   }
 
-  /// Detects explicit "remember this" requests in Arabic and English.
-  /// Only stores when the user clearly wants WEURA to remember something.
   Future<void> _maybeStoreMemory(String userMessage) async {
     final text = userMessage.toLowerCase().trim();
 
@@ -204,8 +208,7 @@ class _ChatScreenState extends State<ChatScreen>
     _scrollToBottom();
 
     try {
-      final memoryContext =
-          _memory.buildRelevantContext(message);
+      final memoryContext = _memory.buildRelevantContext(message);
 
       final conversation = <GrokMessage>[
         GrokMessage(
@@ -330,6 +333,260 @@ class _ChatScreenState extends State<ChatScreen>
         ),
       );
   }
+
+  // ---------------------------------------------------------------------------
+  // Drawer actions
+  // ---------------------------------------------------------------------------
+
+  void _startNewChat() {
+    Navigator.of(context).pop(); // close drawer
+
+    if (_messages.isEmpty) return;
+
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => const ChatScreen(),
+      ),
+    );
+  }
+
+  void _openHistory() {
+    Navigator.of(context).pop();
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const HistoryScreen(),
+      ),
+    );
+  }
+
+  void _openMemory() {
+    Navigator.of(context).pop();
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const MemoryScreen(),
+      ),
+    );
+  }
+
+  void _openSettings() {
+    Navigator.of(context).pop();
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const SettingsScreen(),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Drawer
+  // ---------------------------------------------------------------------------
+
+  Widget _buildDrawer() {
+    return Drawer(
+      backgroundColor: const Color(0xFF0A0B12),
+      width: 285,
+      child: SafeArea(
+        child: Column(
+          children: [
+            _drawerHeader(),
+            const SizedBox(height: 14),
+            _drawerNewChatButton(),
+            const SizedBox(height: 18),
+            _drawerSectionTitle('Workspace'),
+            _drawerItem(
+              icon: 'assets/icons/history.svg',
+              label: 'History',
+              onTap: _openHistory,
+            ),
+            _drawerItem(
+              icon: 'assets/icons/mode.svg',
+              label: 'Memory',
+              onTap: _openMemory,
+            ),
+            const SizedBox(height: 18),
+            _drawerSectionTitle('App'),
+            _drawerItem(
+              icon: 'assets/icons/settings.svg',
+              label: 'Settings',
+              onTap: _openSettings,
+            ),
+            const Spacer(),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                'WEURA AI • v1.0.0\nThink Beyond.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.28),
+                  fontSize: 11,
+                  height: 1.5,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _drawerHeader() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0F1220),
+              borderRadius: BorderRadius.circular(13),
+              border: Border.all(
+                color: const Color(0xFF3B82F6)
+                    .withValues(alpha: 0.22),
+              ),
+            ),
+            child: SvgPicture.asset(
+              'assets/logo/weura.svg',
+            ),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'WEURA',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  'Think Beyond.',
+                  style: TextStyle(
+                    color: Colors.white38,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _drawerNewChatButton() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: _startNewChat,
+          borderRadius: BorderRadius.circular(13),
+          child: Ink(
+            height: 48,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(13),
+              color: const Color(0xFF11131D),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.07),
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SvgPicture.asset(
+                  'assets/icons/plus.svg',
+                  width: 20,
+                  height: 20,
+                ),
+                const SizedBox(width: 8),
+                const Text(
+                  'New Chat',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _drawerSectionTitle(String title) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 6, 20, 8),
+        child: Text(
+          title.toUpperCase(),
+          style: const TextStyle(
+            color: Colors.white24,
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.2,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _drawerItem({
+    required String icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(11),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 13,
+            ),
+            child: Row(
+              children: [
+                SvgPicture.asset(
+                  icon,
+                  width: 22,
+                  height: 22,
+                ),
+                const SizedBox(width: 14),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Attachments / Modes
+  // ---------------------------------------------------------------------------
 
   void _showAttachmentSheet() {
     showModalBottomSheet<void>(
@@ -527,24 +784,26 @@ class _ChatScreenState extends State<ChatScreen>
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Build
+  // ---------------------------------------------------------------------------
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      key: _scaffoldKey,
       backgroundColor: const Color(0xFF07070C),
+      drawer: _buildDrawer(),
       appBar: AppBar(
         backgroundColor: const Color(0xFF07070C),
         elevation: 0,
         leading: IconButton(
-          tooltip: 'Back',
+          tooltip: 'Menu',
           onPressed: () {
-            if (widget.onBack != null) {
-              widget.onBack!();
-            } else if (Navigator.canPop(context)) {
-              Navigator.pop(context);
-            }
+            _scaffoldKey.currentState?.openDrawer();
           },
           icon: SvgPicture.asset(
-            'assets/icons/back.svg',
+            'assets/icons/menu.svg',
             width: 23,
             height: 23,
           ),
