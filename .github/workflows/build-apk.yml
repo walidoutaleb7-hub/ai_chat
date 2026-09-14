@@ -33,33 +33,23 @@ jobs:
         run: |
           if [ ! -f "android/settings.gradle" ] && [ ! -f "android/settings.gradle.kts" ]; then
             echo "Creating Android project..."
-
             rm -rf /tmp/weura_backup
             mkdir -p /tmp/weura_backup
-
             cp -r app /tmp/weura_backup/app
             cp pubspec.yaml /tmp/weura_backup/pubspec.yaml
-
-            flutter create \
-              --platforms=android \
-              --project-name=weura \
-              --org=com.walidout.weura \
-              .
-
+            flutter create --platforms=android --project-name=weura --org=com.walidout.weura .
             rm -rf app
             cp -r /tmp/weura_backup/app app
             cp /tmp/weura_backup/pubspec.yaml pubspec.yaml
           else
             echo "Android project exists."
           fi
-
           rm -f test/widget_test.dart
 
       - name: Fix icon assets structure
         working-directory: WEURA
         run: |
           mkdir -p assets/icons
-
           for f in assets/logo/*.svg; do
             [ -e "$f" ] || continue
             name=$(basename "$f")
@@ -67,13 +57,12 @@ jobs:
               mv "$f" "assets/icons/$name"
             fi
           done
-
           echo "assets/icons:"
           ls -la assets/icons
           echo "assets/logo:"
           ls -la assets/logo
 
-      - name: Patch AndroidManifest for voice + permissions
+      - name: Patch AndroidManifest
         working-directory: WEURA
         run: |
           MANIFEST="android/app/src/main/AndroidManifest.xml"
@@ -83,53 +72,31 @@ jobs:
             exit 1
           fi
 
-          python3 - <<'PY'
-import re
-path = "android/app/src/main/AndroidManifest.xml"
-src = open(path, encoding="utf-8").read()
+          # Add RECORD_AUDIO if missing
+          if ! grep -q "android.permission.RECORD_AUDIO" "$MANIFEST"; then
+            sed -i 's|<manifest[^>]*>|&\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>|' "$MANIFEST"
+            echo "Added RECORD_AUDIO"
+          fi
 
-# --- 1. Ensure RECORD_AUDIO + INTERNET + BLUETOOTH permissions ---
-needed_perms = [
-    "android.permission.RECORD_AUDIO",
-    "android.permission.INTERNET",
-    "android.permission.BLUETOOTH",
-    "android.permission.BLUETOOTH_ADMIN",
-    "android.permission.BLUETOOTH_CONNECT",
-]
+          # Add INTERNET if missing
+          if ! grep -q "android.permission.INTERNET" "$MANIFEST"; then
+            sed -i 's|<manifest[^>]*>|&\n    <uses-permission android:name="android.permission.INTERNET"/>|' "$MANIFEST"
+            echo "Added INTERNET"
+          fi
 
-for perm in needed_perms:
-    if perm not in src:
-        tag = f'<uses-permission android:name="{perm}"/>'
-        # Insert right after <manifest ...> opening tag
-        m = re.search(r"(<manifest[^>]*>)", src)
-        if m:
-            src = src[:m.end()] + "\n    " + tag + src[m.end():]
-            print(f"Added permission: {perm}")
-        else:
-            print("Manifest opening tag not found!")
+          # Add BLUETOOTH permissions
+          if ! grep -q "android.permission.BLUETOOTH" "$MANIFEST"; then
+            sed -i 's|<manifest[^>]*>|&\n    <uses-permission android:name="android.permission.BLUETOOTH"/>\n    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"/>\n    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>|' "$MANIFEST"
+            echo "Added BLUETOOTH"
+          fi
 
-# --- 2. Ensure <queries> block for speech recognition ---
-if "<queries>" not in src:
-    queries_block = (
-        "\n    <queries>\n"
-        "        <intent>\n"
-        '            <action android:name="android.speech.RecognitionService" />\n'
-        "        </intent>\n"
-        "    </queries>\n"
-    )
-    # Insert before <application
-    m = re.search(r"(<application)", src)
-    if m:
-        src = src[:m.start()] + queries_block + src[m.start():]
-        print("Added <queries> block for speech.")
-    else:
-        print("<application> tag not found!")
+          # Add <queries> block for speech recognition
+          if ! grep -q "android.speech.RecognitionService" "$MANIFEST"; then
+            sed -i 's|<application|    <queries>\n        <intent>\n            <action android:name="android.speech.RecognitionService" />\n        </intent>\n    </queries>\n\n    <application|' "$MANIFEST"
+            echo "Added queries block"
+          fi
 
-open(path, "w", encoding="utf-8").write(src)
-print("AndroidManifest patched.")
-PY
-
-          echo "=== Final AndroidManifest.xml ==="
+          echo "=== Final Manifest ==="
           cat "$MANIFEST"
 
       - name: Install dependencies
@@ -147,10 +114,7 @@ PY
 
       - name: Build APK
         working-directory: WEURA
-        run: |
-          flutter build apk \
-            --debug \
-            --target=app/main.dart
+        run: flutter build apk --debug --target=app/main.dart
 
       - name: Verify APK
         working-directory: WEURA
