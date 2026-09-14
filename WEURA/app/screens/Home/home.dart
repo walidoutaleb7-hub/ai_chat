@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../core/Theme/weura_theme.dart';
 import '../Chat/chat.dart';
 import '../History/history.dart';
 import '../Memory/memory.dart';
@@ -100,8 +101,10 @@ class _HomeScreenState extends State<HomeScreen>
 
   @override
   Widget build(BuildContext context) {
+    final colors = WeuraColors.of(context);
+
     return Scaffold(
-      backgroundColor: const Color(0xFF07070C),
+      backgroundColor: colors.background,
       body: SafeArea(
         child: FadeTransition(
           opacity: CurvedAnimation(
@@ -110,11 +113,11 @@ class _HomeScreenState extends State<HomeScreen>
           ),
           child: Column(
             children: [
-              _topBar(),
+              _topBar(colors),
               Expanded(
-                child: _mainContent(),
+                child: _mainContent(colors),
               ),
-              _composer(),
+              _composer(colors),
             ],
           ),
         ),
@@ -122,23 +125,20 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  Widget _topBar() {
+  Widget _topBar(WeuraColors colors) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        16,
-        12,
-        16,
-        8,
-      ),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: Row(
         children: [
           _iconButton(
+            colors: colors,
             asset: 'assets/icons/history.svg',
             tooltip: 'History',
             onTap: _openHistory,
           ),
           const SizedBox(width: 4),
           _iconButton(
+            colors: colors,
             asset: 'assets/icons/mode.svg',
             tooltip: 'Memory',
             onTap: _openMemory,
@@ -155,10 +155,10 @@ class _HomeScreenState extends State<HomeScreen>
                 ),
               ),
               const SizedBox(width: 9),
-              const Text(
+              Text(
                 'WEURA',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: colors.textPrimary,
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 1.4,
@@ -168,6 +168,7 @@ class _HomeScreenState extends State<HomeScreen>
           ),
           const Spacer(),
           _iconButton(
+            colors: colors,
             asset: 'assets/icons/settings.svg',
             tooltip: 'Settings',
             onTap: _openSettings,
@@ -177,25 +178,20 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  Widget _mainContent() {
+  Widget _mainContent(WeuraColors colors) {
     return Center(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(
-          22,
-          20,
-          22,
-          20,
-        ),
+        padding: const EdgeInsets.fromLTRB(22, 20, 22, 20),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            _heroLogo(),
+            _heroLogo(colors),
             const SizedBox(height: 26),
-            const Text(
+            Text(
               'Think Beyond.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Colors.white,
+                color: colors.textPrimary,
                 fontSize: 38,
                 fontWeight: FontWeight.w700,
                 letterSpacing: -1.2,
@@ -206,7 +202,7 @@ class _HomeScreenState extends State<HomeScreen>
               'Your intelligent space for ideas, answers and creation.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.48),
+                color: colors.textSecondary,
                 fontSize: 15,
                 height: 1.45,
               ),
@@ -217,7 +213,7 @@ class _HomeScreenState extends State<HomeScreen>
               spacing: 9,
               runSpacing: 9,
               children: _suggestions.map((suggestion) {
-                return _suggestionChip(suggestion);
+                return _suggestionChip(colors, suggestion);
               }).toList(),
             ),
           ],
@@ -226,22 +222,20 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  Widget _heroLogo() {
+  Widget _heroLogo(WeuraColors colors) {
     return Container(
       width: 86,
       height: 86,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: const Color(0xFF0A0D17),
+        color: colors.surface,
         border: Border.all(
-          color: const Color(0xFF3B82F6)
-              .withValues(alpha: 0.20),
+          color: colors.accentGlow.withValues(alpha: 0.20),
         ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF2563EB)
-                .withValues(alpha: 0.18),
+            color: colors.accent.withValues(alpha: 0.18),
             blurRadius: 45,
             spreadRadius: 5,
           ),
@@ -253,7 +247,7 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  Widget _suggestionChip(String text) {
+  Widget _suggestionChip(WeuraColors colors, String text) {
     return GestureDetector(
       onTap: () => _useSuggestion(text),
       child: Container(
@@ -262,16 +256,14 @@ class _HomeScreenState extends State<HomeScreen>
           vertical: 11,
         ),
         decoration: BoxDecoration(
-          color: const Color(0xFF10111A),
+          color: colors.surface,
           borderRadius: BorderRadius.circular(15),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.07),
-          ),
+          border: Border.all(color: colors.border),
         ),
         child: Text(
           text,
           style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.72),
+            color: colors.textSecondary,
             fontSize: 13,
           ),
         ),
@@ -279,21 +271,14 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  Widget _composer() {
+  Widget _composer(WeuraColors colors) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        14,
-        4,
-        14,
-        14,
-      ),
+      padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
       child: Container(
         decoration: BoxDecoration(
-          color: const Color(0xFF111119),
+          color: colors.surface,
           borderRadius: BorderRadius.circular(22),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.07),
-          ),
+          border: Border.all(color: colors.border),
         ),
         child: Row(
           children: [
@@ -315,16 +300,14 @@ class _HomeScreenState extends State<HomeScreen>
                 maxLines: 5,
                 textInputAction: TextInputAction.send,
                 onSubmitted: (_) => _openChat(),
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: colors.textPrimary,
                   fontSize: 15,
                 ),
-                cursorColor: const Color(0xFF5B7CFF),
-                decoration: const InputDecoration(
+                cursorColor: colors.accent,
+                decoration: InputDecoration(
                   hintText: 'Message WEURA...',
-                  hintStyle: TextStyle(
-                    color: Colors.white30,
-                  ),
+                  hintStyle: TextStyle(color: colors.textFaint),
                   border: InputBorder.none,
                 ),
               ),
@@ -334,11 +317,9 @@ class _HomeScreenState extends State<HomeScreen>
               child: Container(
                 width: 42,
                 height: 42,
-                margin: const EdgeInsets.only(
-                  right: 7,
-                ),
-                decoration: const BoxDecoration(
-                  color: Color(0xFF315DFF),
+                margin: const EdgeInsets.only(right: 7),
+                decoration: BoxDecoration(
+                  color: colors.accent,
                   shape: BoxShape.circle,
                 ),
                 child: Center(
@@ -357,6 +338,7 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget _iconButton({
+    required WeuraColors colors,
     required String asset,
     required String tooltip,
     required VoidCallback onTap,
