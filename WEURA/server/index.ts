@@ -9,6 +9,7 @@ import healthRouter from './api/health';
 const app = express();
 
 const PORT = Number(process.env.PORT) || 8080;
+const HOST = '0.0.0.0';
 
 app.disable('x-powered-by');
 
@@ -96,9 +97,17 @@ app.use(
   },
 );
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, HOST, () => {
   const groqReady = Boolean(
     process.env.GROQ_API_KEY?.trim(),
+  );
+
+  const tavilyReady = Boolean(
+    process.env.TAVILY_API_KEY?.trim(),
+  );
+
+  const footballReady = Boolean(
+    process.env.FOOTBALL_DATA_API_KEY?.trim(),
   );
 
   console.log('');
@@ -106,12 +115,39 @@ app.listen(PORT, () => {
   console.log('          WEURA AI');
   console.log('          Think Beyond.');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log(`Server: http://localhost:${PORT}`);
-  console.log(`Health: http://localhost:${PORT}/health`);
-  console.log(`Status: http://localhost:${PORT}/status`);
+  console.log(`Bind: ${HOST}:${PORT}`);
+  console.log(`Server: http://${HOST}:${PORT}`);
+  console.log(`Health: /health`);
+  console.log(`Status: /status`);
   console.log(
-    `Groq: ${groqReady ? 'READY' : 'MISSING'}`,
+    `Groq:     ${groqReady ? 'READY' : 'MISSING'}`,
+  );
+  console.log(
+    `Tavily:   ${tavilyReady ? 'READY' : 'MISSING'}`,
+  );
+  console.log(
+    `Football: ${footballReady ? 'READY' : 'MISSING'}`,
   );
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('');
+});
+
+server.on('error', (error) => {
+  console.error('[WEURA] Server error:', error);
+});
+
+process.on('SIGTERM', () => {
+  console.log('[WEURA] SIGTERM received, closing server...');
+  server.close(() => {
+    console.log('[WEURA] Server closed.');
+    process.exit(0);
+  });
+});
+
+process.on('SIGINT', () => {
+  console.log('[WEURA] SIGINT received, closing server...');
+  server.close(() => {
+    console.log('[WEURA] Server closed.');
+    process.exit(0);
+  });
 });
