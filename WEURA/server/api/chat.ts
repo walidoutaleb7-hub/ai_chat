@@ -1,5 +1,5 @@
 import express from 'express';
-import { askGrok, streamGrok, GrokMessage } from '../grok/grok';
+import { askGrok, GrokMessage } from '../grok/grok';
 import { searchTavily } from './search';
 import {
   createRequestId,
@@ -8,10 +8,6 @@ import {
 } from '../security/security';
 
 const router = express.Router();
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 function currentTimeContext(): string {
   const now = new Date();
@@ -146,25 +142,19 @@ function buildSearchContext(
       `or a player injury if it is EXPLICITLY written in the ` +
       `search results above.\n` +
       `- If the results only mention a team name without a score, ` +
-      `do NOT guess. Say the specific detail is not available.\n`
+      `do NOT guess.\n`
     : '';
 
   return (
     `Today's date is ${today}.\n\n` +
-    `You have been given a set of real web search results.\n\n` +
     `SEARCH RESULTS:\n\n${sources}\n\n` +
-    `===============================\n` +
     `INTERNAL THINKING (do NOT show this to the user):\n` +
-    `===============================\n` +
-    `Before writing your reply, silently reason step by step:\n` +
-    `1. What exactly is the user asking for?\n` +
-    `2. Which of the search results above actually answer it?\n` +
-    `3. Do the sources agree with each other?\n` +
-    `4. What is confirmed by the sources? What is missing?\n` +
-    `Then write your final answer using ONLY confirmed facts.\n\n` +
-    `===============================\n` +
+    `Before writing your reply, silently reason:\n` +
+    `1. What is the user asking?\n` +
+    `2. Which results answer it?\n` +
+    `3. Do they agree?\n` +
+    `Then write using ONLY confirmed facts.\n\n` +
     `MANDATORY OUTPUT RULES:\n` +
-    `===============================\n` +
     `1. Base every fact on the search results above. Do NOT use ` +
     `your own training data for factual claims.\n` +
     `2. NEVER invent names, scores, dates, minutes, scorers, ` +
@@ -181,15 +171,11 @@ function buildSearchContext(
     `7. MATCH the user's language.\n` +
     `8. START WITH THE ANSWER directly. No preamble.\n` +
     `9. Use Markdown for structure.\n` +
-    `10. BE COMPREHENSIVE but not verbose.\n` +
     footballRule
   );
 }
 
-/// Builds the full message list to send to the AI (system + search + history).
-async function buildMessages(
-  safeMessages: GrokMessage[],
-): Promise<{
+async function buildMessages(safeMessages: GrokMessage[]): Promise<{
   messages: GrokMessage[];
   searchUsed: boolean;
   football: boolean;
@@ -204,7 +190,8 @@ async function buildMessages(
   const lastUserMessage = getLastUserMessage(safeMessages);
   const tavilyConfigured = Boolean(process.env.TAVILY_API_KEY?.trim());
 
-  const isFootball = Boolean(lastUserMessage) && looksLikeFootball(lastUserMessage);
+  const isFootball =
+    Boolean(lastUserMessage) && looksLikeFootball(lastUserMessage);
   const isTech = Boolean(lastUserMessage) && looksLikeTech(lastUserMessage);
 
   const shouldSearch =
@@ -261,10 +248,6 @@ async function buildMessages(
   };
 }
 
-// ---------------------------------------------------------------------------
-// POST /api/chat  — Non-streaming
-// ---------------------------------------------------------------------------
-
 router.post('/chat', async (req, res) => {
   const requestId = createRequestId();
   res.setHeader('X-WEURA-Request-ID', requestId);
@@ -309,99 +292,6 @@ router.post('/chat', async (req, res) => {
       error: error instanceof Error ? error.message : 'Unexpected error.',
       requestId,
     });
-  }
-});
-
-// ---------------------------------------------------------------------------
-// POST /api/chat/stream  — Server-Sent Events
-// ---------------------------------------------------------------------------
-
-router.post('/chat/stream', async (req, res) => {
-  const requestId = createRequestId();
-  res.setHeader('X-WEURA-Request-ID', requestId);
-
-  try {
-    const validation = validateChatRequest(req.body);
-    if (!validation.valid) {
-      return res.status(400).json({
-        success: false,
-        error: validation.error,
-        requestId,
-      });
-    }
-
-    const body = req.body as { messages: GrokMessage[] };
-    const safeMessages = sanitizeMessages(body.messages);
-    if (safeMessages.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'No valid messages were provided.',
-        requestId,
-      });
-    }
-
-    const built = await buildMessages(safeMessages);
-
-    // Prepare SSE headers.
-    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
-    res.setHeader('Cache-Control', 'no-cache, no-transform');
-    res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no');
-    res.flushHeaders?.();
-
-    // Send a "meta" event so the client knows if search/football was used.
-    res.write(
-      `event: meta\ndata: ${JSON.stringify({
-        requestId,
-        searchUsed: built.searchUsed,
-        football: built.football,
-        tech: built.tech,
-      })}\n\n`,
-    );
-
-    // Abort if the client disconnects.
-    let clientClosed = false;
-    req.on('close', () => {
-      clientClosed = true;
-    });
-
-    try {
-      for await (const chunk of streamGrok(built.messages)) {
-        if (clientClosed || res.writableEnded) break;
-        res.write(`data: ${JSON.stringify({ delta: chunk })}\n\n`);
-      }
-
-      if (!res.writableEnded) {
-        res.write('data: [DONE]\n\n');
-        res.end();
-      }
-    } catch (error) {
-      console.error(`[WEURA] Stream error ${requestId}:`, error);
-      if (!res.writableEnded) {
-        res.write(
-          `event: error\ndata: ${JSON.stringify({
-            error: error instanceof Error ? error.message : 'Stream failed',
-          })}\n\n`,
-        );
-        res.write('data: [DONE]\n\n');
-        res.end();
-      }
-    }
-  } catch (error) {
-    console.error(`[WEURA] Stream setup error ${requestId}:`, error);
-    if (!res.headersSent) {
-      return res.status(500).json({
-        success: false,
-        error: error instanceof Error ? error.message : 'Unexpected error.',
-        requestId,
-      });
-    }
-    try {
-      res.write('data: [DONE]\n\n');
-      res.end();
-    } catch {
-      // ignore
-    }
   }
 });
 
