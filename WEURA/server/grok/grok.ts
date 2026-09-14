@@ -3,7 +3,7 @@ import 'dotenv/config';
 const GROQ_API_URL =
   'https://api.groq.com/openai/v1/chat/completions';
 
-const DEFAULT_MODEL = 'llama-3.3-70b-versatile';
+const DEFAULT_MODEL = 'openai/gpt-oss-120b';
 
 export type GrokMessage = {
   role: 'system' | 'user' | 'assistant';
@@ -50,6 +50,7 @@ export async function askGrok(
           messages,
           temperature: 0.7,
           stream: false,
+          tool_choice: 'none',
         }),
       },
     );
