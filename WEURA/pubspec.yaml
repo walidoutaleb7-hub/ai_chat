@@ -35,6 +35,9 @@ dependencies:
   # Share assistant messages
   share_plus: ^10.1.2
 
+  # Save generated images to gallery
+  gal: ^2.3.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
