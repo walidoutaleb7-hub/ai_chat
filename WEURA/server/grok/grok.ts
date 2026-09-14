@@ -20,7 +20,7 @@ function pickProvider(): Provider {
       name: 'cerebras',
       url: 'https://api.cerebras.ai/v1/chat/completions',
       apiKey: cerebrasKey,
- model: process.env.CEREBRAS_MODEL?.trim() || 'llama3.1-8b',
+      model: process.env.CEREBRAS_MODEL?.trim() || 'gpt-oss-120b',
     };
   }
 
