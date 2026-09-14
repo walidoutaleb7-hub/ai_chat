@@ -8,11 +8,13 @@ export type TavilyResult = {
   title: string;
   url: string;
   snippet: string;
+  publishedDate?: string;
 };
 
 export async function searchTavily(
   query: string,
   limit: number = 5,
+  timeSensitive: boolean = false,
 ): Promise<TavilyResult[]> {
   const apiKey = process.env.TAVILY_API_KEY?.trim();
 
@@ -20,19 +22,31 @@ export async function searchTavily(
     throw new Error('TAVILY_API_KEY is not configured.');
   }
 
+  // For time-sensitive queries, restrict to recent news to avoid
+  // returning outdated pages from the general web index.
+  const body: Record<string, unknown> = {
+    api_key: apiKey,
+    query,
+    max_results: limit,
+    include_answer: false,
+    include_raw_content: true,
+  };
+
+  if (timeSensitive) {
+    body.topic = 'news';
+    body.days = 30;
+    body.search_depth = 'advanced';
+  } else {
+    body.topic = 'general';
+    body.search_depth = 'advanced';
+  }
+
   const response = await fetch(TAVILY_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      api_key: apiKey,
-      query,
-      max_results: limit,
-      search_depth: 'advanced',
-      include_answer: false,
-      include_raw_content: true,
-    }),
+    body: JSON.stringify(body),
     signal: AbortSignal.timeout(20000),
   });
 
@@ -53,8 +67,6 @@ export async function searchTavily(
 
   return results
     .map((item: any) => {
-      // Prefer raw_content when available (fuller text), fall back
-      // to the short snippet.
       const raw =
         typeof item?.raw_content === 'string' &&
         item.raw_content.trim().length > 0
@@ -65,6 +77,9 @@ export async function searchTavily(
         title: String(item?.title ?? 'Untitled'),
         url: String(item?.url ?? ''),
         snippet: raw.trim(),
+        publishedDate: item?.published_date
+          ? String(item.published_date)
+          : undefined,
       };
     })
     .filter((item: TavilyResult) => item.url.length > 0)
