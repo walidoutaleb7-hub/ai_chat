@@ -13,10 +13,7 @@ class GrokMessage {
   });
 
   Map<String, dynamic> toJson() {
-    return {
-      'role': role,
-      'content': content,
-    };
+    return {'role': role, 'content': content};
   }
 }
 
@@ -32,17 +29,6 @@ class GrokResponse {
   });
 }
 
-/// Streaming event emitted while a reply is being generated.
-class GrokStreamEvent {
-  const GrokStreamEvent.delta(this.text) : isDone = false;
-  const GrokStreamEvent.done()
-      : text = '',
-        isDone = true;
-
-  final String text;
-  final bool isDone;
-}
-
 class GrokService {
   GrokService({
     required String baseUrl,
@@ -52,10 +38,6 @@ class GrokService {
 
   final String baseUrl;
   final http.Client _client;
-
-  // ---------------------------------------------------------------------------
-  // Non-streaming
-  // ---------------------------------------------------------------------------
 
   Future<GrokResponse> sendMessage({
     required List<GrokMessage> messages,
@@ -75,9 +57,8 @@ class GrokService {
               'Accept': 'application/json',
             },
             body: jsonEncode({
-              'messages': messages
-                  .map((message) => message.toJson())
-                  .toList(),
+              'messages':
+                  messages.map((message) => message.toJson()).toList(),
             }),
           )
           .timeout(const Duration(seconds: 120));
@@ -92,9 +73,7 @@ class GrokService {
         'Network connection failed: ${error.message}',
       );
     } on FormatException {
-      throw const GrokException(
-        'Invalid WEURA server address.',
-      );
+      throw const GrokException('Invalid WEURA server address.');
     } on GrokException {
       rethrow;
     } catch (error) {
@@ -102,122 +81,26 @@ class GrokService {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Streaming
-  // ---------------------------------------------------------------------------
-
-  /// Streams a reply from the server token by token.
-  ///
-  /// Emits a stream of [GrokStreamEvent]. On success, the last event is
-  /// `isDone = true`. Any error throws a [GrokException].
-  Stream<GrokStreamEvent> streamMessage({
-    required List<GrokMessage> messages,
-  }) async* {
-    if (messages.isEmpty) {
-      throw const GrokException('No messages were provided.');
-    }
-
-    final uri = Uri.parse('$baseUrl/api/chat/stream');
-
-    final request = http.Request('POST', uri)
-      ..headers['Content-Type'] = 'application/json'
-      ..headers['Accept'] = 'text/event-stream'
-      ..body = jsonEncode({
-        'messages': messages
-            .map((message) => message.toJson())
-            .toList(),
-      });
-
-    http.StreamedResponse streamed;
-
-    try {
-      streamed = await _client.send(request);
-    } on http.ClientException catch (error) {
-      throw GrokException(
-        'Network connection failed: ${error.message}',
-      );
-    } catch (error) {
-      throw GrokException('Unexpected connection error: $error');
-    }
-
-    if (streamed.statusCode < 200 || streamed.statusCode >= 300) {
-      final raw = await streamed.stream.bytesToString();
-      throw GrokException(
-        _statusMessage(streamed.statusCode),
-        statusCode: streamed.statusCode,
-      );
-    }
-
-    final lines = streamed.stream
-        .transform(utf8.decoder)
-        .transform(const LineSplitter());
-
-    await for (final line in lines) {
-      final trimmed = line.trim();
-
-      if (trimmed.isEmpty) continue;
-      if (!trimmed.startsWith('data:')) continue;
-
-      final payload = trimmed.substring(5).trim();
-
-      if (payload == '[DONE]') {
-        yield const GrokStreamEvent.done();
-        return;
-      }
-
-      try {
-        final decoded = jsonDecode(payload);
-
-        if (decoded is Map<String, dynamic>) {
-          final delta = decoded['delta'];
-
-          if (delta is String && delta.isNotEmpty) {
-            yield GrokStreamEvent.delta(delta);
-          }
-        }
-      } catch (_) {
-        // Ignore malformed chunks.
-      }
-    }
-
-    yield const GrokStreamEvent.done();
-  }
-
-  // ---------------------------------------------------------------------------
-  // Health
-  // ---------------------------------------------------------------------------
-
   Future<bool> checkConnection() async {
     try {
       final uri = Uri.parse('$baseUrl/health');
-
       final response = await _client
-          .get(
-            uri,
-            headers: const {'Accept': 'application/json'},
-          )
+          .get(uri, headers: const {'Accept': 'application/json'})
           .timeout(const Duration(seconds: 8));
-
       return response.statusCode >= 200 && response.statusCode < 300;
     } catch (_) {
       return false;
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Helpers
-  // ---------------------------------------------------------------------------
-
   GrokResponse _parseResponse(http.Response response) {
     Map<String, dynamic> data;
 
     try {
       final decoded = jsonDecode(response.body);
-
       if (decoded is! Map<String, dynamic>) {
         throw const FormatException();
       }
-
       data = decoded;
     } catch (_) {
       throw GrokException(
@@ -228,14 +111,12 @@ class GrokService {
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       final serverError = data['error']?.toString().trim();
-
       if (serverError != null && serverError.isNotEmpty) {
         throw GrokException(
           serverError,
           statusCode: response.statusCode,
         );
       }
-
       throw GrokException(
         _statusMessage(response.statusCode),
         statusCode: response.statusCode,
@@ -251,7 +132,6 @@ class GrokService {
     }
 
     final content = data['content']?.toString().trim();
-
     if (content == null || content.isEmpty) {
       throw const GrokException('The AI returned an empty response.');
     }
@@ -266,15 +146,12 @@ class GrokService {
 
   static String _normalizeBaseUrl(String value) {
     var result = value.trim();
-
     while (result.endsWith('/')) {
       result = result.substring(0, result.length - 1);
     }
-
     if (result.isEmpty) {
       throw const FormatException('WEURA server URL is empty.');
     }
-
     return result;
   }
 
@@ -309,10 +186,7 @@ class GrokService {
 }
 
 class GrokException implements Exception {
-  const GrokException(
-    this.message, {
-    this.statusCode,
-  });
+  const GrokException(this.message, {this.statusCode});
 
   final String message;
   final int? statusCode;
