@@ -11,37 +11,36 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # UI
+  # ─── UI ─────────────────────────────────────────────
   flutter_svg: ^2.2.0
 
-  # Networking
+  # ─── Networking ─────────────────────────────────────
   http: ^1.5.0
 
-  # Chat markdown rendering
+  # ─── Markdown & Code ────────────────────────────────
   flutter_markdown_plus: ^1.0.4
-
-  # Syntax highlighting for code blocks
+  markdown: ^7.2.2
   flutter_highlight: ^0.7.0
 
-  # Local persistence
+  # ─── Local persistence ──────────────────────────────
   shared_preferences: ^2.3.2
 
-  # Open URLs from source cards
+  # ─── URL launching ──────────────────────────────────
   url_launcher: ^6.3.0
 
-  # Voice input (speech-to-text)
+  # ─── Voice input (speech-to-text) ───────────────────
   speech_to_text: ^7.0.0
 
-  # Voice output (text-to-speech)
+  # ─── Voice output (text-to-speech) ──────────────────
   flutter_tts: ^4.2.0
 
-  # Share assistant messages
+  # ─── Share assistant messages ───────────────────────
   share_plus: ^10.1.2
 
-  # Save generated images to gallery
+  # ─── Save generated images to gallery ───────────────
   gal: ^2.3.0
 
-  # Pick images from gallery / camera
+  # ─── Pick images from gallery / camera ──────────────
   image_picker: ^1.1.2
 
 dev_dependencies:
@@ -50,8 +49,10 @@ dev_dependencies:
 
   flutter_lints: ^6.0.0
 
+  # ─── Auto-generate app icons ────────────────────────
   flutter_launcher_icons: ^0.14.1
 
+# ─── App Launcher Icons Configuration ─────────────────
 flutter_launcher_icons:
   android: "launcher_icon"
   ios: false
