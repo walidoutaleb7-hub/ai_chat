@@ -4,11 +4,14 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_highlight/flutter_highlight.dart';
+import 'package:flutter_highlight/themes/atom-one-dark.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:gal/gal.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
+import 'package:markdown/markdown.dart' as md;
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -1394,23 +1397,16 @@ class _ChatScreenState extends State<ChatScreen>
     int index,
     bool isLastAssistant,
   ) {
-    // Generated images have their own dedicated layout.
     if (message.imageUrl != null) {
       return _imageBubble(colors, message, index);
     }
 
-    // User messages: bubble style.
     if (message.isUser) {
       return _userBubble(colors, message);
     }
 
-    // Assistant messages: free text, no bubble.
     return _assistantMessage(colors, message, index, isLastAssistant);
   }
-
-  // ---------------------------------------------------------------------------
-  // User bubble (right side, blue background)
-  // ---------------------------------------------------------------------------
 
   Widget _userBubble(WeuraColors colors, _ChatMessage message) {
     final bubbleDirection = _detectDirection(message.text);
@@ -1471,10 +1467,6 @@ class _ChatScreenState extends State<ChatScreen>
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Assistant message (full width, no bubble)
-  // ---------------------------------------------------------------------------
-
   Widget _assistantMessage(
     WeuraColors colors,
     _ChatMessage message,
@@ -1502,6 +1494,9 @@ class _ChatScreenState extends State<ChatScreen>
                 data: mainText,
                 selectable: true,
                 styleSheet: _markdownStyle(colors),
+                builders: {
+                  'code': _CodeBlockBuilder(colors: colors),
+                },
               ),
 
             if (sources.isNotEmpty)
@@ -1552,10 +1547,6 @@ class _ChatScreenState extends State<ChatScreen>
       ),
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // Error message (subtle, not a bubble)
-  // ---------------------------------------------------------------------------
 
   Widget _errorMessage(WeuraColors colors, String text) {
     return Row(
@@ -1975,18 +1966,16 @@ class _ChatScreenState extends State<ChatScreen>
         color: colors.accentGlow,
         decoration: TextDecoration.underline,
       ),
+      // Inline code styling
       code: TextStyle(
         color: colors.accentGlow,
         backgroundColor: colors.surface,
         fontFamily: 'monospace',
         fontSize: 14,
       ),
-      codeblockDecoration: BoxDecoration(
-        color: colors.surfaceElevated,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: colors.border),
-      ),
-      codeblockPadding: const EdgeInsets.all(14),
+      // Code blocks are handled by the custom builder — no decoration needed here.
+      codeblockDecoration: const BoxDecoration(color: Colors.transparent),
+      codeblockPadding: EdgeInsets.zero,
       blockquote: TextStyle(
         color: colors.textSecondary,
         fontSize: 15,
@@ -2020,6 +2009,200 @@ class _ChatScreenState extends State<ChatScreen>
       ),
       tableBorder: TableBorder.all(color: colors.borderStrong),
       tableCellsPadding: const EdgeInsets.all(8),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Code block builder — colored + copyable
+// ---------------------------------------------------------------------------
+
+class _CodeBlockBuilder extends MarkdownElementBuilder {
+  _CodeBlockBuilder({required this.colors});
+
+  final WeuraColors colors;
+
+  @override
+  Widget? visitElementAfter(md.Element element, TextStyle? preferredStyle) {
+    // Detect the language from the class attribute.
+    // Fenced code blocks look like: <code class="language-dart">…</code>
+    final cls = element.attributes['class'];
+    if (cls == null || !cls.startsWith('language-')) {
+      // Inline code — let flutter_markdown handle it.
+      return null;
+    }
+
+    final language = cls.substring('language-'.length).trim();
+    final code = element.textContent.trimRight();
+
+    return _CodeBlock(
+      code: code,
+      language: language,
+      colors: colors,
+    );
+  }
+}
+
+class _CodeBlock extends StatefulWidget {
+  const _CodeBlock({
+    required this.code,
+    required this.language,
+    required this.colors,
+  });
+
+  final String code;
+  final String language;
+  final WeuraColors colors;
+
+  @override
+  State<_CodeBlock> createState() => _CodeBlockState();
+}
+
+class _CodeBlockState extends State<_CodeBlock> {
+  bool _copied = false;
+
+  Future<void> _copy() async {
+    await Clipboard.setData(ClipboardData(text: widget.code));
+    if (!mounted) return;
+    setState(() => _copied = true);
+    await Future<void>.delayed(const Duration(seconds: 2));
+    if (mounted) setState(() => _copied = false);
+  }
+
+  Map<String, TextStyle> _theme() {
+    final base = Map<String, TextStyle>.from(atomOneDarkTheme);
+    base['root'] = const TextStyle(
+      backgroundColor: Colors.transparent,
+      color: Color(0xFFE6E6E6),
+    );
+    return base;
+  }
+
+  String _normalizeLanguage(String raw) {
+    final l = raw.toLowerCase().trim();
+    if (l.isEmpty) return 'plaintext';
+    // Common aliases
+    if (l == 'js') return 'javascript';
+    if (l == 'ts') return 'typescript';
+    if (l == 'py') return 'python';
+    if (l == 'rb') return 'ruby';
+    if (l == 'sh' || l == 'shell') return 'bash';
+    if (l == 'yml') return 'yaml';
+    if (l == 'html') return 'xml';
+    if (l == 'c++') return 'cpp';
+    if (l == 'c#') return 'cs';
+    return l;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = widget.colors;
+    final displayLang =
+        widget.language.isEmpty ? 'code' : widget.language;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0A0B12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Header bar
+          Container(
+            padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0F1119),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(12),
+                topRight: Radius.circular(12),
+              ),
+              border: Border(
+                bottom: BorderSide(color: colors.border),
+              ),
+            ),
+            child: Row(
+              children: [
+                // language dot
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: colors.accentGlow,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  displayLang,
+                  style: TextStyle(
+                    color: colors.textMuted,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.4,
+                  ),
+                ),
+                const Spacer(),
+                InkWell(
+                  onTap: _copy,
+                  borderRadius: BorderRadius.circular(6),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 5,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          _copied
+                              ? Icons.check_rounded
+                              : Icons.copy_rounded,
+                          size: 14,
+                          color: _copied
+                              ? colors.accentGlow
+                              : colors.textMuted,
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          _copied ? 'Copied' : 'Copy',
+                          style: TextStyle(
+                            color: _copied
+                                ? colors.accentGlow
+                                : colors.textMuted,
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Code content
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: HighlightView(
+                widget.code,
+                language: _normalizeLanguage(widget.language),
+                theme: _theme(),
+                padding: EdgeInsets.zero,
+                textStyle: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 13,
+                  height: 1.55,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
