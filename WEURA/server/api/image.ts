@@ -2,6 +2,9 @@ import express from 'express';
 
 const router = express.Router();
 
+/// WEURA Image Service — Cloudflare Workers AI (FLUX.1-schnell).
+/// Free tier: 10,000 neurons/day (~100 images). No watermark.
+
 type CacheEntry = {
   buffer: Buffer;
   contentType: string;
@@ -11,15 +14,11 @@ type CacheEntry = {
 const cache = new Map<string, CacheEntry>();
 const CACHE_TTL_MS = 10 * 60 * 1000;
 
-const HF_MODEL = 'black-forest-labs/FLUX.1-schnell';
-const HF_ROUTER_URL =
-  `https://router.huggingface.co/hf-inference/models/${HF_MODEL}`;
-
-const PER_ATTEMPT_TIMEOUT_MS = 60_000;
+const CF_MODEL = '@cf/black-forest-labs/flux-1-schnell';
+const PER_ATTEMPT_TIMEOUT_MS = 40_000;
 const MAX_ATTEMPTS = 2;
 const BACKOFF_MS = 1000;
 
-// Hardcoded safety
 const HARD_REJECT_PATTERNS: RegExp[] = [
   /عارية|عاري|عريان|مكشوف|جنسي|جنس|إباحي|اباحي|نود|بورن/i,
   /nude|naked|nsfw|porn|sexual|erotic|explicit/i,
@@ -52,13 +51,12 @@ RULES:
 2. For fictional characters (Batman, Spider-Man, Naruto, Goku, Luffy,
    Mickey, Mario, Darth Vader, etc.), describe them accurately with
    their ICONIC costume, colors, symbols so the model renders the
-   RIGHT character. Do NOT invent a different person.
+   RIGHT character.
 3. Spider-Man → "a superhero in a tight red and blue suit with black
    web pattern, spider emblem on chest, masked face with white eyes".
 4. Batman → "a masked superhero in dark grey and black armored suit
    with bat emblem on chest, cape, pointy bat ears on cowl".
-5. For real celebrities (Messi, Ronaldo, etc.): describe respectfully
-   in a sports/portrait context.
+5. For real celebrities: describe respectfully in sports/portrait.
 6. ALWAYS append: "ultra detailed, 8k, sharp focus, cinematic lighting,
    masterpiece, professional color grading".
 
@@ -70,8 +68,7 @@ SAFETY — output EXACTLY "REJECT" alone if the request asks for:
 - ANY religious reference
 - real celebrities in sexual contexts
 
-Output ONLY the final English prompt (or "REJECT"). No quotes, no
-labels, no explanation.
+Output ONLY the final English prompt (or "REJECT").
 
 EXAMPLES:
 
@@ -169,24 +166,33 @@ async function fetchImage(
   prompt: string,
   width: number,
   height: number,
+  seed: number,
 ): Promise<{ buffer: Buffer; contentType: string } | null> {
-  const apiKey = process.env.HUGGINGFACE_API_KEY?.trim();
-  if (!apiKey) {
-    console.error('[WEURA] HUGGINGFACE_API_KEY not configured.');
+  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID?.trim();
+  const apiToken = process.env.CLOUDFLARE_API_TOKEN?.trim();
+
+  if (!accountId || !apiToken) {
+    console.error('[WEURA] Cloudflare credentials missing.');
     return null;
   }
 
+  const url =
+    `https://api.cloudflare.com/client/v4/accounts/` +
+    `${accountId}/ai/run/${CF_MODEL}`;
+
   try {
-    const response = await fetch(HF_ROUTER_URL, {
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-        Accept: 'image/png',
+        Authorization: `Bearer ${apiToken}`,
       },
       body: JSON.stringify({
-        inputs: prompt,
-        parameters: { width, height },
+        prompt,
+        steps: 4,
+        seed,
+        width,
+        height,
       }),
       signal: AbortSignal.timeout(PER_ATTEMPT_TIMEOUT_MS),
     });
@@ -194,9 +200,31 @@ async function fetchImage(
     if (!response.ok) {
       const errText = await response.text().catch(() => '');
       console.error(
-        `[WEURA] HF HTTP ${response.status}: ${errText.slice(0, 300)}`,
+        `[WEURA] CF HTTP ${response.status}: ${errText.slice(0, 300)}`,
       );
       return null;
+    }
+
+    const contentType =
+      response.headers.get('content-type') ?? 'image/jpeg';
+
+    if (contentType.includes('application/json')) {
+      const data: any = await response.json();
+
+      if (data?.success === false || !data?.result?.image) {
+        console.error(
+          '[WEURA] CF JSON response missing image:',
+          JSON.stringify(data).slice(0, 300),
+        );
+        return null;
+      }
+
+      const base64 = String(data.result.image);
+      const buffer = Buffer.from(base64, 'base64');
+
+      if (buffer.length < 1024) return null;
+
+      return { buffer, contentType: 'image/jpeg' };
     }
 
     const arrayBuffer = await response.arrayBuffer();
@@ -204,17 +232,14 @@ async function fetchImage(
 
     if (buffer.length < 1024) {
       console.error(
-        `[WEURA] HF tiny response (${buffer.length} bytes)`,
+        `[WEURA] CF tiny response (${buffer.length} bytes)`,
       );
       return null;
     }
 
-    const contentType =
-      response.headers.get('content-type') ?? 'image/png';
-
     return { buffer, contentType };
   } catch (error) {
-    console.error('[WEURA] HF fetch failed:', error);
+    console.error('[WEURA] CF fetch failed:', error);
     return null;
   }
 }
@@ -254,7 +279,10 @@ router.get('/image', async (req, res) => {
     `[WEURA] Image enhanced: "${rawPrompt}" → "${prompt}"`,
   );
 
-  const cacheKey = `${prompt}|${width}|${height}`;
+  const seedRaw = Number(req.query.seed ?? Date.now() % 999983);
+  const seed = Number.isFinite(seedRaw) ? Math.floor(seedRaw) : 12345;
+
+  const cacheKey = `${prompt}|${width}|${height}|${seed}`;
   const now = Date.now();
 
   const cached = cache.get(cacheKey);
@@ -266,9 +294,19 @@ router.get('/image', async (req, res) => {
   }
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    console.log(`[WEURA] Image attempt ${attempt}/${MAX_ATTEMPTS}`);
+    const attemptSeed =
+      attempt === 1 ? seed : seed + attempt * 7919;
 
-    const result = await fetchImage(prompt, width, height);
+    console.log(
+      `[WEURA] Image attempt ${attempt}/${MAX_ATTEMPTS} — seed=${attemptSeed}`,
+    );
+
+    const result = await fetchImage(
+      prompt,
+      width,
+      height,
+      attemptSeed,
+    );
 
     if (result) {
       cache.set(cacheKey, {
@@ -298,30 +336,42 @@ router.get('/image', async (req, res) => {
 });
 
 router.get('/image/ping', async (_req, res) => {
-  try {
-    const apiKey = process.env.HUGGINGFACE_API_KEY?.trim();
-    if (!apiKey) {
-      return res.json({ success: false, error: 'No API key' });
-    }
+  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID?.trim();
+  const apiToken = process.env.CLOUDFLARE_API_TOKEN?.trim();
 
-    const response = await fetch(HF_ROUTER_URL, {
+  if (!accountId || !apiToken) {
+    return res.json({
+      success: false,
+      error: 'Cloudflare credentials missing.',
+    });
+  }
+
+  try {
+    const url =
+      `https://api.cloudflare.com/client/v4/accounts/` +
+      `${accountId}/ai/run/${CF_MODEL}`;
+
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${apiToken}`,
       },
       body: JSON.stringify({
-        inputs: 'test',
-        parameters: { width: 256, height: 256 },
+        prompt: 'test',
+        steps: 4,
+        seed: 1,
+        width: 256,
+        height: 256,
       }),
-      signal: AbortSignal.timeout(20000),
+      signal: AbortSignal.timeout(30000),
     });
 
     return res.json({
       success: response.ok,
       status: response.status,
     });
-  } catch {
+  } catch (error) {
     return res.json({ success: false, status: 0 });
   }
 });
