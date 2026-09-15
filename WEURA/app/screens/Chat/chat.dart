@@ -273,73 +273,97 @@ class _ChatScreenState extends State<ChatScreen>
   // Image generation
   // ---------------------------------------------------------------------------
 
+  /// Returns true if the character just before [index] is an Arabic
+  /// letter. Used to avoid matching substrings inside compound words
+  /// (e.g. "مصممك" must NOT match "صمم").
+  bool _isArabicLetterBefore(String text, int index) {
+    if (index <= 0) return false;
+    final code = text.codeUnitAt(index - 1);
+    return (code >= 0x0600 && code <= 0x06FF) ||
+        (code >= 0x0750 && code <= 0x077F) ||
+        (code >= 0x08A0 && code <= 0x08FF);
+  }
+
+  /// Returns true if the character after [index] (the end of the
+  /// trigger) is an Arabic letter — meaning the trigger is part of a
+  /// larger word and must NOT match.
+  bool _isArabicLetterAfter(String text, int index) {
+    if (index >= text.length) return false;
+    final code = text.codeUnitAt(index);
+    return (code >= 0x0600 && code <= 0x06FF) ||
+        (code >= 0x0750 && code <= 0x077F) ||
+        (code >= 0x08A0 && code <= 0x08FF);
+  }
+
   String? _detectImageIntent(String message) {
     final text = message.trim();
     final lower = text.toLowerCase();
 
+    // Long, unambiguous triggers only. Short words like "صمم" or
+    // "ارسم" are intentionally EXCLUDED because they appear inside
+    // other words (مصمم، مصممتك، رسمي، مرسم...).
     const arabicTriggers = [
-      'ارسم لي', 'ارسملي', 'ارسم لنا', 'ارسم',
-      'رسم لي', 'رسملي', 'رسم',
+      // "draw for me" forms
+      'ارسم لي', 'ارسملي', 'ارسم لنا', 'ارسمي لي', 'ارسميلي',
+      'رسم لي', 'رسملي',
+      // "create image" forms
       'أنشئ لي صورة', 'انشئ لي صورة', 'أنشئلي صورة', 'انشئلي صورة',
       'أنشئ صورة', 'انشئ صورة',
-      'أنشئ لي رسمة', 'انشئ لي رسمة', 'أنشئ رسمة', 'انشئ رسمة',
-      'أنشئ لي تصميم', 'انشئ لي تصميم', 'أنشئ تصميم', 'انشئ تصميم',
+      'أنشئ لي رسمة', 'انشئ لي رسمة',
+      'أنشئ لي تصميم', 'انشئ لي تصميم',
       'أنشئ لي خلفية', 'انشئ لي خلفية',
       'أنشئ لي شعار', 'انشئ لي شعار',
-      'صمم لي', 'صمملي', 'صمم لنا', 'صمم',
-      'صممي لي', 'صمميلي', 'صممي',
-      'اعمل لي صورة', 'اعملي صورة', 'اعمل صورة', 'اعمللي صورة',
+      // "design for me" forms
+      'صمم لي', 'صمملي', 'صمم لنا', 'صممي لي', 'صمميلي',
+      // "make image" forms
+      'اعمل لي صورة', 'اعمللي صورة', 'اعمل صورة',
       'اعمل لي رسمة', 'اعمللي رسمة',
       'اعمل لي تصميم', 'اعمللي تصميم',
       'اعمل لي شعار', 'اعمللي شعار',
       'اعمل لي خلفية', 'اعمللي خلفية',
-      'سوي لي صورة', 'سويلي صورة', 'سوي صورة', 'سويلي',
+      'اعملي صورة', 'اعمليلي صورة',
+      // "make" (Darija)
+      'سوي لي صورة', 'سويلي صورة', 'سوي صورة',
       'سوي لي رسمة', 'سويلي رسمة',
       'سوي لي تصميم', 'سويلي تصميم',
       'دير لي صورة', 'ديرلي صورة', 'دير صورة',
       'دير لي رسمة', 'ديرلي رسمة',
+      // "generate"
       'ولد لي صورة', 'ولدي صورة', 'ولد صورة', 'ولدلي صورة',
       'ولد لي رسمة', 'ولدي رسمة', 'ولد رسمة',
       'ولد لي تصميم', 'ولدي تصميم',
+      // "show me"
       'وريني صورة', 'ورينيلي صورة', 'وريني رسمة', 'ورينيلي رسمة',
-      'وريني',
-      'صورة لـ', 'صورة ل', 'صورة عن', 'صورة من',
-      'رسمة لـ', 'رسمة ل', 'رسمة عن',
-      'تصميم لـ', 'تصميم ل', 'تصميم عن',
-      'شعار لـ', 'شعار ل',
-      'خلفية لـ', 'خلفية ل',
+      // "picture of" forms
+      'صورة لـ', 'صورة عن', 'صورة من',
+      'رسمة لـ', 'رسمة عن',
+      'تصميم لـ', 'تصميم عن',
+      'شعار لـ', 'خلفية لـ',
+      // question forms
       'تقدر ترسم', 'تقدر ترسملي', 'تقدر تصمملي', 'تقدر تعملي صورة',
       'تقدر تعمل لي صورة', 'تقدر تولد', 'تقدر تسويلي',
       'واش تقدر ترسم', 'واش تقدر تصمم',
       'حضّرلي صورة', 'حضرلي صورة',
       'جيبلي صورة', 'جيب لي صورة',
-      'جبلنا صورة', 'جبلنا', 'جيبلي',
     ];
 
     const englishTriggers = [
-      'draw me ', 'draw us ', 'draw ',
+      'draw me ', 'draw us ', 'draw a ', 'draw an ',
       'generate an image of ', 'generate an image ', 'generate a picture of ',
       'generate image of ', 'generate image ', 'generate a photo of ',
-      'generate a picture ', 'generate me ',
+      'generate a picture ',
       'create an image of ', 'create an image ', 'create a picture of ',
       'create image of ', 'create image ', 'create a photo of ',
-      'create a picture ', 'create me ',
+      'create a picture ',
       'make me an image of ', 'make me an image ', 'make me a picture of ',
       'make me a picture ', 'make an image of ', 'make a picture of ',
       'make a picture ', 'make me a drawing of ', 'make me a drawing ',
       'make me a wallpaper ', 'make me a logo of ', 'make me a logo ',
-      'show me an image of ', 'show me a picture of ', 'show me an image ',
-      'produce an image of ', 'produce image of ',
-      'render an image of ', 'render ',
+      'show me an image of ', 'show me a picture of ',
       'design me a ', 'design me an ', 'design a logo ',
       'design an image ', 'design a picture ',
-      'paint me ', 'paint a ', 'paint an ',
-      'sketch me ', 'sketch a ', 'sketch an ',
-      'illustrate ', 'illustration of ',
+      'paint me ', 'sketch me ', 'illustrate ',
       'can you draw ', 'can you generate ', 'can you create an image ',
-      'could you draw ', 'could you generate ',
-      'picture of ', 'image of ', 'photo of ',
-      'wallpaper of ', 'poster of ', 'banner of ',
     ];
 
     final sortedArabic = [...arabicTriggers]
@@ -348,11 +372,15 @@ class _ChatScreenState extends State<ChatScreen>
     for (final trigger in sortedArabic) {
       final idx = text.indexOf(trigger);
       if (idx != -1) {
-        final prompt = text.substring(idx + trigger.length).trim();
-        final cleaned = prompt
-            .replaceFirst(RegExp(r'^[\s:\-,\.]+'), '')
-            .trim();
-        if (cleaned.length >= 2) return cleaned;
+        // Reject if the trigger is inside a larger Arabic word.
+        if (!_isArabicLetterBefore(text, idx) &&
+            !_isArabicLetterAfter(text, idx + trigger.length)) {
+          final prompt = text.substring(idx + trigger.length).trim();
+          final cleaned = prompt
+              .replaceFirst(RegExp(r'^[\s:\-,\.]+'), '')
+              .trim();
+          if (cleaned.length >= 2) return cleaned;
+        }
       }
     }
 
