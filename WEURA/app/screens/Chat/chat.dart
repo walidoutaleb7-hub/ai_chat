@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:gal/gal.dart';
+import 'package:http/http.dart' as http;
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -160,8 +161,10 @@ class _ChatScreenState extends State<ChatScreen>
       );
   }
 
+  /// Downloads the image bytes and saves them to the WEURA album.
   Future<void> _saveImageToGallery(String imageUrl) async {
     try {
+      // 1. Permission
       final hasAccess = await Gal.hasAccess();
       if (!hasAccess) {
         final granted = await Gal.requestAccess();
@@ -172,7 +175,22 @@ class _ChatScreenState extends State<ChatScreen>
         }
       }
 
-      await Gal.putImage(imageUrl, album: 'WEURA');
+      // 2. Download the image bytes
+      final response = await http
+          .get(Uri.parse(imageUrl))
+          .timeout(const Duration(seconds: 60));
+
+      if (response.statusCode != 200) {
+        throw Exception(
+          'Download failed: HTTP ${response.statusCode}',
+        );
+      }
+
+      // 3. Save to gallery
+      await Gal.putImageBytes(
+        response.bodyBytes,
+        album: 'WEURA',
+      );
 
       if (!mounted) return;
       ScaffoldMessenger.of(context)
@@ -184,6 +202,7 @@ class _ChatScreenState extends State<ChatScreen>
           ),
         );
     } catch (error) {
+      debugPrint('[WEURA] Save image error: $error');
       if (!mounted) return;
       _showMessage('Could not save image.');
     }
@@ -273,9 +292,6 @@ class _ChatScreenState extends State<ChatScreen>
   // Image generation
   // ---------------------------------------------------------------------------
 
-  /// Returns true if the character just before [index] is an Arabic
-  /// letter. Used to avoid matching substrings inside compound words
-  /// (e.g. "مصممك" must NOT match "صمم").
   bool _isArabicLetterBefore(String text, int index) {
     if (index <= 0) return false;
     final code = text.codeUnitAt(index - 1);
@@ -284,9 +300,6 @@ class _ChatScreenState extends State<ChatScreen>
         (code >= 0x08A0 && code <= 0x08FF);
   }
 
-  /// Returns true if the character after [index] (the end of the
-  /// trigger) is an Arabic letter — meaning the trigger is part of a
-  /// larger word and must NOT match.
   bool _isArabicLetterAfter(String text, int index) {
     if (index >= text.length) return false;
     final code = text.codeUnitAt(index);
@@ -299,47 +312,35 @@ class _ChatScreenState extends State<ChatScreen>
     final text = message.trim();
     final lower = text.toLowerCase();
 
-    // Long, unambiguous triggers only. Short words like "صمم" or
-    // "ارسم" are intentionally EXCLUDED because they appear inside
-    // other words (مصمم، مصممتك، رسمي، مرسم...).
     const arabicTriggers = [
-      // "draw for me" forms
       'ارسم لي', 'ارسملي', 'ارسم لنا', 'ارسمي لي', 'ارسميلي',
       'رسم لي', 'رسملي',
-      // "create image" forms
       'أنشئ لي صورة', 'انشئ لي صورة', 'أنشئلي صورة', 'انشئلي صورة',
       'أنشئ صورة', 'انشئ صورة',
       'أنشئ لي رسمة', 'انشئ لي رسمة',
       'أنشئ لي تصميم', 'انشئ لي تصميم',
       'أنشئ لي خلفية', 'انشئ لي خلفية',
       'أنشئ لي شعار', 'انشئ لي شعار',
-      // "design for me" forms
       'صمم لي', 'صمملي', 'صمم لنا', 'صممي لي', 'صمميلي',
-      // "make image" forms
       'اعمل لي صورة', 'اعمللي صورة', 'اعمل صورة',
       'اعمل لي رسمة', 'اعمللي رسمة',
       'اعمل لي تصميم', 'اعمللي تصميم',
       'اعمل لي شعار', 'اعمللي شعار',
       'اعمل لي خلفية', 'اعمللي خلفية',
       'اعملي صورة', 'اعمليلي صورة',
-      // "make" (Darija)
       'سوي لي صورة', 'سويلي صورة', 'سوي صورة',
       'سوي لي رسمة', 'سويلي رسمة',
       'سوي لي تصميم', 'سويلي تصميم',
       'دير لي صورة', 'ديرلي صورة', 'دير صورة',
       'دير لي رسمة', 'ديرلي رسمة',
-      // "generate"
       'ولد لي صورة', 'ولدي صورة', 'ولد صورة', 'ولدلي صورة',
       'ولد لي رسمة', 'ولدي رسمة', 'ولد رسمة',
       'ولد لي تصميم', 'ولدي تصميم',
-      // "show me"
       'وريني صورة', 'ورينيلي صورة', 'وريني رسمة', 'ورينيلي رسمة',
-      // "picture of" forms
       'صورة لـ', 'صورة عن', 'صورة من',
       'رسمة لـ', 'رسمة عن',
       'تصميم لـ', 'تصميم عن',
       'شعار لـ', 'خلفية لـ',
-      // question forms
       'تقدر ترسم', 'تقدر ترسملي', 'تقدر تصمملي', 'تقدر تعملي صورة',
       'تقدر تعمل لي صورة', 'تقدر تولد', 'تقدر تسويلي',
       'واش تقدر ترسم', 'واش تقدر تصمم',
@@ -372,7 +373,6 @@ class _ChatScreenState extends State<ChatScreen>
     for (final trigger in sortedArabic) {
       final idx = text.indexOf(trigger);
       if (idx != -1) {
-        // Reject if the trigger is inside a larger Arabic word.
         if (!_isArabicLetterBefore(text, idx) &&
             !_isArabicLetterAfter(text, idx + trigger.length)) {
           final prompt = text.substring(idx + trigger.length).trim();
@@ -1877,6 +1877,7 @@ class _ImageGeneratingLoaderState extends State<_ImageGeneratingLoader>
   late final AnimationController _pulseController;
   late final AnimationController _rotateController;
   late final AnimationController _sparkleController;
+  late final AnimationController _progressController;
 
   @override
   void initState() {
@@ -1884,17 +1885,22 @@ class _ImageGeneratingLoaderState extends State<_ImageGeneratingLoader>
 
     _pulseController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1800),
+      duration: const Duration(milliseconds: 1400),
     )..repeat(reverse: true);
 
     _rotateController = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 8),
+      duration: const Duration(seconds: 5),
     )..repeat();
 
     _sparkleController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2400),
+      duration: const Duration(milliseconds: 1800),
+    )..repeat();
+
+    _progressController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 4),
     )..repeat();
   }
 
@@ -1903,6 +1909,7 @@ class _ImageGeneratingLoaderState extends State<_ImageGeneratingLoader>
     _pulseController.dispose();
     _rotateController.dispose();
     _sparkleController.dispose();
+    _progressController.dispose();
     super.dispose();
   }
 
@@ -1913,7 +1920,7 @@ class _ImageGeneratingLoaderState extends State<_ImageGeneratingLoader>
     return Container(
       width: 340,
       height: 340,
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: colors.surfaceAlt,
         borderRadius: BorderRadius.circular(16),
@@ -1921,9 +1928,10 @@ class _ImageGeneratingLoaderState extends State<_ImageGeneratingLoader>
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
+          // Bigger, brighter animated circle
           SizedBox(
-            width: 140,
-            height: 140,
+            width: 180,
+            height: 180,
             child: AnimatedBuilder(
               animation: Listenable.merge([
                 _pulseController,
@@ -1943,22 +1951,64 @@ class _ImageGeneratingLoaderState extends State<_ImageGeneratingLoader>
               },
             ),
           ),
-          const SizedBox(height: 22),
+          const SizedBox(height: 24),
+
+          // Text
           Text(
             'Creating your image',
             style: TextStyle(
               color: colors.textPrimary,
-              fontSize: 14,
+              fontSize: 15,
               fontWeight: FontWeight.w700,
-              letterSpacing: 0.3,
+              letterSpacing: 0.4,
             ),
           ),
           const SizedBox(height: 6),
           Text(
-            'This can take 20-50 seconds',
+            '20-50 seconds',
             style: TextStyle(
               color: colors.textMuted,
-              fontSize: 11,
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 18),
+
+          // Progress bar (visual only - animated loop)
+          SizedBox(
+            width: 180,
+            height: 4,
+            child: AnimatedBuilder(
+              animation: _progressController,
+              builder: (context, _) {
+                return ClipRRect(
+                  borderRadius: BorderRadius.circular(2),
+                  child: Stack(
+                    children: [
+                      Container(
+                        color: colors.surface,
+                      ),
+                      FractionallySizedBox(
+                        widthFactor: 0.35,
+                        alignment: Alignment(
+                          -1.0 + (_progressController.value * 2.4),
+                          0,
+                        ),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                colors.accentGlow.withValues(alpha: 0.0),
+                                colors.accentGlow,
+                                colors.accentGlow.withValues(alpha: 0.0),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
             ),
           ),
         ],
@@ -1987,27 +2037,32 @@ class _ImageLoadingPainter extends CustomPainter {
     final center = Offset(size.width / 2, size.height / 2);
     final baseRadius = size.width / 2;
 
+    // 1. Outer rotating dashed ring (brighter)
     _paintDashedRing(
       canvas,
       center,
       baseRadius * 0.95,
       rotation,
-      accent.withValues(alpha: 0.40),
+      accent.withValues(alpha: 0.85),
+      strokeWidth: 3,
     );
 
+    // 2. Inner rotating dashed ring
     _paintDashedRing(
       canvas,
       center,
-      baseRadius * 0.75,
+      baseRadius * 0.72,
       -rotation * 1.4,
-      glow.withValues(alpha: 0.28),
+      glow.withValues(alpha: 0.6),
+      strokeWidth: 2.5,
     );
 
-    final pulseRadius = baseRadius * (0.52 + progress * 0.18);
+    // 3. Pulsing glow halo
+    final pulseRadius = baseRadius * (0.55 + progress * 0.22);
     final haloPaint = Paint()
       ..shader = RadialGradient(
         colors: [
-          glow.withValues(alpha: 0.35 * (0.6 + progress * 0.4)),
+          glow.withValues(alpha: 0.55 * (0.6 + progress * 0.4)),
           glow.withValues(alpha: 0.0),
         ],
       ).createShader(
@@ -2015,12 +2070,25 @@ class _ImageLoadingPainter extends CustomPainter {
       );
     canvas.drawCircle(center, pulseRadius, haloPaint);
 
+    // 4. Solid glowing core
     final corePaint = Paint()
-      ..color = accent.withValues(alpha: 0.85);
-    canvas.drawCircle(center, baseRadius * 0.32, corePaint);
+      ..color = accent.withValues(alpha: 1.0);
+    canvas.drawCircle(center, baseRadius * 0.40, corePaint);
 
-    _paintBrushIcon(canvas, center, baseRadius * 0.30);
-    _paintSparkles(canvas, center, baseRadius * 0.85, sparkle);
+    // 5. Inner highlight
+    final highlightPaint = Paint()
+      ..color = Colors.white.withValues(alpha: 0.55);
+    canvas.drawCircle(
+      Offset(center.dx - baseRadius * 0.08, center.dy - baseRadius * 0.08),
+      baseRadius * 0.20,
+      highlightPaint,
+    );
+
+    // 6. Brush icon (bigger, brighter)
+    _paintBrushIcon(canvas, center, baseRadius * 0.45);
+
+    // 7. Sparkles
+    _paintSparkles(canvas, center, baseRadius * 0.88, sparkle);
   }
 
   void _paintDashedRing(
@@ -2028,14 +2096,15 @@ class _ImageLoadingPainter extends CustomPainter {
     Offset center,
     double radius,
     double rotation,
-    Color color,
-  ) {
-    const segments = 22;
+    Color color, {
+    double strokeWidth = 2.5,
+  }) {
+    const segments = 24;
     const gapFactor = 0.55;
 
     final paint = Paint()
       ..color = color
-      ..strokeWidth = 2
+      ..strokeWidth = strokeWidth
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;
 
@@ -2060,7 +2129,7 @@ class _ImageLoadingPainter extends CustomPainter {
     double radius,
     double progress,
   ) {
-    const sparkleCount = 6;
+    const sparkleCount = 8;
 
     for (int i = 0; i < sparkleCount; i++) {
       final baseAngle = (i / sparkleCount) * 2 * math.pi;
@@ -2075,11 +2144,11 @@ class _ImageLoadingPainter extends CustomPainter {
       );
 
       final sparklePaint = Paint()
-        ..color = glow.withValues(alpha: scale * 0.95)
-        ..strokeWidth = 2
+        ..color = glow.withValues(alpha: scale * 1.0)
+        ..strokeWidth = 2.5
         ..strokeCap = StrokeCap.round;
 
-      final armLength = 4.0 * scale;
+      final armLength = 5.0 * scale;
 
       canvas.drawLine(
         Offset(offset.dx - armLength, offset.dy),
@@ -2099,10 +2168,11 @@ class _ImageLoadingPainter extends CustomPainter {
       ..color = Colors.white
       ..style = PaintingStyle.fill;
 
+    // Brush handle
     final handleRect = Rect.fromCenter(
-      center: Offset(center.dx, center.dy + size * 0.18),
-      width: size * 0.18,
-      height: size * 0.65,
+      center: Offset(center.dx, center.dy + size * 0.20),
+      width: size * 0.20,
+      height: size * 0.70,
     );
     canvas.drawRRect(
       RRect.fromRectAndRadius(
@@ -2112,10 +2182,11 @@ class _ImageLoadingPainter extends CustomPainter {
       paint,
     );
 
+    // Brush tip (bristles)
     final bristlesPath = Path()
-      ..moveTo(center.dx - size * 0.24, center.dy - size * 0.32)
-      ..lineTo(center.dx + size * 0.24, center.dy - size * 0.32)
-      ..lineTo(center.dx, center.dy - size * 0.78)
+      ..moveTo(center.dx - size * 0.28, center.dy - size * 0.30)
+      ..lineTo(center.dx + size * 0.28, center.dy - size * 0.30)
+      ..lineTo(center.dx, center.dy - size * 0.85)
       ..close();
     canvas.drawPath(bristlesPath, paint);
   }
