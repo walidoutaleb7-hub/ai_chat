@@ -377,7 +377,7 @@ class _ChatScreenState extends State<ChatScreen>
     final encoded = Uri.encodeComponent(prompt);
     final seed = DateTime.now().millisecondsSinceEpoch % 999983;
     return '$_serverUrl/api/image?prompt=$encoded'
-        '&width=1024&height=1024&seed=$seed';
+        '&width=1280&height=768&seed=$seed';
   }
 
   Future<void> _handleImageGeneration(
@@ -1376,8 +1376,8 @@ class _ChatScreenState extends State<ChatScreen>
             ClipRRect(
               borderRadius: BorderRadius.circular(16),
               child: Container(
-                width: 320,
-                height: 320,
+                width: 340,
+                height: 340,
                 decoration: BoxDecoration(
                   color: colors.surface,
                   borderRadius: BorderRadius.circular(16),
@@ -1785,8 +1785,8 @@ class _NetworkImageWithLoader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Image.network(
       url,
-      width: 320,
-      height: 320,
+      width: 340,
+      height: 340,
       fit: BoxFit.cover,
       loadingBuilder: (context, child, progress) {
         if (progress == null) return child;
@@ -1794,8 +1794,8 @@ class _NetworkImageWithLoader extends StatelessWidget {
       },
       errorBuilder: (context, error, stackTrace) {
         return Container(
-          width: 320,
-          height: 320,
+          width: 340,
+          height: 340,
           padding: const EdgeInsets.all(24),
           child: Center(
             child: Column(
@@ -1883,8 +1883,8 @@ class _ImageGeneratingLoaderState extends State<_ImageGeneratingLoader>
     final colors = widget.colors;
 
     return Container(
-      width: 320,
-      height: 320,
+      width: 340,
+      height: 340,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: colors.surfaceAlt,
@@ -1927,7 +1927,7 @@ class _ImageGeneratingLoaderState extends State<_ImageGeneratingLoader>
           ),
           const SizedBox(height: 6),
           Text(
-            'This can take 5-30 seconds',
+            'This can take 20-50 seconds',
             style: TextStyle(
               color: colors.textMuted,
               fontSize: 11,
