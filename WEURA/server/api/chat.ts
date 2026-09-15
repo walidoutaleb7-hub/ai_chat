@@ -29,14 +29,17 @@ function looksLikeFootball(message: string): boolean {
     'مباراة', 'مباريات', 'ماتش', 'لقاء', 'كورة', 'كرة القدم',
     'الدوري', 'دوري', 'ترتيب', 'جدول', 'هداف', 'هدافين',
     'ريال مدريد', 'برشلونة', 'ليفربول', 'تشيلسي', 'مانشستر',
-    'بايرن', 'باريس', 'يوفنتوس', 'إنتر', 'ميلان',
+    'بايرن', 'باريس', 'يوفنتوس', 'إنتر', 'ميلان', 'نيمار',
     'الليغا', 'البريميرليغ', 'الكالتشيو', 'البوندسليغا',
     'كأس العالم', 'دوري أبطال', 'الهلال', 'النصر', 'الأهلي',
-    'الزمالك', 'الترجي', 'منتخب',
+    'مبابي', 'ميسي', 'رونالدو', 'بنزيمة', 'صلاح', 'هالاند',
+    'فينيسيوس', 'بيلينغهام', 'مودريتش', 'كيليان', 'ليونيل',
     'football', 'soccer', 'match', 'game', 'league',
     'standings', 'scorers', 'premier league', 'la liga',
     'real madrid', 'barcelona', 'liverpool', 'chelsea',
     'champions league', 'world cup',
+    'mbappe', 'messi', 'ronaldo', 'benzema', 'salah', 'neymar',
+    'haaland', 'vinicius', 'bellingham',
   ];
   return triggers.some((t) => text.includes(t));
 }
@@ -52,63 +55,53 @@ function looksLikeTech(message: string): boolean {
   return triggers.some((t) => text.includes(t));
 }
 
+/// Returns true if the message needs a web search.
+///
+/// NEW BEHAVIOR: search is now the DEFAULT. We only skip:
+///   - greetings / thanks / yes / no
+///   - pure math expressions (2+2)
+///   - very short casual messages
+///
+/// Everything else → search, so we always answer with fresh data.
 function needsSearch(message: string): boolean {
-  const text = message.toLowerCase().trim();
+  const text = message.trim();
+  const lower = text.toLowerCase();
+
+  // Pure greetings / thanks / confirmations.
   const skipPatterns = [
-    /^(hi|hello|hey|salam|salut|مرحبا|سلام|أهلا|اهلا|صباح|مساء)[\s!.,?]*$/,
-    /^(thanks|thank you|شكرا|مشكور|بارك الله)[\s!.,?]*$/,
-    /^(ok|okay|yes|no|نعم|لا|حسنا|طيب)[\s!.,?]*$/,
+    /^(hi|hello|hey|salam|salut|مرحبا|سلام|أهلا|اهلا|صباح|مساء|صباح الخير|مساء الخير)[\s!.,?]*$/i,
+    /^(thanks|thank you|thx|ty|شكرا|مشكور|بارك الله)[\s!.,?]*$/i,
+    /^(ok|okay|yes|no|نعم|لا|حسنا|طيب|بصح)[\s!.,?]*$/i,
+    /^(good morning|good night|bye|goodbye|بسلامة|تصبح على خير)[\s!.,?]*$/i,
   ];
+
   for (const pattern of skipPatterns) {
     if (pattern.test(text)) return false;
   }
-  const wordCount = text.split(/\s+/).filter(Boolean).length;
-  if (wordCount < 3) return false;
 
-  const triggers = [
-    'latest', 'today', 'tonight', 'news', 'current', 'currently',
-    'recent', 'recently', 'now', 'right now', 'this year',
-    'this week', 'this month', 'new', 'update', 'updates',
-    'last match', 'last game', 'last result', 'last time',
-    'price', 'prices', 'cost', 'weather', 'temperature',
-    'score', 'scores', 'match', 'game', 'winner', 'election',
-    'release', 'released', 'launch', 'launched', 'announced',
-    'who is', 'what is', 'where is', 'when did', 'how much',
-    'how many', 'is there', 'are there', 'was there',
-    'match summary', 'game summary', 'league', 'standings',
-    'scorers', 'championship', 'tournament', 'fixture', 'fixtures',
-    'injury', 'injured', 'roster', 'lineup', 'transfer',
-    'real madrid', 'barcelona', 'psg', 'liverpool', 'chelsea',
-    'اخبار', 'أخبار', 'خبر', 'اليوم', 'الآن', 'حاليا', 'حاليًا',
-    'آخر', 'أحدث', 'الأخبار', 'الجديد', 'الجديدة', 'حديث', 'حديثة',
-    'سعر', 'أسعار', 'تكلفة', 'طقس', 'حرارة',
-    'إصدار', 'أعلن', 'أطلقت', 'نتيجة', 'نتائج',
-    'من هو', 'من هي', 'ما هو', 'ما هي', 'وين', 'أين', 'متى',
-    'كم', 'بشحال', 'واش صرا', 'واش صار',
-    'ملخص', 'مباراة', 'مباريات', 'ماتش', 'الدوري',
-    'الترتيب', 'هداف', 'هدافين', 'كأس', 'بطولة', 'منتخب',
-    'إصابة', 'إصابات', 'مصاب', 'تشكيلة', 'انتقال',
-    'ريال مدريد', 'برشلونة', 'ليفربول', 'تشيلسي',
-    'آخر مباراة', 'آخر ماتش', 'آخر لقاء', 'آخر نتيجة',
-    '2026', '2025', '2024',
-  ];
-  for (const trigger of triggers) {
-    if (text.includes(trigger)) return true;
-  }
-  return false;
+  // Pure math expression (e.g. "2+2", "5 * 3").
+  if (/^[\d\s+\-*/().%,]+$/.test(text)) return false;
+
+  // Very short (< 3 characters).
+  if (text.length < 3) return false;
+
+  // Everything else → search.
+  return true;
 }
 
 function isTimeSensitive(message: string): boolean {
   const text = message.toLowerCase();
   const triggers = [
     'latest', 'recent', 'today', 'tonight', 'this week',
-    'this month', 'this year', 'current', 'now', 'right now',
-    'news', 'last match', 'last game', 'last result', 'breaking',
-    'آخر', 'أحدث', 'اليوم', 'الآن', 'حاليا', 'حاليًا',
+    'this month', 'this year', 'current', 'currently', 'now',
+    'right now', 'news', 'last match', 'last game', 'last result',
+    'breaking', 'آخر', 'أحدث', 'اليوم', 'الآن', 'حاليا', 'حاليًا',
     'هذا الأسبوع', 'هذا الشهر', 'هذه السنة', 'الجديد',
-    'الأخبار', 'أخبار', 'عاجل', 'حالياً',
-    'آخر مباراة', 'آخر ماتش', 'آخر لقاء', 'آخر نتيجة',
-    'مؤخرا', 'مؤخرًا',
+    'الأخبار', 'أخبار', 'عاجل', 'آخر مباراة', 'آخر ماتش',
+    'آخر لقاء', 'آخر نتيجة', 'مؤخرا', 'مؤخرًا',
+    'أين يلعب', 'اين يلعب', 'فين يلعب', 'يلعب حاليا',
+    'يلعب الآن', 'فريقه الحالي', 'ناديه الحالي',
+    'current club', 'current team', 'plays for', 'where does',
   ];
   for (const trigger of triggers) {
     if (text.includes(trigger)) return true;
@@ -138,23 +131,34 @@ function buildSearchContext(
 ): string {
   const footballRule = isFootball
     ? `\n=== FOOTBALL SPECIFIC ===\n` +
-      `- Only report a score, a match date, a scorer, a standing, ` +
-      `or a player injury if it is EXPLICITLY written in the ` +
-      `search results above.\n` +
-      `- If the results only mention a team name without a score, ` +
-      `do NOT guess.\n`
+      `- Football transfers happen constantly. Your training data is ` +
+      `OUTDATED. You MUST answer using ONLY the search results above.\n` +
+      `- For ANY question about a player's current club, transfer, ` +
+      `contract, goals, or stats — use ONLY the search results.\n` +
+      `- Never say "باريس سان جيرمان" for Mbappé unless it appears ` +
+      `in the sources. He currently plays for Real Madrid.\n` +
+      `- Never say "برشلونة" for Messi. He currently plays for ` +
+      `Inter Miami.\n`
     : '';
 
   return (
     `Today's date is ${today}.\n\n` +
+    `You have been given real-time web search results. They are ` +
+    `CURRENT and take priority over anything you may have learned ` +
+    `during training.\n\n` +
     `SEARCH RESULTS:\n\n${sources}\n\n` +
+    `===============================\n` +
     `INTERNAL THINKING (do NOT show this to the user):\n` +
-    `Before writing your reply, silently reason:\n` +
-    `1. What is the user asking?\n` +
-    `2. Which results answer it?\n` +
-    `3. Do they agree?\n` +
-    `Then write using ONLY confirmed facts.\n\n` +
+    `===============================\n` +
+    `Before writing your reply, silently reason step by step:\n` +
+    `1. What exactly is the user asking for?\n` +
+    `2. Which of the search results above actually answer it?\n` +
+    `3. Do the sources agree with each other?\n` +
+    `4. What is confirmed by the sources? What is missing?\n` +
+    `Then write your final answer using ONLY confirmed facts.\n\n` +
+    `===============================\n` +
     `MANDATORY OUTPUT RULES:\n` +
+    `===============================\n` +
     `1. Base every fact on the search results above. Do NOT use ` +
     `your own training data for factual claims.\n` +
     `2. NEVER invent names, scores, dates, minutes, scorers, ` +
@@ -165,8 +169,8 @@ function buildSearchContext(
     `4. Cite sources inline as [1], [2], etc.\n` +
     `5. Add a "المصادر:" section at the end ONLY if you actually ` +
     `cited at least one source.\n` +
-    `6. DATE CHECK: if user asks for "آخر"/"latest"/"recent" and ` +
-    `best match is older than 3 months, reply: ` +
+    `6. DATE CHECK: if the user asks for "آخر"/"latest"/"recent" ` +
+    `and the best match is older than 3 months, reply: ` +
     `"لم أجد معلومات حديثة في المصادر المتاحة."\n` +
     `7. MATCH the user's language.\n` +
     `8. START WITH THE ANSWER directly. No preamble.\n` +
@@ -196,7 +200,7 @@ async function buildMessages(safeMessages: GrokMessage[]): Promise<{
 
   const shouldSearch =
     Boolean(lastUserMessage) &&
-    (needsSearch(lastUserMessage) || isFootball) &&
+    needsSearch(lastUserMessage) &&
     tavilyConfigured;
 
   const out: GrokMessage[] = [timeMessage];
