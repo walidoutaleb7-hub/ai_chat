@@ -161,10 +161,8 @@ class _ChatScreenState extends State<ChatScreen>
       );
   }
 
-  /// Downloads the image bytes and saves them to the WEURA album.
   Future<void> _saveImageToGallery(String imageUrl) async {
     try {
-      // 1. Permission
       final hasAccess = await Gal.hasAccess();
       if (!hasAccess) {
         final granted = await Gal.requestAccess();
@@ -175,7 +173,6 @@ class _ChatScreenState extends State<ChatScreen>
         }
       }
 
-      // 2. Download the image bytes
       final response = await http
           .get(Uri.parse(imageUrl))
           .timeout(const Duration(seconds: 60));
@@ -186,7 +183,6 @@ class _ChatScreenState extends State<ChatScreen>
         );
       }
 
-      // 3. Save to gallery
       await Gal.putImageBytes(
         response.bodyBytes,
         album: 'WEURA',
@@ -401,11 +397,10 @@ class _ChatScreenState extends State<ChatScreen>
     return null;
   }
 
+  /// Cloudflare Workers AI only accepts `prompt`. No width/height/seed.
   String _buildImageUrl(String prompt) {
     final encoded = Uri.encodeComponent(prompt);
-    final seed = DateTime.now().millisecondsSinceEpoch % 999983;
-    return '$_serverUrl/api/image?prompt=$encoded'
-        '&width=1280&height=768&seed=$seed';
+    return '$_serverUrl/api/image?prompt=$encoded';
   }
 
   Future<void> _handleImageGeneration(
@@ -1928,7 +1923,6 @@ class _ImageGeneratingLoaderState extends State<_ImageGeneratingLoader>
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // Bigger, brighter animated circle
           SizedBox(
             width: 180,
             height: 180,
@@ -1952,8 +1946,6 @@ class _ImageGeneratingLoaderState extends State<_ImageGeneratingLoader>
             ),
           ),
           const SizedBox(height: 24),
-
-          // Text
           Text(
             'Creating your image',
             style: TextStyle(
@@ -1965,15 +1957,13 @@ class _ImageGeneratingLoaderState extends State<_ImageGeneratingLoader>
           ),
           const SizedBox(height: 6),
           Text(
-            '20-50 seconds',
+            'This can take 5-15 seconds',
             style: TextStyle(
               color: colors.textMuted,
               fontSize: 12,
             ),
           ),
           const SizedBox(height: 18),
-
-          // Progress bar (visual only - animated loop)
           SizedBox(
             width: 180,
             height: 4,
@@ -1984,9 +1974,7 @@ class _ImageGeneratingLoaderState extends State<_ImageGeneratingLoader>
                   borderRadius: BorderRadius.circular(2),
                   child: Stack(
                     children: [
-                      Container(
-                        color: colors.surface,
-                      ),
+                      Container(color: colors.surface),
                       FractionallySizedBox(
                         widthFactor: 0.35,
                         alignment: Alignment(
@@ -2037,7 +2025,6 @@ class _ImageLoadingPainter extends CustomPainter {
     final center = Offset(size.width / 2, size.height / 2);
     final baseRadius = size.width / 2;
 
-    // 1. Outer rotating dashed ring (brighter)
     _paintDashedRing(
       canvas,
       center,
@@ -2047,7 +2034,6 @@ class _ImageLoadingPainter extends CustomPainter {
       strokeWidth: 3,
     );
 
-    // 2. Inner rotating dashed ring
     _paintDashedRing(
       canvas,
       center,
@@ -2057,7 +2043,6 @@ class _ImageLoadingPainter extends CustomPainter {
       strokeWidth: 2.5,
     );
 
-    // 3. Pulsing glow halo
     final pulseRadius = baseRadius * (0.55 + progress * 0.22);
     final haloPaint = Paint()
       ..shader = RadialGradient(
@@ -2070,12 +2055,10 @@ class _ImageLoadingPainter extends CustomPainter {
       );
     canvas.drawCircle(center, pulseRadius, haloPaint);
 
-    // 4. Solid glowing core
     final corePaint = Paint()
       ..color = accent.withValues(alpha: 1.0);
     canvas.drawCircle(center, baseRadius * 0.40, corePaint);
 
-    // 5. Inner highlight
     final highlightPaint = Paint()
       ..color = Colors.white.withValues(alpha: 0.55);
     canvas.drawCircle(
@@ -2084,10 +2067,7 @@ class _ImageLoadingPainter extends CustomPainter {
       highlightPaint,
     );
 
-    // 6. Brush icon (bigger, brighter)
     _paintBrushIcon(canvas, center, baseRadius * 0.45);
-
-    // 7. Sparkles
     _paintSparkles(canvas, center, baseRadius * 0.88, sparkle);
   }
 
@@ -2168,7 +2148,6 @@ class _ImageLoadingPainter extends CustomPainter {
       ..color = Colors.white
       ..style = PaintingStyle.fill;
 
-    // Brush handle
     final handleRect = Rect.fromCenter(
       center: Offset(center.dx, center.dy + size * 0.20),
       width: size * 0.20,
@@ -2182,7 +2161,6 @@ class _ImageLoadingPainter extends CustomPainter {
       paint,
     );
 
-    // Brush tip (bristles)
     final bristlesPath = Path()
       ..moveTo(center.dx - size * 0.28, center.dy - size * 0.30)
       ..lineTo(center.dx + size * 0.28, center.dy - size * 0.30)
