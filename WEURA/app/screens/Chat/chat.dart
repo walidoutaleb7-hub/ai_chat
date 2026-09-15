@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -471,7 +472,7 @@ class _ChatScreenState extends State<ChatScreen>
   Future<void> _analyzeImage(XFile image) async {
     if (_isLoading) return;
 
-    final defaultQuestion = 'اشرح هذه الصورة بالتفصيل.';
+    const defaultQuestion = 'اشرح هذه الصورة بالتفصيل.';
 
     await _ensureSession('🖼️ Image analysis');
 
@@ -491,7 +492,6 @@ class _ChatScreenState extends State<ChatScreen>
     _scrollToBottom();
 
     try {
-      // Read bytes and encode to base64 data URL.
       final bytes = await image.readAsBytes();
 
       final lowerPath = image.path.toLowerCase();
