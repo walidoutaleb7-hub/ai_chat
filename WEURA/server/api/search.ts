@@ -12,64 +12,30 @@ export type TavilyResult = {
   query?: string;
 };
 
-/// Trusted sources — general.
+/// In-memory cache: same query within TTL → reuse.
+type CacheEntry = {
+  results: TavilyResult[];
+  expiresAt: number;
+};
+
+const SEARCH_CACHE = new Map<string, CacheEntry>();
+const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
 const TRUSTED_GENERAL = [
-  'reuters.com',
-  'apnews.com',
-  'bbc.com',
-  'aljazeera.net',
-  'aljazeera.com',
-  'cnn.com',
-  'nytimes.com',
-  'theguardian.com',
-  'euronews.com',
-  'france24.com',
-  'lemonde.fr',
-  'wikipedia.org',
-  'britannica.com',
+  'reuters.com', 'apnews.com', 'bbc.com',
+  'aljazeera.net', 'aljazeera.com', 'cnn.com',
+  'nytimes.com', 'theguardian.com', 'euronews.com',
+  'france24.com', 'lemonde.fr',
+  'wikipedia.org', 'britannica.com',
+  'espn.com', 'skysports.com', 'marca.com', 'as.com',
+  'goal.com', 'transfermarkt.com', 'fotmob.com',
+  'sofascore.com', 'fifa.com', 'uefa.com',
 ];
 
-/// Trusted sources — football / sports.
-const TRUSTED_FOOTBALL = [
-  'espn.com',
-  'bbc.com',
-  'skysports.com',
-  'marca.com',
-  'as.com',
-  'goal.com',
-  'fotmob.com',
-  'transfermarkt.com',
-  'sofascore.com',
-  'realmadrid.com',
-  'fcbarcelona.com',
-  'liverpoolfc.com',
-  'manutd.com',
-  'chelseafc.com',
-  'juventus.com',
-  'acmilan.com',
-  'psg.fr',
-  'fifa.com',
-  'uefa.com',
-  'premierleague.com',
-  'laliga.com',
-  'bundesliga.com',
-  'legaseriea.it',
-  'ligue1.com',
-  'thesportsdb.com',
-];
-
-/// Trusted sources — tech / code.
 const TRUSTED_TECH = [
-  'github.com',
-  'stackoverflow.com',
-  'developer.mozilla.org',
-  'flutter.dev',
-  'dart.dev',
-  'pub.dev',
-  'docs.flutter.dev',
-  'medium.com',
-  'dev.to',
-  'freecodecamp.org',
+  'github.com', 'stackoverflow.com',
+  'developer.mozilla.org', 'flutter.dev',
+  'dart.dev', 'pub.dev', 'docs.flutter.dev',
 ];
 
 export type SearchOptions = {
@@ -81,7 +47,7 @@ export type SearchOptions = {
 function buildDomainList(options: SearchOptions): string[] | null {
   const lists: string[][] = [];
 
-  if (options.football) lists.push(TRUSTED_FOOTBALL);
+  if (options.football) lists.push(TRUSTED_GENERAL);
   if (options.tech) lists.push(TRUSTED_TECH);
   if (options.timeSensitive) lists.push(TRUSTED_GENERAL);
 
@@ -91,7 +57,6 @@ function buildDomainList(options: SearchOptions): string[] | null {
   for (const list of lists) {
     for (const d of list) merged.add(d);
   }
-
   return Array.from(merged);
 }
 
@@ -101,10 +66,7 @@ async function runSearch(
   options: SearchOptions,
 ): Promise<TavilyResult[]> {
   const apiKey = process.env.TAVILY_API_KEY?.trim();
-
-  if (!apiKey) {
-    throw new Error('TAVILY_API_KEY is not configured.');
-  }
+  if (!apiKey) throw new Error('TAVILY_API_KEY is not configured.');
 
   const body: Record<string, unknown> = {
     api_key: apiKey,
@@ -123,9 +85,7 @@ async function runSearch(
   }
 
   const domains = buildDomainList(options);
-  if (domains) {
-    body.include_domains = domains;
-  }
+  if (domains) body.include_domains = domains;
 
   const response = await fetch(TAVILY_URL, {
     method: 'POST',
@@ -135,19 +95,16 @@ async function runSearch(
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
+    const errText = await response.text();
     console.error(
       `[WEURA] Tavily error ${response.status}:`,
-      errorText,
+      errText.slice(0, 300),
     );
     return [];
   }
 
   const data = await response.json();
-
-  const results = Array.isArray(data?.results)
-    ? data.results
-    : [];
+  const results = Array.isArray(data?.results) ? data.results : [];
 
   return results.map((item: any) => {
     const raw =
@@ -168,35 +125,38 @@ async function runSearch(
   });
 }
 
-/// Runs 2-3 targeted searches in parallel and merges the results.
+/// Runs the main query + (optionally) a time-sensitive variant.
+/// Caches the merged results for 30 minutes.
 export async function searchTavily(
   query: string,
-  limit: number = 5,
+  limit: number = 6,
   options: SearchOptions = {},
 ): Promise<TavilyResult[]> {
+  const cacheKey = `${query}|${limit}|${JSON.stringify(options)}`;
+  const now = Date.now();
+
+  const cached = SEARCH_CACHE.get(cacheKey);
+  if (cached && cached.expiresAt > now) {
+    console.log(`[WEURA] Search cache HIT: "${query}"`);
+    return cached.results;
+  }
+
+  // Variants to search in parallel.
   const variants: { q: string; opts: SearchOptions }[] = [
     { q: query, opts: options },
   ];
 
-  // Generate complementary queries based on the intent.
-  if (options.football) {
+  // Add a time-sensitive variant for fresh news when the query is
+  // about a person/event/current topic.
+  if (options.timeSensitive) {
     variants.push({
-      q: `${query} نتيجة المباراة`,
-      opts: { ...options, timeSensitive: false },
-    });
-    variants.push({
-      q: `${query} score result 2026`,
-      opts: { ...options, timeSensitive: true },
-    });
-  } else if (options.timeSensitive) {
-    variants.push({
-      q: `${query} آخر التطورات`,
+      q: `${query} آخر التطورات 2026`,
       opts: { ...options, timeSensitive: true },
     });
   }
 
-  // Cap at 3 to stay within rate limits.
-  const batch = variants.slice(0, 3);
+  // Cap at 2 variants to stay within rate limits.
+  const batch = variants.slice(0, 2);
 
   const settled = await Promise.all(
     batch.map((v) =>
@@ -204,7 +164,6 @@ export async function searchTavily(
     ),
   );
 
-  // Merge and deduplicate by URL.
   const seen = new Set<string>();
   const merged: TavilyResult[] = [];
 
@@ -217,7 +176,14 @@ export async function searchTavily(
     }
   }
 
-  return merged.slice(0, Math.max(limit, 6));
+  const finalResults = merged.slice(0, Math.max(limit, 6));
+
+  SEARCH_CACHE.set(cacheKey, {
+    results: finalResults,
+    expiresAt: now + CACHE_TTL_MS,
+  });
+
+  return finalResults;
 }
 
 router.get('/search', async (req, res) => {
@@ -236,12 +202,7 @@ router.get('/search', async (req, res) => {
 
   try {
     const results = await searchTavily(query, limit);
-
-    return res.json({
-      success: true,
-      query,
-      results,
-    });
+    return res.json({ success: true, query, results });
   } catch (error) {
     console.error('[WEURA] Search error:', error);
     return res.status(502).json({
