@@ -1966,15 +1966,14 @@ class _ChatScreenState extends State<ChatScreen>
         color: colors.accentGlow,
         decoration: TextDecoration.underline,
       ),
-      // Inline code styling
       code: TextStyle(
         color: colors.accentGlow,
         backgroundColor: colors.surface,
         fontFamily: 'monospace',
         fontSize: 14,
       ),
-      // Code blocks are handled by the custom builder — no decoration needed here.
-      codeblockDecoration: const BoxDecoration(color: Colors.transparent),
+      codeblockDecoration:
+          const BoxDecoration(color: Colors.transparent),
       codeblockPadding: EdgeInsets.zero,
       blockquote: TextStyle(
         color: colors.textSecondary,
@@ -2024,11 +2023,10 @@ class _CodeBlockBuilder extends MarkdownElementBuilder {
 
   @override
   Widget? visitElementAfter(md.Element element, TextStyle? preferredStyle) {
-    // Detect the language from the class attribute.
-    // Fenced code blocks look like: <code class="language-dart">…</code>
     final cls = element.attributes['class'];
+
+    // Only handle fenced code blocks (language-xxx).
     if (cls == null || !cls.startsWith('language-')) {
-      // Inline code — let flutter_markdown handle it.
       return null;
     }
 
@@ -2081,7 +2079,6 @@ class _CodeBlockState extends State<_CodeBlock> {
   String _normalizeLanguage(String raw) {
     final l = raw.toLowerCase().trim();
     if (l.isEmpty) return 'plaintext';
-    // Common aliases
     if (l == 'js') return 'javascript';
     if (l == 'ts') return 'typescript';
     if (l == 'py') return 'python';
@@ -2110,7 +2107,6 @@ class _CodeBlockState extends State<_CodeBlock> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Header bar
           Container(
             padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
             decoration: BoxDecoration(
@@ -2125,7 +2121,6 @@ class _CodeBlockState extends State<_CodeBlock> {
             ),
             child: Row(
               children: [
-                // language dot
                 Container(
                   width: 8,
                   height: 8,
@@ -2183,7 +2178,6 @@ class _CodeBlockState extends State<_CodeBlock> {
               ],
             ),
           ),
-          // Code content
           Padding(
             padding: const EdgeInsets.all(12),
             child: SingleChildScrollView(
@@ -2401,9 +2395,11 @@ class _ImageGeneratingLoaderState extends State<_ImageGeneratingLoader>
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
                               colors: [
-                                colors.accentGlow.withValues(alpha: 0.0),
+                                colors.accentGlow
+                                    .withValues(alpha: 0.0),
                                 colors.accentGlow,
-                                colors.accentGlow.withValues(alpha: 0.0),
+                                colors.accentGlow
+                                    .withValues(alpha: 0.0),
                               ],
                             ),
                           ),
@@ -2478,7 +2474,10 @@ class _ImageLoadingPainter extends CustomPainter {
     final highlightPaint = Paint()
       ..color = Colors.white.withValues(alpha: 0.55);
     canvas.drawCircle(
-      Offset(center.dx - baseRadius * 0.08, center.dy - baseRadius * 0.08),
+      Offset(
+        center.dx - baseRadius * 0.08,
+        center.dy - baseRadius * 0.08,
+      ),
       baseRadius * 0.20,
       highlightPaint,
     );
