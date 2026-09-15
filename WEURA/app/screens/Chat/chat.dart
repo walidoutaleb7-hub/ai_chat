@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:gal/gal.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -46,13 +48,19 @@ class _ChatMessage {
     this.isError = false,
     this.imageUrl,
     this.imagePrompt,
+    this.visionImagePath,
   });
 
   final String text;
   final bool isUser;
   final bool isError;
+
+  /// For AI-generated images (shown as remote URL).
   final String? imageUrl;
   final String? imagePrompt;
+
+  /// For user-uploaded images (shown as local file path).
+  final String? visionImagePath;
 }
 
 class _ChatScreenState extends State<ChatScreen>
@@ -65,6 +73,7 @@ class _ChatScreenState extends State<ChatScreen>
   final HistoryManager _history = HistoryManager();
   final MemoryManager _memory = MemoryManager();
   final VoiceOutputService _voiceOut = VoiceOutputService.instance;
+  final ImagePicker _imagePicker = ImagePicker();
 
   late final GrokService _grok;
 
@@ -178,9 +187,7 @@ class _ChatScreenState extends State<ChatScreen>
           .timeout(const Duration(seconds: 60));
 
       if (response.statusCode != 200) {
-        throw Exception(
-          'Download failed: HTTP ${response.statusCode}',
-        );
+        throw Exception('Download failed: HTTP ${response.statusCode}');
       }
 
       await Gal.putImageBytes(
@@ -247,12 +254,19 @@ class _ChatScreenState extends State<ChatScreen>
     session.messages.clear();
     for (final msg in _messages) {
       if (msg.isError) continue;
-      if (msg.text.trim().isEmpty && msg.imageUrl == null) continue;
+      if (msg.text.trim().isEmpty &&
+          msg.imageUrl == null &&
+          msg.visionImagePath == null) {
+        continue;
+      }
+      final storedText = msg.visionImagePath != null
+          ? '🖼️ ${msg.text}'
+          : msg.imageUrl != null
+              ? '🖼️ ${msg.imagePrompt ?? ''}'
+              : msg.text;
       session.messages.add(
         ChatMessageData(
-          text: msg.imageUrl != null
-              ? '🖼️ ${msg.imagePrompt ?? ''}'
-              : msg.text,
+          text: storedText,
           isUser: msg.isUser,
           timestamp: DateTime.now(),
         ),
@@ -397,7 +411,6 @@ class _ChatScreenState extends State<ChatScreen>
     return null;
   }
 
-  /// Cloudflare Workers AI only accepts `prompt`. No width/height/seed.
   String _buildImageUrl(String prompt) {
     final encoded = Uri.encodeComponent(prompt);
     return '$_serverUrl/api/image?prompt=$encoded';
@@ -426,6 +439,145 @@ class _ChatScreenState extends State<ChatScreen>
 
     await _persistMessages();
     _scrollToBottom();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Vision — user uploads an image and asks WEURA to analyze it
+  // ---------------------------------------------------------------------------
+
+  Future<void> _pickImage(ImageSource source) async {
+    try {
+      final XFile? picked = await _imagePicker.pickImage(
+        source: source,
+        maxWidth: 1600,
+        maxHeight: 1600,
+        imageQuality: 85,
+      );
+
+      if (picked == null) return;
+
+      await _analyzeImage(picked);
+    } catch (error) {
+      debugPrint('[WEURA] Pick image error: $error');
+      if (!mounted) return;
+      _showMessage(
+        source == ImageSource.camera
+            ? 'Could not open camera.'
+            : 'Could not open gallery.',
+      );
+    }
+  }
+
+  Future<void> _analyzeImage(XFile image) async {
+    if (_isLoading) return;
+
+    final defaultQuestion = 'اشرح هذه الصورة بالتفصيل.';
+
+    await _ensureSession('🖼️ Image analysis');
+
+    setState(() {
+      _messages.add(
+        _ChatMessage(
+          text: defaultQuestion,
+          isUser: true,
+          visionImagePath: image.path,
+        ),
+      );
+      _isLoading = true;
+      _requestCancelled = false;
+    });
+
+    await _persistMessages();
+    _scrollToBottom();
+
+    try {
+      // Read bytes and encode to base64 data URL.
+      final bytes = await image.readAsBytes();
+
+      final lowerPath = image.path.toLowerCase();
+      String mimeType = 'image/jpeg';
+      if (lowerPath.endsWith('.png')) {
+        mimeType = 'image/png';
+      } else if (lowerPath.endsWith('.webp')) {
+        mimeType = 'image/webp';
+      } else if (lowerPath.endsWith('.gif')) {
+        mimeType = 'image/gif';
+      }
+
+      final base64Data = base64Encode(bytes);
+      final dataUrl = 'data:$mimeType;base64,$base64Data';
+
+      final uri = Uri.parse('$_serverUrl/api/vision');
+
+      final response = await http
+          .post(
+            uri,
+            headers: const {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode({
+              'image': dataUrl,
+              'question': defaultQuestion,
+            }),
+          )
+          .timeout(const Duration(seconds: 90));
+
+      if (!mounted || _requestCancelled) return;
+
+      Map<String, dynamic> data;
+      try {
+        data = jsonDecode(response.body) as Map<String, dynamic>;
+      } catch (_) {
+        throw Exception('Invalid server response.');
+      }
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception(
+          data['error']?.toString() ??
+              'Vision request failed (HTTP ${response.statusCode}).',
+        );
+      }
+
+      if (data['success'] != true) {
+        throw Exception(
+          data['error']?.toString() ?? 'Vision analysis failed.',
+        );
+      }
+
+      final content = data['content']?.toString().trim() ?? '';
+
+      if (content.isEmpty) {
+        throw Exception('Vision model returned an empty response.');
+      }
+
+      setState(() {
+        _messages.add(
+          _ChatMessage(text: content, isUser: false),
+        );
+      });
+
+      await _persistMessages();
+      _scrollToBottom();
+    } catch (error) {
+      if (!mounted || _requestCancelled) return;
+
+      setState(() {
+        _messages.add(
+          _ChatMessage(
+            text: _cleanError(error),
+            isUser: false,
+            isError: true,
+          ),
+        );
+      });
+
+      _scrollToBottom();
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -496,6 +648,7 @@ class _ChatScreenState extends State<ChatScreen>
 
       final recent = _messages
           .where((m) => !m.isError && m.imageUrl == null)
+          .where((m) => m.visionImagePath == null)
           .where((m) => m.text.trim().isNotEmpty)
           .toList();
 
@@ -882,24 +1035,20 @@ class _ChatScreenState extends State<ChatScreen>
                   colors: colors,
                   asset: 'assets/icons/home.svg',
                   title: 'Photos',
-                  subtitle: 'Choose an image',
+                  subtitle: 'Analyze an image from gallery',
                   onTap: () {
                     Navigator.pop(sheetContext);
-                    _showMessage(
-                      'Image tools will be connected in the Vision step.',
-                    );
+                    _pickImage(ImageSource.gallery);
                   },
                 ),
                 _attachmentOption(
                   colors: colors,
                   asset: 'assets/icons/camera.svg',
                   title: 'Camera',
-                  subtitle: 'Capture an image',
+                  subtitle: 'Capture and analyze an image',
                   onTap: () {
                     Navigator.pop(sheetContext);
-                    _showMessage(
-                      'Camera tools will be connected in the Vision step.',
-                    );
+                    _pickImage(ImageSource.camera);
                   },
                 ),
                 _attachmentOption(
@@ -1288,20 +1437,38 @@ class _ChatScreenState extends State<ChatScreen>
               ),
               child: Directionality(
                 textDirection: bubbleDirection,
-                child: message.isUser
-                    ? SelectableText(
-                        message.text,
-                        style: TextStyle(
-                          color: colors.userBubbleText,
-                          fontSize: 15.5,
-                          height: 1.5,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (message.visionImagePath != null) ...[
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.file(
+                          File(message.visionImagePath!),
+                          width: 260,
+                          fit: BoxFit.cover,
                         ),
-                      )
-                    : MarkdownBody(
-                        data: mainText,
-                        selectable: true,
-                        styleSheet: _markdownStyle(colors),
                       ),
+                      if (message.text.trim().isNotEmpty)
+                        const SizedBox(height: 8),
+                    ],
+                    if (message.text.trim().isNotEmpty)
+                      message.isUser
+                          ? SelectableText(
+                              message.text,
+                              style: TextStyle(
+                                color: colors.userBubbleText,
+                                fontSize: 15.5,
+                                height: 1.5,
+                              ),
+                            )
+                          : MarkdownBody(
+                              data: mainText,
+                              selectable: true,
+                              styleSheet: _markdownStyle(colors),
+                            ),
+                  ],
+                ),
               ),
             ),
             if (sources.isNotEmpty)
