@@ -16,6 +16,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../components/Composer/comppser.dart';
+import '../../components/Player/player_card.dart';
 import '../../components/Voice/voice_input_sheet.dart';
 import '../../core/AI/ai_router.dart';
 import '../../core/History/chat_history.dart';
@@ -53,6 +54,7 @@ class _ChatMessage {
     this.imageUrl,
     this.imagePrompt,
     this.visionImagePath,
+    this.playerData,
   });
 
   final String text;
@@ -61,6 +63,7 @@ class _ChatMessage {
   final String? imageUrl;
   final String? imagePrompt;
   final String? visionImagePath;
+  final Map<String, dynamic>? playerData;
 }
 
 class _ChatScreenState extends State<ChatScreen>
@@ -256,14 +259,17 @@ class _ChatScreenState extends State<ChatScreen>
       if (msg.isError) continue;
       if (msg.text.trim().isEmpty &&
           msg.imageUrl == null &&
-          msg.visionImagePath == null) {
+          msg.visionImagePath == null &&
+          msg.playerData == null) {
         continue;
       }
-      final storedText = msg.visionImagePath != null
-          ? '🖼️ ${msg.text}'
-          : msg.imageUrl != null
-              ? '🖼️ ${msg.imagePrompt ?? ''}'
-              : msg.text;
+      final storedText = msg.playerData != null
+          ? '⚽ ${msg.playerData!['player']?['name'] ?? 'Player'}'
+          : msg.visionImagePath != null
+              ? '🖼️ ${msg.text}'
+              : msg.imageUrl != null
+                  ? '🖼️ ${msg.imagePrompt ?? ''}'
+                  : msg.text;
       session.messages.add(
         ChatMessageData(
           text: storedText,
@@ -296,6 +302,124 @@ class _ChatScreenState extends State<ChatScreen>
     try {
       await _memory.add(content);
     } catch (_) {}
+  }
+
+  // ---------------------------------------------------------------------------
+  // Player Card
+  // ---------------------------------------------------------------------------
+
+  String? _detectPlayerIntent(String message) {
+    final text = message.trim();
+    final lower = text.toLowerCase();
+
+    const triggers = [
+      'بطاقة ',
+      'بطاقه ',
+      'معلومات عن ',
+      'بروفايل ',
+      'profile of ',
+      'card of ',
+      'player card ',
+    ];
+
+    for (final t in triggers) {
+      final idx = lower.indexOf(t);
+      if (idx != -1) {
+        final rest = text.substring(idx + t.length).trim();
+        if (rest.length >= 2 && rest.length <= 50) {
+          return rest;
+        }
+      }
+    }
+
+    final infoMatch = RegExp(
+      r'^(?:بطاقة|بطاقه|بروفايل|معلومات)\s+(.+)$',
+    ).firstMatch(text);
+    if (infoMatch != null) {
+      final name = infoMatch.group(1)?.trim() ?? '';
+      if (name.isNotEmpty && name.length <= 50) return name;
+    }
+
+    return null;
+  }
+
+  Future<void> _handlePlayerCard(
+    String userMessage,
+    String playerName,
+  ) async {
+    await _ensureSession('بطاقة $playerName');
+
+    setState(() {
+      _messages.add(_ChatMessage(text: userMessage, isUser: true));
+      _isLoading = true;
+      _requestCancelled = false;
+    });
+
+    await _persistMessages();
+    _scrollToBottom();
+
+    try {
+      final uri = Uri.parse(
+        '$_serverUrl/api/player',
+      ).replace(queryParameters: {'name': playerName});
+
+      final response = await http
+          .get(uri, headers: const {'Accept': 'application/json'})
+          .timeout(const Duration(seconds: 90));
+
+      if (!mounted || _requestCancelled) return;
+
+      Map<String, dynamic> data;
+      try {
+        data = jsonDecode(response.body) as Map<String, dynamic>;
+      } catch (_) {
+        throw Exception('Invalid server response.');
+      }
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception(
+          data['error']?.toString() ??
+              'Player service returned an error.',
+        );
+      }
+
+      if (data['success'] != true) {
+        throw Exception(
+          data['error']?.toString() ?? 'Player not found.',
+        );
+      }
+
+      setState(() {
+        _messages.add(
+          _ChatMessage(
+            text: '',
+            isUser: false,
+            playerData: data,
+          ),
+        );
+      });
+
+      await _persistMessages();
+      _scrollToBottom();
+    } catch (error) {
+      if (!mounted || _requestCancelled) return;
+
+      setState(() {
+        _messages.add(
+          _ChatMessage(
+            text: _cleanError(error),
+            isUser: false,
+            isError: true,
+          ),
+        );
+      });
+
+      _scrollToBottom();
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -589,6 +713,14 @@ class _ChatScreenState extends State<ChatScreen>
     final message = text.trim();
     if (message.isEmpty) return;
 
+    // Player card detection (before image).
+    final playerName = _detectPlayerIntent(message);
+    if (playerName != null) {
+      await _maybeStoreMemory(message);
+      await _handlePlayerCard(message, playerName);
+      return;
+    }
+
     final imagePrompt = _detectImageIntent(message);
     if (imagePrompt != null) {
       await _maybeStoreMemory(message);
@@ -648,6 +780,7 @@ class _ChatScreenState extends State<ChatScreen>
       final recent = _messages
           .where((m) => !m.isError && m.imageUrl == null)
           .where((m) => m.visionImagePath == null)
+          .where((m) => m.playerData == null)
           .where((m) => m.text.trim().isNotEmpty)
           .toList();
 
@@ -1401,6 +1534,23 @@ class _ChatScreenState extends State<ChatScreen>
       return _imageBubble(colors, message, index);
     }
 
+    if (message.playerData != null) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 18, right: 16),
+          child: PlayerCard(
+            data: message.playerData!,
+            onShare: () {
+              final p = message.playerData!['player'] as Map? ?? {};
+              final name = p['name']?.toString() ?? '';
+              if (name.isNotEmpty) _shareMessage('Player: $name');
+            },
+          ),
+        ),
+      );
+    }
+
     if (message.isUser) {
       return _userBubble(colors, message);
     }
@@ -2025,7 +2175,6 @@ class _CodeBlockBuilder extends MarkdownElementBuilder {
   Widget? visitElementAfter(md.Element element, TextStyle? preferredStyle) {
     final cls = element.attributes['class'];
 
-    // Only handle fenced code blocks (language-xxx).
     if (cls == null || !cls.startsWith('language-')) {
       return null;
     }
