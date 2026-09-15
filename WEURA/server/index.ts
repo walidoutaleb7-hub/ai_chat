@@ -7,6 +7,7 @@ import searchRouter from './api/search';
 import healthRouter from './api/health';
 import imageRouter from './api/image';
 import visionRouter from './api/vision';
+import playerRouter from './api/player';
 
 const app = express();
 
@@ -73,6 +74,7 @@ app.use('/api', chatRouter);
 app.use('/api', searchRouter);
 app.use('/api', imageRouter);
 app.use('/api', visionRouter);
+app.use('/api', playerRouter);
 
 app.use((_req, res) => {
   res.status(404).json({
@@ -104,10 +106,6 @@ const server = app.listen(PORT, HOST, () => {
     process.env.GROQ_API_KEY?.trim(),
   );
 
-  const cerebrasReady = Boolean(
-    process.env.CEREBRAS_API_KEY?.trim(),
-  );
-
   const tavilyReady = Boolean(
     process.env.TAVILY_API_KEY?.trim(),
   );
@@ -123,22 +121,12 @@ const server = app.listen(PORT, HOST, () => {
   console.log('          Think Beyond.');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log(`Bind: ${HOST}:${PORT}`);
-  console.log(`Server: http://${HOST}:${PORT}`);
   console.log(`Health: /health`);
-  console.log(`Status: /status`);
-  console.log(
-    `Cerebras:   ${cerebrasReady ? 'READY' : 'MISSING'}`,
-  );
-  console.log(
-    `Groq:       ${groqReady ? 'READY' : 'MISSING'}`,
-  );
-  console.log(
-    `Tavily:     ${tavilyReady ? 'READY' : 'MISSING'}`,
-  );
-  console.log(
-    `Cloudflare: ${cfReady ? 'READY' : 'MISSING'}`,
-  );
-  console.log(`Vision:     ${groqReady ? 'READY' : 'MISSING'}`);
+  console.log(`Groq:        ${groqReady ? 'READY' : 'MISSING'}`);
+  console.log(`Tavily:      ${tavilyReady ? 'READY' : 'MISSING'}`);
+  console.log(`Cloudflare:  ${cfReady ? 'READY' : 'MISSING'}`);
+  console.log(`Vision:      ${groqReady ? 'READY' : 'MISSING'}`);
+  console.log(`Players:     READY`);
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('');
 });
@@ -148,17 +136,9 @@ server.on('error', (error) => {
 });
 
 process.on('SIGTERM', () => {
-  console.log('[WEURA] SIGTERM received, closing server...');
-  server.close(() => {
-    console.log('[WEURA] Server closed.');
-    process.exit(0);
-  });
+  server.close(() => process.exit(0));
 });
 
 process.on('SIGINT', () => {
-  console.log('[WEURA] SIGINT received, closing server...');
-  server.close(() => {
-    console.log('[WEURA] Server closed.');
-    process.exit(0);
-  });
+  server.close(() => process.exit(0));
 });
