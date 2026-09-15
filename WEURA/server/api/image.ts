@@ -52,15 +52,15 @@ RULES:
    Mickey, Mario, Darth Vader, etc.), describe them accurately with
    their ICONIC costume, colors, symbols so the model renders the
    RIGHT character.
-3. Spider-Man → "a superhero in a tight red and blue suit with black
+3. Spider-Man -> "a superhero in a tight red and blue suit with black
    web pattern, spider emblem on chest, masked face with white eyes".
-4. Batman → "a masked superhero in dark grey and black armored suit
+4. Batman -> "a masked superhero in dark grey and black armored suit
    with bat emblem on chest, cape, pointy bat ears on cowl".
 5. For real celebrities: describe respectfully in sports/portrait.
 6. ALWAYS append: "ultra detailed, 8k, sharp focus, cinematic lighting,
    masterpiece, professional color grading".
 
-SAFETY — output EXACTLY "REJECT" alone if the request asks for:
+SAFETY - output EXACTLY "REJECT" alone if the request asks for:
 - sexual/nude content of ANY person
 - sexual content involving minors (ALWAYS)
 - graphic violence, gore
@@ -162,10 +162,13 @@ async function enhancePrompt(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Cloudflare Workers AI fetch
+// Note: FLUX.1-schnell on CF only accepts `prompt`, `steps`, `seed`.
+// ---------------------------------------------------------------------------
+
 async function fetchImage(
   prompt: string,
-  width: number,
-  height: number,
   seed: number,
 ): Promise<{ buffer: Buffer; contentType: string } | null> {
   const accountId = process.env.CLOUDFLARE_ACCOUNT_ID?.trim();
@@ -191,8 +194,6 @@ async function fetchImage(
         prompt,
         steps: 4,
         seed,
-        width,
-        height,
       }),
       signal: AbortSignal.timeout(PER_ATTEMPT_TIMEOUT_MS),
     });
@@ -200,33 +201,49 @@ async function fetchImage(
     if (!response.ok) {
       const errText = await response.text().catch(() => '');
       console.error(
-        `[WEURA] CF HTTP ${response.status}: ${errText.slice(0, 300)}`,
+        `[WEURA] CF HTTP ${response.status}: ${errText.slice(0, 500)}`,
       );
       return null;
     }
 
     const contentType =
-      response.headers.get('content-type') ?? 'image/jpeg';
+      response.headers.get('content-type') ?? 'application/json';
 
+    // Cloudflare returns JSON with a base64 image.
     if (contentType.includes('application/json')) {
       const data: any = await response.json();
 
-      if (data?.success === false || !data?.result?.image) {
+      if (data?.success === false) {
         console.error(
-          '[WEURA] CF JSON response missing image:',
-          JSON.stringify(data).slice(0, 300),
+          '[WEURA] CF response error:',
+          JSON.stringify(data.errors ?? data).slice(0, 300),
         );
         return null;
       }
 
-      const base64 = String(data.result.image);
+      const base64 = data?.result?.image;
+
+      if (typeof base64 !== 'string' || base64.length === 0) {
+        console.error(
+          '[WEURA] CF result has no image:',
+          JSON.stringify(data.result ?? {}).slice(0, 200),
+        );
+        return null;
+      }
+
       const buffer = Buffer.from(base64, 'base64');
 
-      if (buffer.length < 1024) return null;
+      if (buffer.length < 1024) {
+        console.error(
+          `[WEURA] CF tiny decoded image (${buffer.length} bytes)`,
+        );
+        return null;
+      }
 
       return { buffer, contentType: 'image/jpeg' };
     }
 
+    // Fallback: raw binary response.
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
@@ -244,19 +261,12 @@ async function fetchImage(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Main endpoint
+// ---------------------------------------------------------------------------
+
 router.get('/image', async (req, res) => {
   const rawPrompt = String(req.query.prompt ?? '').trim();
-
-  const widthRaw = Number(req.query.width ?? 1024);
-  const heightRaw = Number(req.query.height ?? 1024);
-
-  const width = Number.isFinite(widthRaw)
-    ? Math.min(Math.max(Math.round(widthRaw), 256), 1024)
-    : 1024;
-
-  const height = Number.isFinite(heightRaw)
-    ? Math.min(Math.max(Math.round(heightRaw), 256), 1024)
-    : 1024;
 
   if (!rawPrompt) {
     return res.status(400).json({
@@ -276,13 +286,13 @@ router.get('/image', async (req, res) => {
 
   const prompt = enhanced.prompt;
   console.log(
-    `[WEURA] Image enhanced: "${rawPrompt}" → "${prompt}"`,
+    `[WEURA] Image enhanced: "${rawPrompt}" -> "${prompt}"`,
   );
 
   const seedRaw = Number(req.query.seed ?? Date.now() % 999983);
   const seed = Number.isFinite(seedRaw) ? Math.floor(seedRaw) : 12345;
 
-  const cacheKey = `${prompt}|${width}|${height}|${seed}`;
+  const cacheKey = `${prompt}|${seed}`;
   const now = Date.now();
 
   const cached = cache.get(cacheKey);
@@ -298,15 +308,10 @@ router.get('/image', async (req, res) => {
       attempt === 1 ? seed : seed + attempt * 7919;
 
     console.log(
-      `[WEURA] Image attempt ${attempt}/${MAX_ATTEMPTS} — seed=${attemptSeed}`,
+      `[WEURA] Image attempt ${attempt}/${MAX_ATTEMPTS} - seed=${attemptSeed}`,
     );
 
-    const result = await fetchImage(
-      prompt,
-      width,
-      height,
-      attemptSeed,
-    );
+    const result = await fetchImage(prompt, attemptSeed);
 
     if (result) {
       cache.set(cacheKey, {
@@ -358,21 +363,39 @@ router.get('/image/ping', async (_req, res) => {
         Authorization: `Bearer ${apiToken}`,
       },
       body: JSON.stringify({
-        prompt: 'test',
+        prompt: 'a red apple on a wooden table',
         steps: 4,
         seed: 1,
-        width: 256,
-        height: 256,
       }),
       signal: AbortSignal.timeout(30000),
     });
 
+    let detail = '';
+
+    if (!response.ok) {
+      detail = (await response.text().catch(() => '')).slice(0, 300);
+    } else {
+      const contentType =
+        response.headers.get('content-type') ?? '';
+      if (contentType.includes('application/json')) {
+        const data: any = await response.json().catch(() => null);
+        if (data?.success === false) {
+          detail = JSON.stringify(data.errors ?? data).slice(0, 300);
+        }
+      }
+    }
+
     return res.json({
-      success: response.ok,
+      success: response.ok && !detail,
       status: response.status,
+      detail: detail || undefined,
     });
   } catch (error) {
-    return res.json({ success: false, status: 0 });
+    return res.json({
+      success: false,
+      status: 0,
+      detail: error instanceof Error ? error.message : 'unknown',
+    });
   }
 });
 
