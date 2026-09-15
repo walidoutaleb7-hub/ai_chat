@@ -38,13 +38,15 @@ dependencies:
   # Save generated images to gallery
   gal: ^2.3.0
 
+  # Pick images from gallery / camera
+  image_picker: ^1.1.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
 
   flutter_lints: ^6.0.0
 
-  # Generates app launcher icons from a single PNG
   flutter_launcher_icons: ^0.14.1
 
 flutter_launcher_icons:
