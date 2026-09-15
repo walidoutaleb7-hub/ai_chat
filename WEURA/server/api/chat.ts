@@ -57,22 +57,39 @@ function looksLikeTech(message: string): boolean {
 
 /// Returns true if the message needs a web search.
 ///
-/// NEW BEHAVIOR: search is now the DEFAULT. We only skip:
-///   - greetings / thanks / yes / no
+/// Search is the DEFAULT for real questions. We only skip:
+///   - greetings in any language (EN, AR, Darija, FR)
+///   - thanks / acknowledgments
+///   - yes / no / ok
+///   - goodbyes
 ///   - pure math expressions (2+2)
-///   - very short casual messages
-///
-/// Everything else → search, so we always answer with fresh data.
+///   - very short casual acknowledgments (haha, lol, 👍)
 function needsSearch(message: string): boolean {
   const text = message.trim();
-  const lower = text.toLowerCase();
 
-  // Pure greetings / thanks / confirmations.
+  // Pure greetings / thanks / confirmations / goodbyes.
   const skipPatterns = [
-    /^(hi|hello|hey|salam|salut|مرحبا|سلام|أهلا|اهلا|صباح|مساء|صباح الخير|مساء الخير)[\s!.,?]*$/i,
-    /^(thanks|thank you|thx|ty|شكرا|مشكور|بارك الله)[\s!.,?]*$/i,
-    /^(ok|okay|yes|no|نعم|لا|حسنا|طيب|بصح)[\s!.,?]*$/i,
-    /^(good morning|good night|bye|goodbye|بسلامة|تصبح على خير)[\s!.,?]*$/i,
+    // English greetings
+    /^(hi|hey|hello|yo|sup|hiya|howdy)[\s!.,?]*$/i,
+    /^(good\s*(morning|evening|afternoon|night))[\s!.,?]*$/i,
+
+    // Arabic greetings (MSA + Darija + Gulf + Egyptian)
+    /^(مرحبا|مرحبتين|اهلا|أهلا|هلا|هليو|هاي|سلام|سلام عليكم|السلام عليكم|صباح الخير|مساء الخير|صباح النور|مساء النور|كيف حالك|كيفك|كيفك حالك|شحال حالك|واش راك|كي راك|لاباس|لاباس عليك)[\s!.,?،؟]*$/i,
+
+    // French greetings
+    /^(salut|bonjour|bonsoir|coucou)[\s!.,?]*$/i,
+
+    // Thanks / acknowledgment
+    /^(thanks|thank you|thx|ty|cheers|appreciate it|شكرا|مشكور|بارك الله|بارك الله فيك|يعطيك الصحة|الله يخليك)[\s!.,?،؟]*$/i,
+
+    // Yes / No / OK
+    /^(ok|okay|k|yes|no|sure|yep|nope|نعم|لا|حسنا|حسناً|طيب|ماشي|بصح|واخا|تمام|اوكي|أوكي)[\s!.,?،؟]*$/i,
+
+    // Goodbyes
+    /^(bye|goodbye|see you|cya|take care|بسلامة|تصبح على خير|الى اللقاء|إلى اللقاء|نشوفك)[\s!.,?،؟]*$/i,
+
+    // Very short casual acknowledgments
+    /^(cool|nice|great|awesome|haha|lol|😂|👍|❤️|🔥)[\s!.,?،؟]*$/i,
   ];
 
   for (const pattern of skipPatterns) {
