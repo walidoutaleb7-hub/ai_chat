@@ -4,11 +4,8 @@ const router = express.Router();
 
 /// WEURA Image Service
 ///
-/// Uses Pollinations.ai (free, no API key required) with:
-///   - server-side proxying (hides the upstream URL from the app)
-///   - automatic retry (up to 3 attempts)
-///   - 90s timeout per attempt
-///   - in-memory cache (10 min) for identical prompts
+/// Server-side proxy to Pollinations.ai with retry + cache.
+/// Sized to stay under Render's 100s request timeout.
 ///
 /// Endpoint: GET /api/image?prompt=xxx&width=1024&height=1024
 
@@ -19,8 +16,12 @@ type CacheEntry = {
 };
 
 const cache = new Map<string, CacheEntry>();
-const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
-const MAX_ATTEMPTS = 3;
+const CACHE_TTL_MS = 10 * 60 * 1000;
+
+// IMPORTANT: keep total time under Render's ~100s limit.
+const PER_ATTEMPT_TIMEOUT_MS = 35_000;
+const MAX_ATTEMPTS = 2;
+const BACKOFF_MS = 800;
 
 function buildPollinationsUrl(
   prompt: string,
@@ -50,7 +51,7 @@ async function fetchImage(
         Accept: 'image/*',
         'User-Agent': 'WEURA/1.0',
       },
-      signal: AbortSignal.timeout(90000),
+      signal: AbortSignal.timeout(PER_ATTEMPT_TIMEOUT_MS),
     });
 
     if (!response.ok) {
@@ -63,10 +64,9 @@ async function fetchImage(
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // Sanity check: a valid PNG/JPEG is at least 1 KB.
     if (buffer.length < 1024) {
       console.error(
-        `[WEURA] Pollinations returned a tiny response (${buffer.length} bytes)`,
+        `[WEURA] Pollinations tiny response (${buffer.length} bytes)`,
       );
       return null;
     }
@@ -108,7 +108,6 @@ router.get('/image', async (req, res) => {
   const cacheKey = `${prompt}|${width}|${height}|${seed}`;
   const now = Date.now();
 
-  // Cache hit?
   const cached = cache.get(cacheKey);
   if (cached && cached.expiresAt > now) {
     res.setHeader('Content-Type', cached.contentType);
@@ -117,9 +116,9 @@ router.get('/image', async (req, res) => {
     return res.send(cached.buffer);
   }
 
-  // Try up to MAX_ATTEMPTS times with different seeds on retry.
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const attemptSeed = attempt === 1 ? seed : seed + attempt * 7919;
+    const attemptSeed =
+      attempt === 1 ? seed : seed + attempt * 7919;
 
     const url = buildPollinationsUrl(
       prompt,
@@ -135,7 +134,6 @@ router.get('/image', async (req, res) => {
     const result = await fetchImage(url);
 
     if (result) {
-      // Cache the successful result.
       cache.set(cacheKey, {
         buffer: result.buffer,
         contentType: result.contentType,
@@ -151,19 +149,18 @@ router.get('/image', async (req, res) => {
       return res.send(result.buffer);
     }
 
-    // Brief backoff before retrying.
     if (attempt < MAX_ATTEMPTS) {
-      await new Promise((r) => setTimeout(r, 1500));
+      await new Promise((r) => setTimeout(r, BACKOFF_MS));
     }
   }
 
   return res.status(502).json({
     success: false,
-    error: 'Image service is busy. Please try again in a few seconds.',
+    error:
+      'Image service is busy. Please try again in a few seconds.',
   });
 });
 
-/// Health check for the image service (used by /health if needed).
 router.get('/image/ping', async (_req, res) => {
   try {
     const url = buildPollinationsUrl('test', 256, 256, 1);
