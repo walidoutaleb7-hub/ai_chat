@@ -6,6 +6,7 @@ import chatRouter from './api/chat';
 import searchRouter from './api/search';
 import healthRouter from './api/health';
 import imageRouter from './api/image';
+import visionRouter from './api/vision';
 
 const app = express();
 
@@ -37,7 +38,7 @@ app.use(
 
 app.use(
   express.json({
-    limit: '10mb',
+    limit: '15mb',
   }),
 );
 
@@ -71,6 +72,7 @@ app.use(healthRouter);
 app.use('/api', chatRouter);
 app.use('/api', searchRouter);
 app.use('/api', imageRouter);
+app.use('/api', visionRouter);
 
 app.use((_req, res) => {
   res.status(404).json({
@@ -88,9 +90,7 @@ app.use(
   ) => {
     console.error('[WEURA] Unhandled error:', error);
 
-    if (res.headersSent) {
-      return;
-    }
+    if (res.headersSent) return;
 
     res.status(500).json({
       success: false,
@@ -112,8 +112,9 @@ const server = app.listen(PORT, HOST, () => {
     process.env.TAVILY_API_KEY?.trim(),
   );
 
-  const hfReady = Boolean(
-    process.env.HUGGINGFACE_API_KEY?.trim(),
+  const cfReady = Boolean(
+    process.env.CLOUDFLARE_ACCOUNT_ID?.trim() &&
+    process.env.CLOUDFLARE_API_TOKEN?.trim(),
   );
 
   console.log('');
@@ -126,17 +127,18 @@ const server = app.listen(PORT, HOST, () => {
   console.log(`Health: /health`);
   console.log(`Status: /status`);
   console.log(
-    `Cerebras: ${cerebrasReady ? 'READY' : 'MISSING'}`,
+    `Cerebras:   ${cerebrasReady ? 'READY' : 'MISSING'}`,
   );
   console.log(
-    `Groq:     ${groqReady ? 'READY' : 'MISSING'}`,
+    `Groq:       ${groqReady ? 'READY' : 'MISSING'}`,
   );
   console.log(
-    `Tavily:   ${tavilyReady ? 'READY' : 'MISSING'}`,
+    `Tavily:     ${tavilyReady ? 'READY' : 'MISSING'}`,
   );
   console.log(
-    `HuggingFace: ${hfReady ? 'READY' : 'MISSING'}`,
+    `Cloudflare: ${cfReady ? 'READY' : 'MISSING'}`,
   );
+  console.log(`Vision:     ${groqReady ? 'READY' : 'MISSING'}`);
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('');
 });
