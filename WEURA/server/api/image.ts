@@ -2,15 +2,12 @@ import express from 'express';
 
 const router = express.Router();
 
-/// HuggingFace Inference API.
-///
-/// We use FLUX.1-schnell — fast, free, high quality.
+/// HuggingFace Inference API — new router endpoint.
 /// Endpoint: GET /api/image?prompt=xxx&width=1024&height=1024
-/// Returns the PNG bytes directly.
 const HF_MODEL = 'black-forest-labs/FLUX.1-schnell';
 
 function hfUrl(model: string): string {
-  return `https://api-inference.huggingface.co/models/${model}`;
+  return `https://router.huggingface.co/hf-inference/models/${model}`;
 }
 
 router.get('/image', async (req, res) => {
@@ -49,7 +46,6 @@ router.get('/image', async (req, res) => {
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
-        'x-wait-for-model': 'true',
       },
       body: JSON.stringify({
         inputs: prompt,
