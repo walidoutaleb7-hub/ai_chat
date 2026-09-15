@@ -55,12 +55,8 @@ class _ChatMessage {
   final String text;
   final bool isUser;
   final bool isError;
-
-  /// For AI-generated images (shown as remote URL).
   final String? imageUrl;
   final String? imagePrompt;
-
-  /// For user-uploaded images (shown as local file path).
   final String? visionImagePath;
 }
 
@@ -443,7 +439,7 @@ class _ChatScreenState extends State<ChatScreen>
   }
 
   // ---------------------------------------------------------------------------
-  // Vision — user uploads an image and asks WEURA to analyze it
+  // Vision
   // ---------------------------------------------------------------------------
 
   Future<void> _pickImage(ImageSource source) async {
@@ -1260,7 +1256,7 @@ class _ChatScreenState extends State<ChatScreen>
                     controller: _scrollController,
                     keyboardDismissBehavior:
                         ScrollViewKeyboardDismissBehavior.onDrag,
-                    padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
+                    padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
                     itemCount: _messages.length + (_isLoading ? 1 : 0),
                     itemBuilder: (context, index) {
                       if (_isLoading && index == _messages.length) {
@@ -1388,97 +1384,135 @@ class _ChatScreenState extends State<ChatScreen>
     return (mainText, uniqueUrls);
   }
 
+  // ---------------------------------------------------------------------------
+  // Message rendering
+  // ---------------------------------------------------------------------------
+
   Widget _messageBubble(
     WeuraColors colors,
     _ChatMessage message,
     int index,
     bool isLastAssistant,
   ) {
+    // Generated images have their own dedicated layout.
     if (message.imageUrl != null) {
       return _imageBubble(colors, message, index);
     }
 
-    final alignment =
-        message.isUser ? Alignment.centerRight : Alignment.centerLeft;
-    final background =
-        message.isUser ? colors.userBubble : colors.surfaceAlt;
+    // User messages: bubble style.
+    if (message.isUser) {
+      return _userBubble(colors, message);
+    }
+
+    // Assistant messages: free text, no bubble.
+    return _assistantMessage(colors, message, index, isLastAssistant);
+  }
+
+  // ---------------------------------------------------------------------------
+  // User bubble (right side, blue background)
+  // ---------------------------------------------------------------------------
+
+  Widget _userBubble(WeuraColors colors, _ChatMessage message) {
     final bubbleDirection = _detectDirection(message.text);
-    final parsed = (!message.isUser && !message.isError)
+
+    return Align(
+      alignment: Alignment.centerRight,
+      child: Container(
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.78,
+        ),
+        margin: const EdgeInsets.only(
+          bottom: 18,
+          left: 40,
+        ),
+        padding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 12,
+        ),
+        decoration: BoxDecoration(
+          color: colors.userBubble,
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(20),
+            topRight: Radius.circular(20),
+            bottomLeft: Radius.circular(20),
+            bottomRight: Radius.circular(6),
+          ),
+        ),
+        child: Directionality(
+          textDirection: bubbleDirection,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (message.visionImagePath != null) ...[
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.file(
+                    File(message.visionImagePath!),
+                    width: 240,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+                if (message.text.trim().isNotEmpty)
+                  const SizedBox(height: 8),
+              ],
+              if (message.text.trim().isNotEmpty)
+                SelectableText(
+                  message.text,
+                  style: TextStyle(
+                    color: colors.userBubbleText,
+                    fontSize: 15.5,
+                    height: 1.5,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Assistant message (full width, no bubble)
+  // ---------------------------------------------------------------------------
+
+  Widget _assistantMessage(
+    WeuraColors colors,
+    _ChatMessage message,
+    int index,
+    bool isLastAssistant,
+  ) {
+    final bubbleDirection = _detectDirection(message.text);
+    final parsed = !message.isError
         ? _splitSources(message.text)
         : (message.text, const <String>[]);
     final mainText = parsed.$1;
     final sources = parsed.$2;
 
-    return Align(
-      alignment: alignment,
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 650),
-        margin: const EdgeInsets.only(bottom: 12),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 24, right: 16),
+      child: Directionality(
+        textDirection: bubbleDirection,
         child: Column(
-          crossAxisAlignment: message.isUser
-              ? CrossAxisAlignment.end
-              : CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 13,
+            if (message.isError)
+              _errorMessage(colors, mainText)
+            else
+              MarkdownBody(
+                data: mainText,
+                selectable: true,
+                styleSheet: _markdownStyle(colors),
               ),
-              decoration: BoxDecoration(
-                color: background,
-                borderRadius: BorderRadius.circular(18),
-                border: message.isUser
-                    ? null
-                    : Border.all(
-                        color: message.isError
-                            ? colors.danger.withValues(alpha: 0.35)
-                            : colors.border,
-                      ),
-              ),
-              child: Directionality(
-                textDirection: bubbleDirection,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (message.visionImagePath != null) ...[
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: Image.file(
-                          File(message.visionImagePath!),
-                          width: 260,
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-                      if (message.text.trim().isNotEmpty)
-                        const SizedBox(height: 8),
-                    ],
-                    if (message.text.trim().isNotEmpty)
-                      message.isUser
-                          ? SelectableText(
-                              message.text,
-                              style: TextStyle(
-                                color: colors.userBubbleText,
-                                fontSize: 15.5,
-                                height: 1.5,
-                              ),
-                            )
-                          : MarkdownBody(
-                              data: mainText,
-                              selectable: true,
-                              styleSheet: _markdownStyle(colors),
-                            ),
-                  ],
-                ),
-              ),
-            ),
+
             if (sources.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.only(top: 10),
+                padding: const EdgeInsets.only(top: 14),
                 child: _sourcesSection(colors, sources),
               ),
-            if (!message.isUser && !message.isError)
+
+            if (!message.isError)
               Padding(
-                padding: const EdgeInsets.only(top: 6),
+                padding: const EdgeInsets.only(top: 8),
                 child: _actionBar(
                   colors,
                   message,
@@ -1486,9 +1520,10 @@ class _ChatScreenState extends State<ChatScreen>
                   isLastAssistant,
                 ),
               ),
+
             if (message.isError)
               Padding(
-                padding: const EdgeInsets.only(top: 10),
+                padding: const EdgeInsets.only(top: 12),
                 child: GestureDetector(
                   onTap: _retryLastMessage,
                   child: Row(
@@ -1496,14 +1531,15 @@ class _ChatScreenState extends State<ChatScreen>
                     children: [
                       SvgPicture.asset(
                         'assets/icons/history.svg',
-                        width: 18,
-                        height: 18,
+                        width: 16,
+                        height: 16,
                       ),
-                      const SizedBox(width: 7),
+                      const SizedBox(width: 6),
                       Text(
                         'Retry',
                         style: TextStyle(
                           color: colors.accentGlow,
+                          fontSize: 13,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -1517,6 +1553,36 @@ class _ChatScreenState extends State<ChatScreen>
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Error message (subtle, not a bubble)
+  // ---------------------------------------------------------------------------
+
+  Widget _errorMessage(WeuraColors colors, String text) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 3, right: 10),
+          child: Icon(
+            Icons.warning_amber_rounded,
+            size: 18,
+            color: colors.danger,
+          ),
+        ),
+        Expanded(
+          child: Text(
+            text,
+            style: TextStyle(
+              color: colors.danger,
+              fontSize: 14.5,
+              height: 1.55,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _imageBubble(
     WeuraColors colors,
     _ChatMessage message,
@@ -1526,14 +1592,14 @@ class _ChatScreenState extends State<ChatScreen>
       alignment: Alignment.centerLeft,
       child: Container(
         constraints: const BoxConstraints(maxWidth: 650),
-        margin: const EdgeInsets.only(bottom: 12),
+        margin: const EdgeInsets.only(bottom: 20, right: 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (message.imagePrompt != null &&
                 message.imagePrompt!.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.only(left: 4, bottom: 8),
+                padding: const EdgeInsets.only(left: 2, bottom: 10),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -1566,8 +1632,8 @@ class _ChatScreenState extends State<ChatScreen>
             ClipRRect(
               borderRadius: BorderRadius.circular(16),
               child: Container(
-                width: 340,
-                height: 340,
+                width: 320,
+                height: 320,
                 decoration: BoxDecoration(
                   color: colors.surface,
                   borderRadius: BorderRadius.circular(16),
@@ -1634,7 +1700,7 @@ class _ChatScreenState extends State<ChatScreen>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 6),
+          padding: const EdgeInsets.only(left: 2, bottom: 8),
           child: Text(
             'المصادر',
             style: TextStyle(
@@ -1877,17 +1943,17 @@ class _ChatScreenState extends State<ChatScreen>
       p: TextStyle(
         color: colors.textPrimary,
         fontSize: 15.5,
-        height: 1.55,
+        height: 1.6,
       ),
       h1: TextStyle(
         color: colors.textPrimary,
-        fontSize: 22,
+        fontSize: 24,
         fontWeight: FontWeight.w700,
         height: 1.4,
       ),
       h2: TextStyle(
         color: colors.textPrimary,
-        fontSize: 19,
+        fontSize: 20,
         fontWeight: FontWeight.w700,
         height: 1.4,
       ),
@@ -1936,7 +2002,7 @@ class _ChatScreenState extends State<ChatScreen>
       listBullet: TextStyle(
         color: colors.textPrimary,
         fontSize: 15.5,
-        height: 1.55,
+        height: 1.6,
       ),
       listIndent: 22,
       horizontalRuleDecoration: BoxDecoration(
@@ -1975,8 +2041,8 @@ class _NetworkImageWithLoader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Image.network(
       url,
-      width: 340,
-      height: 340,
+      width: 320,
+      height: 320,
       fit: BoxFit.cover,
       loadingBuilder: (context, child, progress) {
         if (progress == null) return child;
@@ -1984,8 +2050,8 @@ class _NetworkImageWithLoader extends StatelessWidget {
       },
       errorBuilder: (context, error, stackTrace) {
         return Container(
-          width: 340,
-          height: 340,
+          width: 320,
+          height: 320,
           padding: const EdgeInsets.all(24),
           child: Center(
             child: Column(
@@ -2080,8 +2146,8 @@ class _ImageGeneratingLoaderState extends State<_ImageGeneratingLoader>
     final colors = widget.colors;
 
     return Container(
-      width: 340,
-      height: 340,
+      width: 320,
+      height: 320,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: colors.surfaceAlt,
@@ -2091,8 +2157,8 @@ class _ImageGeneratingLoaderState extends State<_ImageGeneratingLoader>
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           SizedBox(
-            width: 180,
-            height: 180,
+            width: 170,
+            height: 170,
             child: AnimatedBuilder(
               animation: Listenable.merge([
                 _pulseController,
@@ -2112,12 +2178,12 @@ class _ImageGeneratingLoaderState extends State<_ImageGeneratingLoader>
               },
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 22),
           Text(
             'Creating your image',
             style: TextStyle(
               color: colors.textPrimary,
-              fontSize: 15,
+              fontSize: 14,
               fontWeight: FontWeight.w700,
               letterSpacing: 0.4,
             ),
@@ -2130,9 +2196,9 @@ class _ImageGeneratingLoaderState extends State<_ImageGeneratingLoader>
               fontSize: 12,
             ),
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 16),
           SizedBox(
-            width: 180,
+            width: 160,
             height: 4,
             child: AnimatedBuilder(
               animation: _progressController,
