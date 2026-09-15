@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../core/Theme/weura_theme.dart';
 
@@ -22,29 +21,31 @@ class _PlayerCardState extends State<PlayerCard> {
   @override
   Widget build(BuildContext context) {
     final colors = WeuraColors.of(context);
-    final player = widget.data['player'] as Map<String, dynamic>? ?? {};
-    final current = widget.data['current'] as Map<String, dynamic>? ?? {};
+    final player =
+        (widget.data['player'] as Map?)?.cast<String, dynamic>() ?? {};
+    final current =
+        (widget.data['current'] as Map?)?.cast<String, dynamic>() ?? {};
     final sources =
-        (widget.data['sources'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+        (widget.data['sources'] as List?)?.cast<Map>() ?? [];
 
     final photo = _pickPhoto(player);
-    final name = String(player['name'] ?? 'Unknown');
-    final flag = String(player['flag'] ?? '');
-    final nationality = String(player['nationality'] ?? '');
-    final position = String(player['position'] ?? '');
-    final number = String(player['number'] ?? '');
-    final height = _cleanHeight(String(player['height'] ?? ''));
-    final age = _calcAge(String(player['birthDate'] ?? ''));
-    final foot = String(player['side'] ?? '');
+    final name = _str(player['name'], 'Unknown');
+    final flag = _str(player['flag']);
+    final nationality = _str(player['nationality']);
+    final position = _str(player['position']);
+    final number = _str(player['number']);
+    final height = _cleanHeight(_str(player['height']));
+    final age = _calcAge(_str(player['birthDate']));
+    final foot = _str(player['side']);
 
-    final currentClub = String(current['currentClub'] ?? '');
-    final lastTransfer = String(current['lastTransfer'] ?? '');
-    final marketValue = String(current['marketValue'] ?? '');
-    final stats = current['stats'] as Map<String, dynamic>? ?? {};
-    final goals = String(stats['goals'] ?? '');
-    final assists = String(stats['assists'] ?? '');
-    final season = String(stats['season'] ?? '');
-    final latestNews = String(current['latestNews'] ?? '');
+    final currentClub = _str(current['currentClub']);
+    final lastTransfer = _str(current['lastTransfer']);
+    final marketValue = _str(current['marketValue']);
+    final stats = (current['stats'] as Map?)?.cast<String, dynamic>() ?? {};
+    final goals = _str(stats['goals']);
+    final assists = _str(stats['assists']);
+    final season = _str(stats['season']);
+    final latestNews = _str(current['latestNews']);
     final trophies = (current['trophies'] as List?) ?? [];
 
     return Container(
@@ -95,7 +96,6 @@ class _PlayerCardState extends State<PlayerCard> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Photo
                 Container(
                   width: 96,
                   height: 96,
@@ -108,7 +108,8 @@ class _PlayerCardState extends State<PlayerCard> {
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: colors.accentGlow.withValues(alpha: 0.30),
+                        color:
+                            colors.accentGlow.withValues(alpha: 0.30),
                         blurRadius: 18,
                         spreadRadius: 1,
                       ),
@@ -126,7 +127,6 @@ class _PlayerCardState extends State<PlayerCard> {
                   ),
                 ),
                 const SizedBox(width: 16),
-                // Name + info
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -203,7 +203,6 @@ class _PlayerCardState extends State<PlayerCard> {
                   ),
                   const SizedBox(height: 10),
                 ],
-
                 if (lastTransfer.isNotEmpty) ...[
                   _infoRow(
                     colors,
@@ -213,7 +212,6 @@ class _PlayerCardState extends State<PlayerCard> {
                   ),
                   const SizedBox(height: 10),
                 ],
-
                 if (marketValue.isNotEmpty) ...[
                   _infoRow(
                     colors,
@@ -223,8 +221,6 @@ class _PlayerCardState extends State<PlayerCard> {
                   ),
                   const SizedBox(height: 10),
                 ],
-
-                // Stats box
                 if (goals.isNotEmpty ||
                     assists.isNotEmpty ||
                     season.isNotEmpty) ...[
@@ -237,14 +233,14 @@ class _PlayerCardState extends State<PlayerCard> {
                   ),
                   const SizedBox(height: 12),
                 ],
-
-                // Trophies
                 if (trophies.isNotEmpty) ...[
-                  _miniSection(colors, 'Trophies', trophies.join(' • ')),
+                  _miniSection(
+                    colors,
+                    'Trophies',
+                    trophies.join(' • '),
+                  ),
                   const SizedBox(height: 10),
                 ],
-
-                // Latest news
                 if (latestNews.isNotEmpty) ...[
                   _miniSection(
                     colors,
@@ -255,8 +251,6 @@ class _PlayerCardState extends State<PlayerCard> {
                   ),
                   const SizedBox(height: 10),
                 ],
-
-                // Sources + share
                 const SizedBox(height: 4),
                 Row(
                   children: [
@@ -311,6 +305,12 @@ class _PlayerCardState extends State<PlayerCard> {
   }
 
   // ─── Helpers ────────────────────────────────────────────────────────
+
+  String _str(dynamic value, [String fallback = '']) {
+    if (value == null) return fallback;
+    final s = value.toString().trim();
+    return s.isEmpty ? fallback : s;
+  }
 
   Widget _fallbackAvatar(WeuraColors colors, String name) {
     final letter = name.isNotEmpty ? name[0].toUpperCase() : '?';
@@ -493,7 +493,6 @@ class _PlayerCardState extends State<PlayerCard> {
 
   String _cleanHeight(String raw) {
     if (raw.isEmpty) return '';
-    // "1.78 m (5 ft 10 in)" -> "1.78m"
     final match = RegExp(r'([\d.]+)\s*m').firstMatch(raw);
     if (match != null) return '${match.group(1)}m';
     return raw.length > 8 ? raw.substring(0, 8) : raw;
