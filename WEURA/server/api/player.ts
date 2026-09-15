@@ -11,24 +11,16 @@ const TAVILY_URL = 'https://api.tavily.com/search';
 // Caches
 // ---------------------------------------------------------------------------
 
-type TranslationCache = {
-  english: string;
-  expiresAt: number;
-};
-
+type TranslationCache = { english: string; expiresAt: number };
 const TRANSLATION_CACHE = new Map<string, TranslationCache>();
 const TRANSLATION_TTL = 24 * 60 * 60 * 1000;
 
-type CardCache = {
-  data: any;
-  expiresAt: number;
-};
-
+type CardCache = { data: any; expiresAt: number };
 const CARD_CACHE = new Map<string, CardCache>();
 const CARD_TTL = 5 * 60 * 1000;
 
 // ---------------------------------------------------------------------------
-// Fast dictionary (60+ popular Arabic names → English)
+// Fast dictionary
 // ---------------------------------------------------------------------------
 
 const FAST_ALIASES: Record<string, string> = {
@@ -72,7 +64,6 @@ const FAST_ALIASES: Record<string, string> = {
   'أمرابط': 'Sofyan Amrabat',
   'أوناحي': 'Azzedine Ounahi',
   'بوفال': 'Sofiane Boufal',
-  'بيلينغهام': 'Jude Bellingham',
   'رودري': 'Rodri',
   'كاكا': 'Kaka',
   'إبراهيموفيتش': 'Zlatan Ibrahimovic',
@@ -81,7 +72,6 @@ const FAST_ALIASES: Record<string, string> = {
   'غريزمان': 'Antoine Griezmann',
   'بوجبا': 'Paul Pogba',
   'كانتي': 'N Golo Kante',
-  'بينزيم': 'Karim Benzema',
   'أليسون': 'Alisson Becker',
   'إيدرسون': 'Ederson',
   'كورتوا': 'Thibaut Courtois',
@@ -94,18 +84,12 @@ const TRANSLATOR_SYSTEM_PROMPT = [
   'The user will give you a footballer name in Arabic, Algerian Darija,',
   'French, or any language.',
   '',
-  'Return ONLY the player name in English (Latin script), as it appears',
-  'on international football databases like TheSportsDB.',
+  'Return ONLY the player name in English (Latin script).',
   '',
   'Rules:',
-  '- Return ONLY the name. No quotes, no explanation, no punctuation.',
+  '- Return ONLY the name. No quotes, no explanation.',
   '- Use the most common international spelling.',
-  '- Examples:',
-  '    "مبابي"    => Kylian Mbappe',
-  '    "بنزيمة"   => Karim Benzema',
-  '    "رودري"    => Rodri',
-  '    "بيليجريني" => Lorenzo Pellegrini',
-  '- If the name is already Latin, return it as-is (correct spelling).',
+  '- If the name is already Latin, return it as-is.',
   '- Never return Arabic characters.',
 ].join('\n');
 
@@ -171,7 +155,7 @@ async function translatePlayerName(raw: string): Promise<string> {
 }
 
 // ---------------------------------------------------------------------------
-// Tavily search — football trusted domains
+// Tavily — NEWS topic (fresh only)
 // ---------------------------------------------------------------------------
 
 const FOOTBALL_DOMAINS = [
@@ -204,7 +188,8 @@ const FOOTBALL_DOMAINS = [
 async function tavilySearch(
   query: string,
   limit: number = 3,
-): Promise<Array<{ title: string; url: string; snippet: string }>> {
+  days: number = 180,
+): Promise<Array<{ title: string; url: string; snippet: string; date?: string }>> {
   const apiKey = process.env.TAVILY_API_KEY?.trim();
   if (!apiKey) return [];
 
@@ -216,7 +201,8 @@ async function tavilySearch(
       include_answer: false,
       include_raw_content: true,
       search_depth: 'advanced',
-      topic: 'general',
+      topic: 'news',
+      days,
       include_domains: FOOTBALL_DOMAINS,
     };
 
@@ -249,6 +235,9 @@ async function tavilySearch(
         title: String(r?.title ?? ''),
         url: String(r?.url ?? ''),
         snippet: clean,
+        date: r?.published_date
+          ? String(r.published_date)
+          : undefined,
       };
     });
   } catch (e) {
@@ -258,15 +247,22 @@ async function tavilySearch(
 }
 
 // ---------------------------------------------------------------------------
-// Groq extractor — pull structured data from search results
+// Groq extractor — with TheSportsDB description for context
 // ---------------------------------------------------------------------------
 
 const EXTRACTOR_SYSTEM_PROMPT = [
   'You are a football data extractor. Return a JSON object.',
   '',
-  'Input: player name + web search results.',
+  'CRITICAL: Today is the current date. Football players change clubs',
+  'often. Your knowledge and the search results may include OLD',
+  'information. You MUST extract the MOST RECENT information available.',
   '',
-  'Output: this exact JSON structure. Nothing else.',
+  'You will receive:',
+  '1. A player name + nationality.',
+  '2. TheSportsDB official description (may be partially outdated).',
+  '3. Web search results (with dates if available).',
+  '',
+  'Return this exact JSON structure. Nothing else:',
   '{',
   '  "currentClub": "",',
   '  "currentClubCountry": "",',
@@ -282,48 +278,53 @@ const EXTRACTOR_SYSTEM_PROMPT = [
   '  "latestNews": ""',
   '}',
   '',
-  'Rules:',
-  '- Read the search results carefully.',
-  '- Fill each field with info FOUND in the results.',
-  '- If a field is not in the results, leave it as "".',
-  '- For "currentClub", look for the club he plays for NOW (2025 or 2026).',
-  '- For "lastTransfer", format: "FromClub to ToClub (Year)".',
-  '- For "latestNews", one short sentence.',
+  'EXTRACTION RULES:',
+  '- For "currentClub": pick the club the player plays for RIGHT NOW.',
+  '  * Prioritize the MOST RECENT article/source by date.',
+  '  * If the description says "plays for X" and a newer article says',
+  '    "joined Y in 2024", then current club is Y.',
+  '  * Example: Mbappe description mentions PSG (past), but 2024 news',
+  '    says he joined Real Madrid. The current club is Real Madrid.',
+  '- For "lastTransfer": format as "FromClub to ToClub (Year)".',
+  '- For "stats": extract the MOST RECENT season stats.',
+  '- For "latestNews": one short sentence about the most recent event.',
+  '- If a field is truly absent from ALL sources, leave it as "".',
   '- Return ONLY the JSON. No markdown, no explanation.',
 ].join('\n');
 
 async function extractPlayerData(
   playerName: string,
   nationality: string,
+  description: string,
   searchResults: Array<{
     title: string;
     snippet: string;
     url: string;
+    date?: string;
   }>,
 ): Promise<any> {
   const apiKey = process.env.GROQ_API_KEY?.trim();
-  if (!apiKey) {
-    console.error('[WEURA] Extractor: no Groq key');
-    return null;
-  }
+  if (!apiKey) return null;
 
-  if (searchResults.length === 0) {
-    console.error('[WEURA] Extractor: no search results');
-    return null;
-  }
+  const today = new Date().toISOString().split('T')[0];
 
   const context = searchResults
-    .slice(0, 6)
+    .slice(0, 8)
     .map(
       (r, i) =>
-        `[${i + 1}] ${r.title}\nURL: ${r.url}\n${r.snippet.slice(0, 500)}`,
+        `[${i + 1}]${r.date ? ` (${r.date})` : ''} ${r.title}\n` +
+        `URL: ${r.url}\n` +
+        `${r.snippet.slice(0, 500)}`,
     )
     .join('\n\n');
 
   const userMessage =
+    `Today's date: ${today}\n\n` +
     `Player: ${playerName}\n` +
     `Nationality: ${nationality}\n\n` +
-    `Search results:\n\n${context}`;
+    `TheSportsDB description (may be outdated):\n` +
+    `${description.slice(0, 1500)}\n\n` +
+    `Web search results (sorted by recency if dated):\n\n${context}`;
 
   try {
     const response = await fetch(GROQ_API_URL, {
@@ -359,25 +360,16 @@ async function extractPlayerData(
       data?.choices?.[0]?.message?.content ?? '',
     ).trim();
 
-    console.log(
-      `[WEURA] Extractor raw: ${content.slice(0, 300)}`,
-    );
+    console.log(`[WEURA] Extractor raw: ${content.slice(0, 300)}`);
 
-    if (!content) {
-      console.error('[WEURA] Extractor: empty content');
-      return null;
-    }
+    if (!content) return null;
 
     let parsed: any;
-
     try {
       parsed = JSON.parse(content);
     } catch {
       const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        console.error('[WEURA] Extractor: no JSON found');
-        return null;
-      }
+      if (!jsonMatch) return null;
       parsed = JSON.parse(jsonMatch[0]);
     }
 
@@ -402,7 +394,7 @@ async function extractPlayerData(
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Flag emoji
 // ---------------------------------------------------------------------------
 
 function flagEmoji(country: string | undefined): string {
@@ -475,14 +467,11 @@ router.get('/player', async (req, res) => {
   }
 
   const englishName = await translatePlayerName(rawName);
-
-  console.log(
-    `[WEURA] Player lookup: "${rawName}" -> "${englishName}"`,
-  );
+  console.log(`[WEURA] Player lookup: "${rawName}" -> "${englishName}"`);
 
   try {
     // -------------------------------------------------------------------
-    // 1. TheSportsDB: basic info + photo
+    // 1. TheSportsDB
     // -------------------------------------------------------------------
     let player: any = null;
 
@@ -518,9 +507,7 @@ router.get('/player', async (req, res) => {
                 player = detailData.players[0];
               }
             }
-          } catch (_) {
-            // keep search result
-          }
+          } catch (_) {}
         }
       }
     } catch (e) {
@@ -528,25 +515,27 @@ router.get('/player', async (req, res) => {
     }
 
     // -------------------------------------------------------------------
-    // 2. Tavily: fresh info from football sites
+    // 2. Tavily — NEWS topic (fresh only, last 180 days)
     // -------------------------------------------------------------------
     const searchQueries = [
-      `${englishName} current club 2025 2026`,
-      `${englishName} transfer news`,
-      `${englishName} goals assists stats this season`,
+      `${englishName} current club transfer`,
+      `${englishName} latest news`,
+      `${englishName} stats goals 2025`,
     ];
 
     const allResults: Array<{
       title: string;
       url: string;
       snippet: string;
+      date?: string;
     }> = [];
 
     for (const q of searchQueries) {
-      const results = await tavilySearch(q, 3);
+      const results = await tavilySearch(q, 3, 180);
       allResults.push(...results);
     }
 
+    // Dedupe by URL.
     const seenUrls = new Set<string>();
     const uniqueResults = allResults.filter((r) => {
       if (!r.url || seenUrls.has(r.url)) return false;
@@ -554,13 +543,25 @@ router.get('/player', async (req, res) => {
       return true;
     });
 
+    // Sort by date (newest first).
+    uniqueResults.sort((a, b) => {
+      const da = a.date ?? '';
+      const db = b.date ?? '';
+      return db.localeCompare(da);
+    });
+
+    console.log(
+      `[WEURA] Tavily results for ${englishName}: ${uniqueResults.length}`,
+    );
+
     // -------------------------------------------------------------------
-    // 3. Groq: extract structured data
+    // 3. Groq extractor (with description + dated sources)
     // -------------------------------------------------------------------
     const freshData = await extractPlayerData(
       englishName,
       player?.strNationality ?? '',
-      uniqueResults.slice(0, 6),
+      player?.strDescriptionEN ?? '',
+      uniqueResults.slice(0, 8),
     );
 
     // -------------------------------------------------------------------
@@ -618,6 +619,7 @@ router.get('/player', async (req, res) => {
         index: i + 1,
         title: r.title,
         url: r.url,
+        date: r.date,
       })),
     };
 
