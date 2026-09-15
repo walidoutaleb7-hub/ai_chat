@@ -4,6 +4,8 @@ const router = express.Router();
 
 /// WEURA Image Service — Cloudflare Workers AI (FLUX.1-schnell).
 /// Free tier: 10,000 neurons/day (~100 images). No watermark.
+///
+/// Endpoint: GET /api/image?prompt=xxx
 
 type CacheEntry = {
   buffer: Buffer;
@@ -18,6 +20,10 @@ const CF_MODEL = '@cf/black-forest-labs/flux-1-schnell';
 const PER_ATTEMPT_TIMEOUT_MS = 40_000;
 const MAX_ATTEMPTS = 2;
 const BACKOFF_MS = 1000;
+
+// ---------------------------------------------------------------------------
+// Safety — hardcoded filter before any generation
+// ---------------------------------------------------------------------------
 
 const HARD_REJECT_PATTERNS: RegExp[] = [
   /عارية|عاري|عريان|مكشوف|جنسي|جنس|إباحي|اباحي|نود|بورن/i,
@@ -35,6 +41,10 @@ function hardReject(prompt: string): boolean {
   }
   return false;
 }
+
+// ---------------------------------------------------------------------------
+// Groq enhancer — translate + safety + style
+// ---------------------------------------------------------------------------
 
 type EnhancedPrompt = {
   ok: boolean;
@@ -164,12 +174,11 @@ async function enhancePrompt(
 
 // ---------------------------------------------------------------------------
 // Cloudflare Workers AI fetch
-// Note: FLUX.1-schnell on CF only accepts `prompt`, `steps`, `seed`.
+// FLUX.1-schnell on Cloudflare accepts ONLY: prompt, steps.
 // ---------------------------------------------------------------------------
 
 async function fetchImage(
   prompt: string,
-  seed: number,
 ): Promise<{ buffer: Buffer; contentType: string } | null> {
   const accountId = process.env.CLOUDFLARE_ACCOUNT_ID?.trim();
   const apiToken = process.env.CLOUDFLARE_API_TOKEN?.trim();
@@ -193,7 +202,6 @@ async function fetchImage(
       body: JSON.stringify({
         prompt,
         steps: 4,
-        seed,
       }),
       signal: AbortSignal.timeout(PER_ATTEMPT_TIMEOUT_MS),
     });
@@ -209,7 +217,6 @@ async function fetchImage(
     const contentType =
       response.headers.get('content-type') ?? 'application/json';
 
-    // Cloudflare returns JSON with a base64 image.
     if (contentType.includes('application/json')) {
       const data: any = await response.json();
 
@@ -243,7 +250,6 @@ async function fetchImage(
       return { buffer, contentType: 'image/jpeg' };
     }
 
-    // Fallback: raw binary response.
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
@@ -289,10 +295,7 @@ router.get('/image', async (req, res) => {
     `[WEURA] Image enhanced: "${rawPrompt}" -> "${prompt}"`,
   );
 
-  const seedRaw = Number(req.query.seed ?? Date.now() % 999983);
-  const seed = Number.isFinite(seedRaw) ? Math.floor(seedRaw) : 12345;
-
-  const cacheKey = `${prompt}|${seed}`;
+  const cacheKey = prompt;
   const now = Date.now();
 
   const cached = cache.get(cacheKey);
@@ -304,14 +307,9 @@ router.get('/image', async (req, res) => {
   }
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const attemptSeed =
-      attempt === 1 ? seed : seed + attempt * 7919;
+    console.log(`[WEURA] Image attempt ${attempt}/${MAX_ATTEMPTS}`);
 
-    console.log(
-      `[WEURA] Image attempt ${attempt}/${MAX_ATTEMPTS} - seed=${attemptSeed}`,
-    );
-
-    const result = await fetchImage(prompt, attemptSeed);
+    const result = await fetchImage(prompt);
 
     if (result) {
       cache.set(cacheKey, {
@@ -340,6 +338,10 @@ router.get('/image', async (req, res) => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Ping (diagnostic)
+// ---------------------------------------------------------------------------
+
 router.get('/image/ping', async (_req, res) => {
   const accountId = process.env.CLOUDFLARE_ACCOUNT_ID?.trim();
   const apiToken = process.env.CLOUDFLARE_API_TOKEN?.trim();
@@ -365,7 +367,6 @@ router.get('/image/ping', async (_req, res) => {
       body: JSON.stringify({
         prompt: 'a red apple on a wooden table',
         steps: 4,
-        seed: 1,
       }),
       signal: AbortSignal.timeout(30000),
     });
