@@ -20,7 +20,7 @@ const CARD_CACHE = new Map<string, CardCache>();
 const CARD_TTL = 5 * 60 * 1000;
 
 // ---------------------------------------------------------------------------
-// Fast dictionary
+// Fast dictionary (40+ popular Arabic player names)
 // ---------------------------------------------------------------------------
 
 const FAST_ALIASES: Record<string, string> = {
@@ -39,27 +39,35 @@ const FAST_ALIASES: Record<string, string> = {
   'هالاند': 'Erling Haaland',
   'فينيسيوس': 'Vinicius Junior',
   'بيلينغهام': 'Jude Bellingham',
+  'بيلينجهام': 'Jude Bellingham',
   'مودريتش': 'Luka Modric',
   'محرز': 'Riyad Mahrez',
   'زياش': 'Hakim Ziyech',
+  'حكيمي': 'Achraf Hakimi',
+  'أشرف حكيمي': 'Achraf Hakimi',
   'النصيري': 'Youssef En-Nesyri',
   'بونجاح': 'Baghdad Bounedjah',
   'سليماني': 'Islam Slimani',
   'دي بروين': 'Kevin De Bruyne',
+  'كيفن دي بروين': 'Kevin De Bruyne',
   'هاري كين': 'Harry Kane',
   'ليفاندوفسكي': 'Robert Lewandowski',
+  'روبرت ليفاندوفسكي': 'Robert Lewandowski',
   'فان دايك': 'Virgil van Dijk',
   'زيدان': 'Zinedine Zidane',
   'رونالدينيو': 'Ronaldinho',
   'مارادونا': 'Diego Maradona',
   'بيليه': 'Pele',
-  'حكيمي': 'Achraf Hakimi',
-  'أشرف حكيمي': 'Achraf Hakimi',
+  'كورتوا': 'Thibaut Courtois',
+  'تيبو كورتوا': 'Thibaut Courtois',
+  'موسيالا': 'Jamal Musiala',
+  'جمال موسيالا': 'Jamal Musiala',
   'أونانا': 'Andre Onana',
   'بونو': 'Yassine Bounou',
   'ياسين بونو': 'Yassine Bounou',
   'أوباميانغ': 'Pierre-Emerick Aubameyang',
   'ماني': 'Sadio Mane',
+  'ساديو ماني': 'Sadio Mane',
   'كوليبالي': 'Kalidou Koulibaly',
   'أمرابط': 'Sofyan Amrabat',
   'أوناحي': 'Azzedine Ounahi',
@@ -74,23 +82,70 @@ const FAST_ALIASES: Record<string, string> = {
   'كانتي': 'N Golo Kante',
   'أليسون': 'Alisson Becker',
   'إيدرسون': 'Ederson',
-  'كورتوا': 'Thibaut Courtois',
   'دي خيا': 'David de Gea',
+  'راموس': 'Sergio Ramos',
+  'سيرجيو راموس': 'Sergio Ramos',
+  'بيكيه': 'Gerard Pique',
+  'سواريز': 'Luis Suarez',
+  'لويس سواريز': 'Luis Suarez',
+  'دي ماريا': 'Angel Di Maria',
+  'أغويرو': 'Sergio Aguero',
+  'كوستا': 'Diego Costa',
+  'روني': 'Wayne Rooney',
+  'جيرارد': 'Steven Gerrard',
+  'لامبارد': 'Frank Lampard',
+  'دروغبا': 'Didier Drogba',
+  'إيتو': 'Samuel Eto\'o',
+  'فيرنانديز': 'Bruno Fernandes',
+  'برونو فيرنانديز': 'Bruno Fernandes',
+  'راشفورد': 'Marcus Rashford',
+  'ساكا': 'Bukayo Saka',
+  'بوياكا': 'Bukayo Saka',
+  'رودريغو': 'Rodrygo',
+  'رافينيا': 'Raphinha',
+  'دي يونغ': 'Frenkie de Jong',
+  'أوبلاك': 'Jan Oblak',
+  'نوير': 'Manuel Neuer',
+  'مانويل نوير': 'Manuel Neuer',
+  'تير شتيغن': 'Marc-Andre ter Stegen',
+  'دوناروما': 'Gianluigi Donnarumma',
+  'ميندي': 'Edouard Mendy',
+  'حكيم ضياء': 'Hakim Ziyech',
+  'عوار': 'Houssem Aouar',
+  'بن ناصر': 'Ismael Bennacer',
+  'إسماعيل بن ناصر': 'Ismael Bennacer',
+  'عماني': 'Rayan Ait-Nouri',
+  'بلعيد': 'Youcef Belaili',
+  'بلايلي': 'Youcef Belaili',
+  'ياسين براهيمي': 'Yacine Brahimi',
+  'براهيمي': 'Yacine Brahimi',
+  'بن رحمة': 'Said Benrahma',
+  'سعيد بن رحمة': 'Said Benrahma',
+  'بن سبعيني': 'Ramy Bensebaini',
+  'رامي بن سبعيني': 'Ramy Bensebaini',
 };
 
 const TRANSLATOR_SYSTEM_PROMPT = [
   'You are a football expert.',
   '',
-  'The user will give you a footballer name in Arabic, Algerian Darija,',
+  'The user gives you a footballer name in Arabic, Algerian Darija,',
   'French, or any language.',
   '',
   'Return ONLY the player name in English (Latin script).',
   '',
   'Rules:',
-  '- Return ONLY the name. No quotes, no explanation.',
-  '- Use the most common international spelling.',
+  '- Return ONLY the name. No quotes, no explanation, no punctuation.',
+  '- Use the standard international spelling used on Transfermarkt.',
   '- If the name is already Latin, return it as-is.',
-  '- Never return Arabic characters.',
+  '- NEVER return Arabic characters. Only Latin letters.',
+  '- If you do not know the player, return exactly: UNKNOWN',
+  '',
+  'Examples:',
+  '  موسيالا => Jamal Musiala',
+  '  كورتوا => Thibaut Courtois',
+  '  بيلينغهام => Jude Bellingham',
+  '  صلاح => Mohamed Salah',
+  '  مبابي => Kylian Mbappe',
 ].join('\n');
 
 async function translatePlayerName(raw: string): Promise<string> {
@@ -103,6 +158,7 @@ async function translatePlayerName(raw: string): Promise<string> {
     if (clean.includes(ar)) return en;
   }
 
+  // Latin already?
   if (/^[\x00-\x7F\s.\-']+$/.test(clean)) return clean;
 
   const cached = TRANSLATION_CACHE.get(clean);
@@ -125,7 +181,7 @@ async function translatePlayerName(raw: string): Promise<string> {
           { role: 'system', content: TRANSLATOR_SYSTEM_PROMPT },
           { role: 'user', content: clean },
         ],
-        temperature: 0.2,
+        temperature: 0.1,
         max_tokens: 50,
       }),
       signal: AbortSignal.timeout(10000),
@@ -141,7 +197,13 @@ async function translatePlayerName(raw: string): Promise<string> {
       .replace(/[.!?]/g, '')
       .trim();
 
-    if (!translated || /[\u0600-\u06FF]/.test(translated)) return clean;
+    if (
+      !translated ||
+      translated === 'UNKNOWN' ||
+      /[\u0600-\u06FF]/.test(translated)
+    ) {
+      return clean;
+    }
 
     TRANSLATION_CACHE.set(clean, {
       english: translated,
@@ -159,30 +221,12 @@ async function translatePlayerName(raw: string): Promise<string> {
 // ---------------------------------------------------------------------------
 
 const FOOTBALL_DOMAINS = [
-  'espn.com',
-  'bbc.com',
-  'skysports.com',
-  'marca.com',
-  'as.com',
-  'goal.com',
-  'fotmob.com',
-  'transfermarkt.com',
-  'sofascore.com',
-  'realmadrid.com',
-  'fcbarcelona.com',
-  'liverpoolfc.com',
-  'manutd.com',
-  'chelseafc.com',
-  'juventus.com',
-  'acmilan.com',
-  'psg.fr',
-  'fifa.com',
-  'uefa.com',
-  'premierleague.com',
-  'laliga.com',
-  'bundesliga.com',
-  'legaseriea.it',
-  'ligue1.com',
+  'espn.com', 'bbc.com', 'skysports.com', 'marca.com', 'as.com',
+  'goal.com', 'fotmob.com', 'transfermarkt.com', 'sofascore.com',
+  'realmadrid.com', 'fcbarcelona.com', 'liverpoolfc.com', 'manutd.com',
+  'chelseafc.com', 'juventus.com', 'acmilan.com', 'psg.fr',
+  'fifa.com', 'uefa.com', 'premierleague.com', 'laliga.com',
+  'bundesliga.com', 'legaseriea.it', 'ligue1.com',
 ];
 
 async function tavilySearch(
@@ -249,7 +293,7 @@ async function tavilySearch(
 }
 
 // ---------------------------------------------------------------------------
-// Description fallback — extract current club from TheSportsDB description
+// Description fallback
 // ---------------------------------------------------------------------------
 
 const CLUB_ALIASES: Record<string, string> = {
@@ -268,7 +312,7 @@ const CLUB_ALIASES: Record<string, string> = {
   'bayern munich': 'Bayern Munich',
   'borussia dortmund': 'Borussia Dortmund',
   juventus: 'Juventus',
-  inter: 'Inter Milan',
+  'inter milan': 'Inter Milan',
   'ac milan': 'AC Milan',
   napoli: 'Napoli',
   'atletico madrid': 'Atletico Madrid',
@@ -282,23 +326,18 @@ const CLUB_ALIASES: Record<string, string> = {
   'al nassr': 'Al Nassr',
   'al ahly': 'Al Ahly',
   zamalek: 'Zamalek',
-  'esperance': 'Esperance',
+  esperance: 'Esperance',
 };
 
 function detectClubFromText(text: string): string {
   const lower = text.toLowerCase();
-
-  // Order by length so "paris saint-germain" wins over "psg".
   const sorted = Object.keys(CLUB_ALIASES).sort(
     (a, b) => b.length - a.length,
   );
 
   for (const alias of sorted) {
-    if (lower.includes(alias)) {
-      return CLUB_ALIASES[alias];
-    }
+    if (lower.includes(alias)) return CLUB_ALIASES[alias];
   }
-
   return '';
 }
 
@@ -313,7 +352,6 @@ function extractFallbackFromDescription(description: string): {
 
   const text = description.replace(/\s+/g, ' ').trim();
 
-  // Current club patterns
   const currentClubPatterns = [
     /plays as (?:a|an) [a-z- ]+ for (?:La Liga club |Premier League club |Serie A club |Bundesliga club |Ligue 1 club )?([A-Z][A-Za-z .\-']+?)(?:,|\.| and | \()/,
     /currently plays for (?:La Liga club |Premier League club |Serie A club |Bundesliga club |Ligue 1 club )?([A-Z][A-Za-z .\-']+?)(?:,|\.| and | \()/,
@@ -321,7 +359,6 @@ function extractFallbackFromDescription(description: string): {
   ];
 
   let currentClub = '';
-
   for (const pattern of currentClubPatterns) {
     const m = text.match(pattern);
     if (m && m[1]) {
@@ -331,15 +368,9 @@ function extractFallbackFromDescription(description: string): {
       if (currentClub) break;
     }
   }
+  if (!currentClub) currentClub = detectClubFromText(text);
 
-  // Fallback: search any known club name in the description
-  if (!currentClub) {
-    currentClub = detectClubFromText(text);
-  }
-
-  // Last transfer pattern: "In 2024, after..., Mbappé joined Real Madrid"
   let lastTransfer = '';
-
   const joinedPatterns = [
     /In (\d{4})[^.]*?joined ([A-Z][A-Za-z .\-']+?)(?:\.|,| on| for| after)/,
     /in (\d{4})[^.]*?joined ([A-Z][A-Za-z .\-']+?)(?:\.|,| on| for| after)/,
@@ -358,7 +389,6 @@ function extractFallbackFromDescription(description: string): {
     }
   }
 
-  // Latest news: first sentence of the description (trimmed)
   let latestNews = '';
   const firstSentence = text.split(/(?<=[.!?])\s+/)[0];
   if (firstSentence && firstSentence.length > 20) {
@@ -398,11 +428,10 @@ const EXTRACTOR_SYSTEM_PROMPT = [
   '',
   'Rules:',
   '- CurrentClub: the club the player plays for RIGHT NOW.',
-  '  Use the MOST RECENT source (by date). Ignore older articles.',
-  '  If the description says "plays for X", use X.',
+  '  Use the MOST RECENT source (by date).',
   '- lastTransfer: format "FromClub to ToClub (Year)".',
   '- If a field is absent, leave it "".',
-  '- Return ONLY JSON. No markdown.',
+  '- Return ONLY JSON.',
 ].join('\n');
 
 async function extractPlayerData(
@@ -417,10 +446,7 @@ async function extractPlayerData(
   }>,
 ): Promise<any> {
   const apiKey = process.env.GROQ_API_KEY?.trim();
-  if (!apiKey) {
-    console.error('[WEURA] Extractor: no Groq API key.');
-    return null;
-  }
+  if (!apiKey) return null;
 
   const today = new Date().toISOString().split('T')[0];
 
@@ -462,39 +488,24 @@ async function extractPlayerData(
       signal: AbortSignal.timeout(30000),
     });
 
-    if (!response.ok) {
-      const errText = await response.text().catch(() => '');
-      console.error(
-        `[WEURA] Extractor HTTP ${response.status}: ${errText.slice(0, 300)}`,
-      );
-      return null;
-    }
+    if (!response.ok) return null;
 
     const data: any = await response.json();
     const content = String(
       data?.choices?.[0]?.message?.content ?? '',
     ).trim();
 
-    console.log(`[WEURA] Extractor raw: ${content.slice(0, 300)}`);
-
-    if (!content) {
-      console.error('[WEURA] Extractor: empty content.');
-      return null;
-    }
+    if (!content) return null;
 
     let parsed: any;
     try {
       parsed = JSON.parse(content);
     } catch {
       const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        console.error('[WEURA] Extractor: no JSON in content.');
-        return null;
-      }
+      if (!jsonMatch) return null;
       try {
         parsed = JSON.parse(jsonMatch[0]);
       } catch {
-        console.error('[WEURA] Extractor: JSON parse failed.');
         return null;
       }
     }
@@ -513,8 +524,7 @@ async function extractPlayerData(
       trophies: Array.isArray(parsed.trophies) ? parsed.trophies : [],
       latestNews: String(parsed.latestNews ?? ''),
     };
-  } catch (e) {
-    console.error('[WEURA] Extractor error:', e);
+  } catch (_) {
     return null;
   }
 }
@@ -525,51 +535,22 @@ async function extractPlayerData(
 
 function flagEmoji(country: string | undefined): string {
   if (!country) return '';
-
   const map: Record<string, string> = {
-    france: '🇫🇷',
-    argentina: '🇦🇷',
-    portugal: '🇵🇹',
-    brazil: '🇧🇷',
-    spain: '🇪🇸',
-    england: '🏴󠁧󠁢󠁥󠁮󠁧󠁿',
-    germany: '🇩🇪',
-    italy: '🇮🇹',
-    netherlands: '🇳🇱',
-    belgium: '🇧🇪',
-    algeria: '🇩🇿',
-    morocco: '🇲🇦',
-    tunisia: '🇹🇳',
-    egypt: '🇪🇬',
-    norway: '🇳🇴',
-    croatia: '🇭🇷',
-    poland: '🇵🇱',
-    usa: '🇺🇸',
-    'united states': '🇺🇸',
-    uruguay: '🇺🇾',
-    senegal: '🇸🇳',
-    cameroon: '🇨🇲',
-    nigeria: '🇳🇬',
-    ghana: '🇬🇭',
-    'ivory coast': '🇨🇮',
-    japan: '🇯🇵',
-    'south korea': '🇰🇷',
-    australia: '🇦🇺',
-    mexico: '🇲🇽',
-    canada: '🇨🇦',
-    sweden: '🇸🇪',
-    denmark: '🇩🇰',
-    switzerland: '🇨🇭',
-    turkey: '🇹🇷',
-    greece: '🇬🇷',
-    russia: '🇷🇺',
-    serbia: '🇷🇸',
-    colombia: '🇨🇴',
-    chile: '🇨🇱',
-    peru: '🇵🇪',
-    ecuador: '🇪🇨',
+    france: '🇫🇷', argentina: '🇦🇷', portugal: '🇵🇹',
+    brazil: '🇧🇷', spain: '🇪🇸', england: '🏴󠁧󠁢󠁥󠁮󠁧󠁿',
+    germany: '🇩🇪', italy: '🇮🇹', netherlands: '🇳🇱',
+    belgium: '🇧🇪', algeria: '🇩🇿', morocco: '🇲🇦',
+    tunisia: '🇹🇳', egypt: '🇪🇬', norway: '🇳🇴',
+    croatia: '🇭🇷', poland: '🇵🇱', usa: '🇺🇸',
+    'united states': '🇺🇸', uruguay: '🇺🇾',
+    senegal: '🇸🇳', cameroon: '🇨🇲', nigeria: '🇳🇬',
+    ghana: '🇬🇭', 'ivory coast': '🇨🇮', japan: '🇯🇵',
+    'south korea': '🇰🇷', australia: '🇦🇺', mexico: '🇲🇽',
+    canada: '🇨🇦', sweden: '🇸🇪', denmark: '🇩🇰',
+    switzerland: '🇨🇭', turkey: '🇹🇷', greece: '🇬🇷',
+    russia: '🇷🇺', serbia: '🇷🇸', colombia: '🇨🇴',
+    chile: '🇨🇱', peru: '🇵🇪', ecuador: '🇪🇨',
   };
-
   return map[country.toLowerCase()] ?? '';
 }
 
@@ -598,6 +579,16 @@ router.get('/player', async (req, res) => {
     `[WEURA] Player lookup: "${rawName}" -> "${englishName}"`,
   );
 
+  // Validate the translated name — must be Latin script.
+  const stillArabic = /[\u0600-\u06FF]/.test(englishName);
+  if (stillArabic) {
+    return res.status(404).json({
+      success: false,
+      error: 'Player not found.',
+      searchedFor: englishName,
+    });
+  }
+
   try {
     // -------------------------------------------------------------------
     // 1. TheSportsDB
@@ -616,10 +607,13 @@ router.get('/player', async (req, res) => {
           ? searchData.player
           : [];
 
-        if (players.length > 0) {
-          player =
-            players.find((p: any) => p.strSport === 'Soccer') ??
-            players[0];
+        // STRICT: must be a Soccer player.
+        const soccerPlayers = players.filter(
+          (p: any) => p.strSport === 'Soccer',
+        );
+
+        if (soccerPlayers.length > 0) {
+          player = soccerPlayers[0];
 
           try {
             const detailRes = await fetch(
@@ -641,6 +635,15 @@ router.get('/player', async (req, res) => {
       }
     } catch (e) {
       console.error('[WEURA] TheSportsDB error:', e);
+    }
+
+    // STRICT: if no soccer player was found, return 404.
+    if (!player) {
+      return res.status(404).json({
+        success: false,
+        error: 'Player not found.',
+        searchedFor: englishName,
+      });
     }
 
     // -------------------------------------------------------------------
@@ -677,10 +680,6 @@ router.get('/player', async (req, res) => {
       return db.localeCompare(da);
     });
 
-    console.log(
-      `[WEURA] Tavily results for ${englishName}: ${uniqueResults.length}`,
-    );
-
     // -------------------------------------------------------------------
     // 3. Groq extractor
     // -------------------------------------------------------------------
@@ -692,16 +691,13 @@ router.get('/player', async (req, res) => {
     );
 
     // -------------------------------------------------------------------
-    // 4. Fallback: parse the description if extractor failed or empty
+    // 4. Fallback from description
     // -------------------------------------------------------------------
     const fallback = extractFallbackFromDescription(
       player?.strDescriptionEN ?? '',
     );
 
     if (!freshData) {
-      console.log(
-        '[WEURA] Extractor returned null. Using description fallback.',
-      );
       freshData = {
         currentClub: fallback.currentClub,
         currentClubCountry: '',
@@ -717,7 +713,6 @@ router.get('/player', async (req, res) => {
         latestNews: fallback.latestNews,
       };
     } else {
-      // If extractor returned empty fields, fill from fallback.
       if (!freshData.currentClub && fallback.currentClub) {
         freshData.currentClub = fallback.currentClub;
       }
@@ -738,7 +733,6 @@ router.get('/player', async (req, res) => {
     const responseData = {
       success: true,
       searchedFor: englishName,
-
       player: {
         id: player?.idPlayer ?? '',
         name: player?.strPlayer ?? englishName,
@@ -755,18 +749,14 @@ router.get('/player', async (req, res) => {
         position: player?.strPosition ?? '',
         position2: player?.strPosition2 ?? '',
         description: player?.strDescriptionEN ?? '',
-
         thumb: player?.strThumb ?? '',
         cutout: player?.strCutout ?? '',
         render: player?.strRender ?? '',
         banner: player?.strBanner ?? '',
-
         instagram: player?.strInstagram ?? '',
         twitter: player?.strTwitter ?? '',
       },
-
       current: freshData,
-
       sources: uniqueResults.slice(0, 6).map((r, i) => ({
         index: i + 1,
         title: r.title,
