@@ -9,8 +9,13 @@ import 'services/Storage/storage_service.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await StorageService.init();
-  await AppSettingsManager.instance.load();
+  try {
+    await StorageService.init();
+    await AppSettingsManager.instance.load();
+  } catch (error, stackTrace) {
+    debugPrint('[WEURA] Init error: $error');
+    debugPrint('$stackTrace');
+  }
 
   runApp(const WeuraApp());
 }
@@ -31,13 +36,14 @@ class WeuraApp extends StatelessWidget {
           themeMode: settings.themeMode,
           theme: weuraLightTheme(),
           darkTheme: weuraDarkTheme(),
+          home: const _WeuraEntry(),
           builder: (context, child) {
+            // Wrap the whole app in the user's chosen direction.
             return Directionality(
               textDirection: settings.textDirection,
               child: child ?? const SizedBox.shrink(),
             );
           },
-          home: const _WeuraEntry(),
         );
       },
     );
