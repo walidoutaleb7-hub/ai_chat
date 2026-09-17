@@ -728,6 +728,7 @@ class _ChatScreenState extends State<ChatScreen>
       return;
     }
 
+    // Resolve AI mode.
     final resolvedMode = _router.resolve(
       message: message,
       selectedMode: _mode,
@@ -746,37 +747,25 @@ class _ChatScreenState extends State<ChatScreen>
     _scrollToBottom();
 
     try {
-      final settings = AppSettingsManager.instance;
-      final baseSystem = _router.systemPromptFor(resolvedMode);
-      final languagePrompt = settings.languagePrompt();
-      final detailPrompt = settings.responseDetailPrompt();
-
-      final combinedSystem = [
-        baseSystem,
-        if (languagePrompt.isNotEmpty) languagePrompt,
-        if (detailPrompt.isNotEmpty) detailPrompt,
-      ].join('\n\n');
-
+      // -----------------------------------------------------------------
+      // Build memory context (user name + relevant memories).
+      // The server builds the identity + search system prompts.
+      // The client NEVER sends system messages.
+      // -----------------------------------------------------------------
       final memoryContext =
-          _memory.buildRelevantContext(message, maxItems: 3);
+          _memory.buildRelevantContext(message, maxItems: 5);
+      final userName = _memory.getUserName();
 
-      final conversation = <GrokMessage>[
-        GrokMessage(role: 'system', content: combinedSystem),
-      ];
+      // Include the user name in the memory string when we know it,
+      // so the server-side identity block can address the user by name.
+      final enrichedMemory = _composeMemoryPayload(
+        memoryContext: memoryContext,
+        userName: userName,
+      );
 
-      if (memoryContext.isNotEmpty) {
-        conversation.add(
-          GrokMessage(
-            role: 'system',
-            content:
-                'Relevant memory about the user:\n'
-                '$memoryContext\n\n'
-                'Use this information only when it is directly '
-                'relevant to the current request.',
-          ),
-        );
-      }
-
+      // -----------------------------------------------------------------
+      // Build conversation history (user + assistant only).
+      // -----------------------------------------------------------------
       final recent = _messages
           .where((m) => !m.isError && m.imageUrl == null)
           .where((m) => m.visionImagePath == null)
@@ -784,20 +773,27 @@ class _ChatScreenState extends State<ChatScreen>
           .where((m) => m.text.trim().isNotEmpty)
           .toList();
 
-      final trimmed = recent.length > 8
-          ? recent.sublist(recent.length - 8)
+      final trimmed = recent.length > 10
+          ? recent.sublist(recent.length - 10)
           : recent;
 
-      conversation.addAll(
-        trimmed.map(
-          (m) => GrokMessage(
-            role: m.isUser ? 'user' : 'assistant',
-            content: m.text,
-          ),
-        ),
-      );
+      final history = trimmed
+          .map(
+            (m) => GrokMessage(
+              role: m.isUser ? 'user' : 'assistant',
+              content: m.text,
+            ),
+          )
+          .toList();
 
-      final result = await _grok.sendMessage(messages: conversation);
+      // -----------------------------------------------------------------
+      // Send: messages + memory + mode (NO system).
+      // -----------------------------------------------------------------
+      final result = await _grok.sendMessage(
+        messages: history,
+        memory: enrichedMemory,
+        mode: resolvedMode.name,
+      );
 
       if (!mounted || _requestCancelled) return;
 
@@ -840,6 +836,29 @@ class _ChatScreenState extends State<ChatScreen>
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  /// Composes the final memory string sent to the server.
+  ///
+  /// Format:
+  ///   User name: Walid
+  ///   - fact 1
+  ///   - fact 2
+  String _composeMemoryPayload({
+    required String memoryContext,
+    required String? userName,
+  }) {
+    final buffer = StringBuffer();
+
+    if (userName != null && userName.trim().isNotEmpty) {
+      buffer.writeln('User name: ${userName.trim()}');
+    }
+
+    if (memoryContext.trim().isNotEmpty) {
+      buffer.writeln(memoryContext.trim());
+    }
+
+    return buffer.toString().trim();
   }
 
   void _cancelRequest() {
@@ -1321,6 +1340,10 @@ class _ChatScreenState extends State<ChatScreen>
         return 'Creative';
       case AIMode.vision:
         return 'Vision';
+      case AIMode.files:
+        return 'Files';
+      case AIMode.translation:
+        return 'Translation';
     }
   }
 
