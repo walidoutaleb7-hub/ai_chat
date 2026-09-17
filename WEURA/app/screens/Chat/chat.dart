@@ -126,9 +126,21 @@ class _ChatScreenState extends State<ChatScreen>
       if (existing != null) {
         _session = existing;
         for (final msg in existing.messages) {
-          if (msg.text.trim().isEmpty) continue;
+          if (msg.text.trim().isEmpty &&
+              msg.imageUrl == null &&
+              msg.playerData == null &&
+              msg.visionImagePath == null) {
+            continue;
+          }
           _messages.add(
-            _ChatMessage(text: msg.text, isUser: msg.isUser),
+            _ChatMessage(
+              text: msg.text,
+              isUser: msg.isUser,
+              imageUrl: msg.imageUrl,
+              imagePrompt: msg.imagePrompt,
+              playerData: msg.playerData,
+              visionImagePath: msg.visionImagePath,
+            ),
           );
         }
         if (mounted) setState(() {});
@@ -271,19 +283,15 @@ class _ChatScreenState extends State<ChatScreen>
         continue;
       }
 
-      final storedText = msg.playerData != null
-          ? '⚽ ${msg.playerData!['player']?['name'] ?? 'Player'}'
-          : msg.visionImagePath != null
-              ? '🖼️ ${msg.text}'
-              : msg.imageUrl != null
-                  ? '🖼️ ${msg.imagePrompt ?? ''}'
-                  : msg.text;
-
       session.messages.add(
         ChatMessageData(
-          text: storedText,
+          text: msg.text,
           isUser: msg.isUser,
           timestamp: DateTime.now(),
+          imageUrl: msg.imageUrl,
+          imagePrompt: msg.imagePrompt,
+          playerData: msg.playerData,
+          visionImagePath: msg.visionImagePath,
         ),
       );
     }
@@ -1156,7 +1164,6 @@ class _ChatScreenState extends State<ChatScreen>
 
     setState(() {});
 
-    // If the previous user message had an image → re-analyze the SAME image.
     if (visionPath != null && visionPath.isNotEmpty) {
       final file = File(visionPath);
       if (file.existsSync()) {
@@ -1165,7 +1172,6 @@ class _ChatScreenState extends State<ChatScreen>
       }
     }
 
-    // Otherwise → re-send the text only.
     _sendMessage(userText, addUserMessage: false);
   }
 
@@ -2017,6 +2023,23 @@ class _ChatScreenState extends State<ChatScreen>
                       File(message.visionImagePath!),
                       width: 240,
                       fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                        width: 240,
+                        height: 120,
+                        decoration: BoxDecoration(
+                          color: colors.surface,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Center(
+                          child: Text(
+                            '🖼️ Image',
+                            style: TextStyle(
+                              color: colors.textMuted,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                   if (message.text.trim().isNotEmpty)
