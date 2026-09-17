@@ -99,7 +99,21 @@ class _ChatScreenState extends State<ChatScreen>
   void initState() {
     super.initState();
     _grok = GrokService(baseUrl: _serverUrl);
+    _voiceOut.addListener(_onVoiceChanged);
     _initialize();
+  }
+
+  @override
+  void dispose() {
+    _voiceOut.removeListener(_onVoiceChanged);
+    _scrollController.dispose();
+    _grok.dispose();
+    _voiceOut.stop();
+    super.dispose();
+  }
+
+  void _onVoiceChanged() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _initialize() async {
@@ -230,20 +244,9 @@ class _ChatScreenState extends State<ChatScreen>
     final id = 'msg_$index';
     if (_voiceOut.speakingId == id) {
       await _voiceOut.stop();
-      if (mounted) setState(() {});
       return;
     }
-    setState(() {});
     await _voiceOut.speak(id: id, text: text);
-    if (mounted) setState(() {});
-  }
-
-  @override
-  void dispose() {
-    _scrollController.dispose();
-    _grok.dispose();
-    _voiceOut.stop();
-    super.dispose();
   }
 
   Future<void> _ensureSession(String firstMessage) async {
@@ -266,6 +269,7 @@ class _ChatScreenState extends State<ChatScreen>
           msg.playerData == null) {
         continue;
       }
+
       final storedText = msg.playerData != null
           ? '⚽ ${msg.playerData!['player']?['name'] ?? 'Player'}'
           : msg.visionImagePath != null
@@ -273,6 +277,7 @@ class _ChatScreenState extends State<ChatScreen>
               : msg.imageUrl != null
                   ? '🖼️ ${msg.imagePrompt ?? ''}'
                   : msg.text;
+
       session.messages.add(
         ChatMessageData(
           text: storedText,
@@ -941,6 +946,12 @@ class _ChatScreenState extends State<ChatScreen>
             _ChatMessage(text: result.content, isUser: false),
           );
         });
+
+        // Auto-read the response if voice output is enabled.
+        if (AppSettingsManager.instance.voiceOutputEnabled) {
+          final newIndex = _messages.length - 1;
+          _voiceOut.speak(id: 'msg_$newIndex', text: result.content);
+        }
       }
 
       await _persistMessages();
