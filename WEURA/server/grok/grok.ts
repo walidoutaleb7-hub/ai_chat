@@ -19,7 +19,7 @@ export type AskOptions = {
 };
 
 /* ============================================================
- *  PROVIDER COOLDOWN (skip dead providers for 5 min)
+ *  PROVIDER COOLDOWN (skip dead providers for 10 min)
  * ============================================================ */
 
 type CooldownEntry = {
@@ -27,7 +27,7 @@ type CooldownEntry = {
   reason: string;
 };
 
-const COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
+const COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes
 const COOLDOWNS = new Map<string, CooldownEntry>();
 
 function isOnCooldown(name: string): boolean {
@@ -51,23 +51,12 @@ function setCooldown(name: string, reason: string): void {
  *  PROVIDER REGISTRY
  * ============================================================ */
 
-/// Cerebras is PRIMARY (1M tokens/day, ultra-fast inference).
-/// Groq is FALLBACK (200K tokens/day).
+/// Groq is PRIMARY (fast + reliable).
+/// Cerebras is FALLBACK (kicks in when Groq hits its daily limit).
 function getProviders(): Provider[] {
   const providers: Provider[] = [];
 
-  // 1. Cerebras — primary
-  const cerebrasKey = process.env.CEREBRAS_API_KEY?.trim();
-  if (cerebrasKey) {
-    providers.push({
-      name: 'cerebras',
-      url: 'https://api.cerebras.ai/v1/chat/completions',
-      apiKey: cerebrasKey,
-      model: process.env.CEREBRAS_MODEL?.trim() || 'gpt-oss-120b',
-    });
-  }
-
-  // 2. Groq — fallback
+  // 1. Groq — primary
   const groqKey = process.env.GROQ_API_KEY?.trim();
   if (groqKey) {
     providers.push({
@@ -78,9 +67,20 @@ function getProviders(): Provider[] {
     });
   }
 
+  // 2. Cerebras — fallback
+  const cerebrasKey = process.env.CEREBRAS_API_KEY?.trim();
+  if (cerebrasKey) {
+    providers.push({
+      name: 'cerebras',
+      url: 'https://api.cerebras.ai/v1/chat/completions',
+      apiKey: cerebrasKey,
+      model: process.env.CEREBRAS_MODEL?.trim() || 'gpt-oss-120b',
+    });
+  }
+
   if (providers.length === 0) {
     throw new Error(
-      'No AI provider is configured. Set CEREBRAS_API_KEY (primary) or GROQ_API_KEY (fallback).',
+      'No AI provider is configured. Set GROQ_API_KEY (primary) or CEREBRAS_API_KEY (fallback).',
     );
   }
 
@@ -91,7 +91,6 @@ function getProviders(): Provider[] {
  *  CONTENT EXTRACTION
  * ============================================================ */
 
-/// Some models return content as a string, others as an array of parts.
 function extractContent(raw: unknown): string {
   if (typeof raw === 'string') return raw;
   if (Array.isArray(raw)) {
@@ -202,23 +201,13 @@ async function callProvider(
  *  RETRYABLE / FATAL CLASSIFICATION
  * ============================================================ */
 
-/// Returns TRUE if the error should trigger a fallback to the next provider.
-///
-/// Key cases:
-///   402 → payment required (no credits)
-///   401/403 → auth/forbidden
-///   429 → rate limit
-///   5xx → server errors
-///   timeouts / network errors
 function isRetryableError(error: unknown): boolean {
   if (!(error instanceof Error)) return true;
 
   const msg = error.message.toLowerCase();
 
   return (
-    // Auth / billing / access
     msg.includes('402') ||
-    msg.includes('payment required') ||
     msg.includes('payment') ||
     msg.includes('credit') ||
     msg.includes('billing') ||
@@ -228,26 +217,22 @@ function isRetryableError(error: unknown): boolean {
     msg.includes('invalid api key') ||
     msg.includes('403') ||
     msg.includes('forbidden') ||
-    // Rate limits / quotas
     msg.includes('429') ||
     msg.includes('rate limit') ||
     msg.includes('too many') ||
     msg.includes('quota') ||
     msg.includes('exceeded') ||
-    // Server errors
     msg.includes('500') ||
     msg.includes('502') ||
     msg.includes('503') ||
     msg.includes('504') ||
-    // Network / timing
+    msg.includes('520') ||
     msg.includes('timed out') ||
     msg.includes('timeout') ||
     msg.includes('network') ||
     msg.includes('econnrefused') ||
     msg.includes('enotfound') ||
-    // Response issues
     msg.includes('empty response') ||
-    // Model issues
     msg.includes('model_not_found') ||
     msg.includes('model not found') ||
     msg.includes('does not exist') ||
@@ -255,8 +240,6 @@ function isRetryableError(error: unknown): boolean {
   );
 }
 
-/// Returns TRUE if the error means "this provider is dead for a while".
-/// (e.g. no credits, invalid key). We should not keep trying it.
 function isProviderDeadError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
 
@@ -278,11 +261,6 @@ function isProviderDeadError(error: unknown): boolean {
  *  MAIN ENTRY
  * ============================================================ */
 
-/// Tries each provider in order.
-///   - Cerebras is tried FIRST.
-///   - Groq is fallback.
-///   - Dead providers (payment/auth errors) are put on a 5-min cooldown
-///     so we don't waste time on them on every request.
 export async function askGrok(
   messages: GrokMessage[],
   options: AskOptions = {},
@@ -295,7 +273,6 @@ export async function askGrok(
   const errors: string[] = [];
   const rid = options.requestId ?? '-';
 
-  // Filter out providers on cooldown — unless ALL are on cooldown.
   const available = providers.filter((p) => !isOnCooldown(p.name));
   const candidates = available.length > 0 ? available : providers;
 
@@ -323,20 +300,17 @@ export async function askGrok(
         `[WEURA][${rid}] Provider ${provider.name} failed: ${message}`,
       );
 
-      // If it's a "dead" error → cooldown this provider for 5 min.
       if (isProviderDeadError(error)) {
         setCooldown(provider.name, message);
         console.warn(
-          `[WEURA][${rid}] Provider ${provider.name} on cooldown for 5 min.`,
+          `[WEURA][${rid}] Provider ${provider.name} on cooldown for 10 min.`,
         );
       }
 
-      // If it's not retryable → give up immediately.
       if (!isRetryableError(error)) {
         throw error;
       }
 
-      // If this was the last → throw combined error.
       if (isLast) {
         throw new Error(
           `All AI providers failed:\n${errors.join('\n')}`,
