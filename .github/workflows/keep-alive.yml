@@ -2,29 +2,46 @@ name: Keep WEURA Server Alive
 
 on:
   schedule:
-    # Every 14 minutes (Render free tier sleeps after 15 min)
-    - cron: "*/14 * * * *"
+    # Every 10 minutes (Render free tier sleeps after 15 min)
+    - cron: "*/10 * * * *"
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: keep-alive
+  cancel-in-progress: false
+
 jobs:
   ping:
     name: Ping WEURA backend
     runs-on: ubuntu-latest
+    timeout-minutes: 3
 
     steps:
       - name: Ping /health
         run: |
           URL="https://ai-chat-tlol.onrender.com/health"
-          echo "Pinging $URL"
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
-            --max-time 60 "$URL" || echo "000")
-          echo "HTTP status: $RESPONSE"
 
-          if [ "$RESPONSE" = "200" ]; then
+          echo "Pinging $URL"
+
+          RESPONSE=$(curl -s \
+            --max-time 45 \
+            -w "\n%{http_code}" \
+            "$URL" || echo -e "\n000")
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+
+          echo "HTTP status: $HTTP_CODE"
+          echo "Body: $BODY"
+
+          if [ "$HTTP_CODE" = "200" ]; then
             echo "✅ Server is alive"
+          elif [ "$HTTP_CODE" = "503" ]; then
+            echo "⚠️ Server is up but misconfigured"
+            exit 1
           else
-            echo "⚠️ Server returned $RESPONSE (may be waking up)"
+            echo "⚠️ Server returned $HTTP_CODE (may be waking up)"
           fi
