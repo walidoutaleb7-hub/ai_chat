@@ -321,10 +321,83 @@ class _ChatScreenState extends State<ChatScreen>
     if (!_scrollController.hasClients) return;
     final pos = _scrollController.position;
     final distanceFromBottom = pos.maxScrollExtent - pos.pixels;
-    // Only auto-scroll if the user is already near the bottom.
     if (distanceFromBottom < 120) {
       _scrollController.jumpTo(pos.maxScrollExtent);
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Edit user message
+  // ---------------------------------------------------------------------------
+
+  Future<void> _editUserMessage(int index, WeuraColors colors) async {
+    if (_isLoading) {
+      _showMessage('Wait for the current request to finish.');
+      return;
+    }
+    if (index < 0 || index >= _messages.length) return;
+    if (!_messages[index].isUser) return;
+
+    final currentText = _messages[index].text;
+    final controller = TextEditingController(text: currentText);
+    controller.selection = TextSelection.fromPosition(
+      TextPosition(offset: currentText.length),
+    );
+
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: colors.surfaceAlt,
+          title: Text(
+            'Edit message',
+            style: TextStyle(color: colors.textPrimary),
+          ),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            minLines: 1,
+            maxLines: 6,
+            maxLength: 2000,
+            style: TextStyle(color: colors.textPrimary),
+            decoration: InputDecoration(
+              hintText: 'Your message',
+              hintStyle: TextStyle(color: colors.textFaint),
+              filled: true,
+              fillColor: colors.surface,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide.none,
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () =>
+                  Navigator.pop(dialogContext, controller.text),
+              child: const Text('Save & Send'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (result == null) return;
+    final newText = result.trim();
+    if (newText.isEmpty || newText == currentText) return;
+
+    _messages[index] = _ChatMessage(text: newText, isUser: true);
+    _messages.removeRange(index + 1, _messages.length);
+    _ratings.removeWhere((key, _) => key > index);
+    _typingIndices.clear();
+
+    setState(() {});
+
+    await _sendMessage(newText, addUserMessage: false);
   }
 
   // ---------------------------------------------------------------------------
@@ -332,6 +405,11 @@ class _ChatScreenState extends State<ChatScreen>
   // ---------------------------------------------------------------------------
 
   Future<void> _pickFile() async {
+    if (_isLoading) {
+      _showMessage('Wait for the current request to finish.');
+      return;
+    }
+
     try {
       final file = await _fileService.pickAndExtract();
 
@@ -724,6 +802,15 @@ class _ChatScreenState extends State<ChatScreen>
   // ---------------------------------------------------------------------------
 
   Future<void> _pickImage(ImageSource source) async {
+    if (_isLoading) {
+      _showMessage('Wait for the current request to finish.');
+      return;
+    }
+    if (_attachedFile != null) {
+      _showMessage('Remove the attached file first.');
+      return;
+    }
+
     try {
       final XFile? picked = await _imagePicker.pickImage(
         source: source,
@@ -746,27 +833,37 @@ class _ChatScreenState extends State<ChatScreen>
     }
   }
 
-  Future<void> _analyzeImage(XFile image) async {
+  Future<void> _analyzeImage(
+    XFile image, {
+    bool addUserMessage = true,
+  }) async {
     if (_isLoading) return;
 
     const defaultQuestion = 'اشرح هذه الصورة بالتفصيل.';
 
     await _ensureSession('🖼️ Image analysis');
 
-    setState(() {
-      _messages.add(
-        _ChatMessage(
-          text: defaultQuestion,
-          isUser: true,
-          visionImagePath: image.path,
-        ),
-      );
-      _isLoading = true;
-      _requestCancelled = false;
-    });
+    if (addUserMessage) {
+      setState(() {
+        _messages.add(
+          _ChatMessage(
+            text: defaultQuestion,
+            isUser: true,
+            visionImagePath: image.path,
+          ),
+        );
+        _isLoading = true;
+        _requestCancelled = false;
+      });
 
-    await _persistMessages();
-    _scrollToBottom();
+      await _persistMessages();
+      _scrollToBottom();
+    } else {
+      setState(() {
+        _isLoading = true;
+        _requestCancelled = false;
+      });
+    }
 
     try {
       final bytes = await image.readAsBytes();
@@ -798,7 +895,7 @@ class _ChatScreenState extends State<ChatScreen>
               'question': defaultQuestion,
             }),
           )
-          .timeout(const Duration(seconds: 90));
+          .timeout(const Duration(seconds: 120));
 
       if (!mounted || _requestCancelled) return;
 
@@ -810,9 +907,11 @@ class _ChatScreenState extends State<ChatScreen>
       }
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
+        final msg = data['error']?.toString();
         throw Exception(
-          data['error']?.toString() ??
-              'Vision request failed (HTTP ${response.statusCode}).',
+          msg != null && msg.isNotEmpty
+              ? msg
+              : 'Vision request failed (HTTP ${response.statusCode}).',
         );
       }
 
@@ -862,7 +961,10 @@ class _ChatScreenState extends State<ChatScreen>
   // Send
   // ---------------------------------------------------------------------------
 
-  Future<void> _sendMessage(String text) async {
+  Future<void> _sendMessage(
+    String text, {
+    bool addUserMessage = true,
+  }) async {
     if (_isLoading) return;
 
     final message = text.trim();
@@ -898,14 +1000,21 @@ class _ChatScreenState extends State<ChatScreen>
     await _ensureSession(message);
     await _maybeStoreMemory(message);
 
-    setState(() {
-      _messages.add(_ChatMessage(text: message, isUser: true));
-      _isLoading = true;
-      _requestCancelled = false;
-    });
+    if (addUserMessage) {
+      setState(() {
+        _messages.add(_ChatMessage(text: message, isUser: true));
+        _isLoading = true;
+        _requestCancelled = false;
+      });
 
-    await _persistMessages();
-    _scrollToBottom();
+      await _persistMessages();
+      _scrollToBottom();
+    } else {
+      setState(() {
+        _isLoading = true;
+        _requestCancelled = false;
+      });
+    }
 
     try {
       final memoryContext =
@@ -924,8 +1033,9 @@ class _ChatScreenState extends State<ChatScreen>
           .where((m) => m.text.trim().isNotEmpty)
           .toList();
 
-      final trimmed = recent.length > 10
-          ? recent.sublist(recent.length - 10)
+      // Send only last 6 messages to save tokens.
+      final trimmed = recent.length > 6
+          ? recent.sublist(recent.length - 6)
           : recent;
 
       final history = trimmed
@@ -1036,14 +1146,27 @@ class _ChatScreenState extends State<ChatScreen>
 
     if (lastUserIndex == -1) return;
 
-    final userText = _messages[lastUserIndex].text;
+    final lastUser = _messages[lastUserIndex];
+    final userText = lastUser.text;
+    final visionPath = lastUser.visionImagePath;
 
     _messages.removeRange(lastUserIndex + 1, _messages.length);
     _ratings.removeWhere((key, _) => key > lastUserIndex);
     _typingIndices.removeWhere((i) => i > lastUserIndex);
 
     setState(() {});
-    _sendMessage(userText);
+
+    // If the previous user message had an image → re-analyze the SAME image.
+    if (visionPath != null && visionPath.isNotEmpty) {
+      final file = File(visionPath);
+      if (file.existsSync()) {
+        _analyzeImage(XFile(visionPath), addUserMessage: false);
+        return;
+      }
+    }
+
+    // Otherwise → re-send the text only.
+    _sendMessage(userText, addUserMessage: false);
   }
 
   void _retryLastMessage() {
@@ -1853,57 +1976,63 @@ class _ChatScreenState extends State<ChatScreen>
 
   Widget _userBubble(WeuraColors colors, _ChatMessage message) {
     final bubbleDirection = _detectDirection(message.text);
+    final msgIndex = _messages.indexOf(message);
 
     return Align(
       alignment: Alignment.centerRight,
-      child: Container(
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.78,
-        ),
-        margin: const EdgeInsets.only(
-          bottom: 18,
-          left: 40,
-        ),
-        padding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 12,
-        ),
-        decoration: BoxDecoration(
-          color: colors.userBubble,
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(20),
-            topRight: Radius.circular(20),
-            bottomLeft: Radius.circular(20),
-            bottomRight: Radius.circular(6),
+      child: GestureDetector(
+        onLongPress: msgIndex == -1
+            ? null
+            : () => _editUserMessage(msgIndex, colors),
+        child: Container(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * 0.78,
           ),
-        ),
-        child: Directionality(
-          textDirection: bubbleDirection,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (message.visionImagePath != null) ...[
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Image.file(
-                    File(message.visionImagePath!),
-                    width: 240,
-                    fit: BoxFit.cover,
+          margin: const EdgeInsets.only(
+            bottom: 18,
+            left: 40,
+          ),
+          padding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 12,
+          ),
+          decoration: BoxDecoration(
+            color: colors.userBubble,
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(20),
+              topRight: Radius.circular(20),
+              bottomLeft: Radius.circular(20),
+              bottomRight: Radius.circular(6),
+            ),
+          ),
+          child: Directionality(
+            textDirection: bubbleDirection,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (message.visionImagePath != null) ...[
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.file(
+                      File(message.visionImagePath!),
+                      width: 240,
+                      fit: BoxFit.cover,
+                    ),
                   ),
-                ),
+                  if (message.text.trim().isNotEmpty)
+                    const SizedBox(height: 8),
+                ],
                 if (message.text.trim().isNotEmpty)
-                  const SizedBox(height: 8),
-              ],
-              if (message.text.trim().isNotEmpty)
-                SelectableText(
-                  message.text,
-                  style: TextStyle(
-                    color: colors.userBubbleText,
-                    fontSize: 15.5,
-                    height: 1.5,
+                  SelectableText(
+                    message.text,
+                    style: TextStyle(
+                      color: colors.userBubbleText,
+                      fontSize: 15.5,
+                      height: 1.5,
+                    ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -2516,7 +2645,6 @@ class _TypedMarkdownState extends State<_TypedMarkdown>
 
     final len = widget.fullText.length;
 
-    // Skip animation for very long texts.
     if (len > 4000) {
       _visibleText = widget.fullText;
       _done = true;
@@ -2527,7 +2655,6 @@ class _TypedMarkdownState extends State<_TypedMarkdown>
       return;
     }
 
-    // Duration: 15ms per char, clamped between 400ms and 6000ms.
     final durationMs = (len * 15).clamp(400, 6000);
 
     _controller = AnimationController(
