@@ -38,13 +38,13 @@ class PlayerCard extends StatelessWidget {
     final foot = _translateFoot(_str(player['side']));
 
     final currentClub = _translateClub(_str(current['currentClub']));
-    final lastTransfer = _translateTransfer(_str(current['lastTransfer']));
+    final lastTransfer = _formatTransfer(_str(current['lastTransfer']));
     final marketValue = _str(current['marketValue']);
     final stats = (current['stats'] as Map?)?.cast<String, dynamic>() ?? {};
     final goals = _str(stats['goals']);
     final assists = _str(stats['assists']);
     final season = _str(stats['season']);
-    final latestNews = _translateNews(_str(current['latestNews']));
+    final latestNews = _str(current['latestNews']);
     final trophies = _trophiesList(current['trophies']);
 
     return Directionality(
@@ -77,7 +77,7 @@ class PlayerCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // ─── Header: Photo + Basic Info ───────────────────────────────
+            // ─── Header ──────────────────────────────────────────────────
             Container(
               padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
@@ -97,38 +97,8 @@ class PlayerCard extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  // Photo
-                  Container(
-                    width: 96,
-                    height: 96,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: colors.surface,
-                      border: Border.all(
-                        color: colors.accentGlow.withValues(alpha: 0.45),
-                        width: 2,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: colors.accentGlow.withValues(alpha: 0.30),
-                          blurRadius: 18,
-                          spreadRadius: 1,
-                        ),
-                      ],
-                    ),
-                    child: ClipOval(
-                      child: photo.isNotEmpty
-                          ? Image.network(
-                              photo,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) =>
-                                  _fallbackAvatar(colors, name),
-                            )
-                          : _fallbackAvatar(colors, name),
-                    ),
-                  ),
+                  _buildPhoto(colors, photo, name),
                   const SizedBox(width: 16),
-                  // Name + Info
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -200,7 +170,7 @@ class PlayerCard extends StatelessWidget {
               ),
             ),
 
-            // ─── Body ─────────────────────────────────────────────────────
+            // ─── Body ────────────────────────────────────────────────────
             Padding(
               padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
               child: Column(
@@ -254,70 +224,171 @@ class PlayerCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 10),
                   ],
+                  // Latest News — English only with label
                   if (latestNews.isNotEmpty) ...[
-                    _miniSection(
+                    _latestNewsSection(
                       colors,
-                      'آخر الأخبار',
-                      latestNews.length > 240
-                          ? '${latestNews.substring(0, 240)}...'
-                          : latestNews,
+                      _trimNews(latestNews),
                     ),
                     const SizedBox(height: 10),
                   ],
                   const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      if (sources.isNotEmpty)
-                        Expanded(
-                          child: Text(
-                            '${sources.length} مصادر',
-                            style: TextStyle(
-                              color: colors.textFaint,
-                              fontSize: 11,
-                            ),
-                          ),
-                        ),
-                      if (onShare != null)
-                        Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            onTap: onShare,
-                            borderRadius: BorderRadius.circular(8),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 6,
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  SvgPicture.asset(
-                                    'assets/icons/send.svg',
-                                    width: 14,
-                                    height: 14,
-                                  ),
-                                  const SizedBox(width: 5),
-                                  Text(
-                                    'مشاركة',
-                                    style: TextStyle(
-                                      color: colors.textMuted,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
+                  _footer(colors, sources),
                 ],
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Sub-widgets
+  // ---------------------------------------------------------------------------
+
+  Widget _buildPhoto(
+    WeuraColors colors,
+    String photo,
+    String name,
+  ) {
+    return Container(
+      width: 96,
+      height: 96,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: colors.surface,
+        border: Border.all(
+          color: colors.accentGlow.withValues(alpha: 0.45),
+          width: 2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: colors.accentGlow.withValues(alpha: 0.30),
+            blurRadius: 18,
+            spreadRadius: 1,
+          ),
+        ],
+      ),
+      child: ClipOval(
+        child: photo.isNotEmpty
+            ? Image.network(
+                photo,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) =>
+                    _fallbackAvatar(colors, name),
+              )
+            : _fallbackAvatar(colors, name),
+      ),
+    );
+  }
+
+  Widget _footer(WeuraColors colors, List<Map> sources) {
+    return Row(
+      children: [
+        if (sources.isNotEmpty)
+          Expanded(
+            child: Text(
+              '${sources.length} مصادر',
+              style: TextStyle(
+                color: colors.textFaint,
+                fontSize: 11,
+              ),
+            ),
+          ),
+        if (onShare != null)
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onShare,
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 6,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SvgPicture.asset(
+                      'assets/icons/send.svg',
+                      width: 14,
+                      height: 14,
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      'مشاركة',
+                      style: TextStyle(
+                        color: colors.textMuted,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Latest News — English only with label
+  // ---------------------------------------------------------------------------
+
+  Widget _latestNewsSection(WeuraColors colors, String text) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              'آخر الأخبار',
+              style: TextStyle(
+                color: colors.textFaint,
+                fontSize: 11,
+                letterSpacing: 0.4,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 6,
+                vertical: 2,
+              ),
+              decoration: BoxDecoration(
+                color: colors.surfaceAlt,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(
+                  color: colors.border,
+                ),
+              ),
+              child: Text(
+                'EN',
+                style: TextStyle(
+                  color: colors.textMuted,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 5),
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: Text(
+            text,
+            style: TextStyle(
+              color: colors.textSecondary,
+              fontSize: 12.5,
+              height: 1.5,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -329,6 +400,13 @@ class PlayerCard extends StatelessWidget {
     if (value == null) return fallback;
     final s = value.toString().trim();
     return s.isEmpty ? fallback : s;
+  }
+
+  String _trimNews(String raw) {
+    if (raw.length > 220) {
+      return '${raw.substring(0, 220)}...';
+    }
+    return raw;
   }
 
   List<String> _trophiesList(dynamic raw) {
@@ -363,17 +441,14 @@ class PlayerCard extends StatelessWidget {
         lower == 'cb') {
       return 'قلب دفاع';
     }
-    if (lower.contains('full-back') ||
-        lower.contains('full back') ||
-        lower == 'lb' ||
-        lower == 'rb') {
-      return 'ظهير';
-    }
     if (lower.contains('left-back') || lower == 'lb') {
       return 'ظهير أيسر';
     }
     if (lower.contains('right-back') || lower == 'rb') {
       return 'ظهير أيمن';
+    }
+    if (lower.contains('full-back') || lower.contains('full back')) {
+      return 'ظهير';
     }
     if (lower.contains('defender') ||
         lower.contains('defence') ||
@@ -419,86 +494,47 @@ class PlayerCard extends StatelessWidget {
   String _translateNationality(String raw) {
     if (raw.isEmpty) return '';
     final map = <String, String>{
-      'france': 'فرنسا',
-      'french': 'فرنسي',
-      'argentina': 'الأرجنتين',
-      'argentinian': 'أرجنتيني',
-      'portugal': 'البرتغال',
-      'portuguese': 'برتغالي',
-      'brazil': 'البرازيل',
-      'brazilian': 'برازيلي',
-      'spain': 'إسبانيا',
-      'spanish': 'إسباني',
-      'england': 'إنجلترا',
-      'english': 'إنجليزي',
-      'germany': 'ألمانيا',
-      'german': 'ألماني',
-      'italy': 'إيطاليا',
-      'italian': 'إيطالي',
-      'netherlands': 'هولندا',
-      'dutch': 'هولندي',
-      'belgium': 'بلجيكا',
-      'belgian': 'بلجيكي',
-      'algeria': 'الجزائر',
-      'algerian': 'جزائري',
-      'morocco': 'المغرب',
-      'moroccan': 'مغربي',
-      'tunisia': 'تونس',
-      'tunisian': 'تونسي',
-      'egypt': 'مصر',
-      'egyptian': 'مصري',
-      'norway': 'النرويج',
-      'norwegian': 'نرويجي',
-      'croatia': 'كرواتيا',
-      'croatian': 'كرواتي',
-      'poland': 'بولندا',
-      'polish': 'بولندي',
-      'usa': 'الولايات المتحدة',
-      'united states': 'الولايات المتحدة',
+      'france': 'فرنسا', 'french': 'فرنسي',
+      'argentina': 'الأرجنتين', 'argentinian': 'أرجنتيني',
+      'portugal': 'البرتغال', 'portuguese': 'برتغالي',
+      'brazil': 'البرازيل', 'brazilian': 'برازيلي',
+      'spain': 'إسبانيا', 'spanish': 'إسباني',
+      'england': 'إنجلترا', 'english': 'إنجليزي',
+      'germany': 'ألمانيا', 'german': 'ألماني',
+      'italy': 'إيطاليا', 'italian': 'إيطالي',
+      'netherlands': 'هولندا', 'dutch': 'هولندي',
+      'belgium': 'بلجيكا', 'belgian': 'بلجيكي',
+      'algeria': 'الجزائر', 'algerian': 'جزائري',
+      'morocco': 'المغرب', 'moroccan': 'مغربي',
+      'tunisia': 'تونس', 'tunisian': 'تونسي',
+      'egypt': 'مصر', 'egyptian': 'مصري',
+      'norway': 'النرويج', 'norwegian': 'نرويجي',
+      'croatia': 'كرواتيا', 'croatian': 'كرواتي',
+      'poland': 'بولندا', 'polish': 'بولندي',
+      'usa': 'الولايات المتحدة', 'united states': 'الولايات المتحدة',
       'american': 'أمريكي',
-      'uruguay': 'أوروغواي',
-      'uruguayan': 'أوروغواياني',
-      'senegal': 'السنغال',
-      'senegalese': 'سنغالي',
-      'cameroon': 'الكاميرون',
-      'cameroonian': 'كاميروني',
-      'nigeria': 'نيجيريا',
-      'nigerian': 'نيجيري',
-      'ghana': 'غانا',
-      'ghanaian': 'غاني',
+      'uruguay': 'أوروغواي', 'uruguayan': 'أوروغواياني',
+      'senegal': 'السنغال', 'senegalese': 'سنغالي',
+      'cameroon': 'الكاميرون', 'cameroonian': 'كاميروني',
+      'nigeria': 'نيجيريا', 'nigerian': 'نيجيري',
+      'ghana': 'غانا', 'ghanaian': 'غاني',
       'ivory coast': 'ساحل العاج',
-      'japan': 'اليابان',
-      'japanese': 'ياباني',
-      'south korea': 'كوريا الجنوبية',
-      'korean': 'كوري',
-      'australia': 'أستراليا',
-      'australian': 'أسترالي',
-      'mexico': 'المكسيك',
-      'mexican': 'مكسيكي',
-      'canada': 'كندا',
-      'canadian': 'كندي',
-      'sweden': 'السويد',
-      'swedish': 'سويدي',
-      'denmark': 'الدنمارك',
-      'danish': 'دنماركي',
-      'switzerland': 'سويسرا',
-      'swiss': 'سويسري',
-      'turkey': 'تركيا',
-      'turkish': 'تركي',
-      'greece': 'اليونان',
-      'greek': 'يوناني',
-      'russia': 'روسيا',
-      'russian': 'روسي',
-      'serbia': 'صربيا',
-      'serbian': 'صربي',
-      'colombia': 'كولومبيا',
-      'colombian': 'كولومبي',
-      'chile': 'تشيلي',
-      'chilean': 'تشيلي',
-      'peru': 'بيرو',
-      'peruvian': 'بيروفي',
-      'ecuador': 'الإكوادور',
-      'ecuadorian': 'إكوادوري',
+      'japan': 'اليابان', 'japanese': 'ياباني',
+      'south korea': 'كوريا الجنوبية', 'korean': 'كوري',
+      'australia': 'أستراليا', 'australian': 'أسترالي',
+      'mexico': 'المكسيك', 'mexican': 'مكسيكي',
+      'canada': 'كندا', 'canadian': 'كندي',
+      'sweden': 'السويد', 'swedish': 'سويدي',
+      'denmark': 'الدنمارك', 'danish': 'دنماركي',
+      'switzerland': 'سويسرا', 'swiss': 'سويسري',
+      'turkey': 'تركيا', 'turkish': 'تركي',
+      'greece': 'اليونان', 'greek': 'يوناني',
+      'russia': 'روسيا', 'russian': 'روسي',
+      'serbia': 'صربيا', 'serbian': 'صربي',
+      'colombia': 'كولومبيا', 'colombian': 'كولومبي',
+      'chile': 'تشيلي', 'chilean': 'تشيلي',
+      'peru': 'بيرو', 'peruvian': 'بيروفي',
+      'ecuador': 'الإكوادور', 'ecuadorian': 'إكوادوري',
     };
     return map[raw.toLowerCase()] ?? raw;
   }
@@ -545,7 +581,6 @@ class PlayerCard extends StatelessWidget {
       'al ahly': 'الأهلي',
       'zamalek': 'الزمالك',
       'esperance': 'الترجي',
-      'algeria': 'الجزائر',
       'newcastle': 'نيوكاسل',
       'newcastle united': 'نيوكاسل',
       'aston villa': 'أستون فيلا',
@@ -577,63 +612,44 @@ class PlayerCard extends StatelessWidget {
     return map[raw.toLowerCase()] ?? raw;
   }
 
-  String _translateTransfer(String raw) {
+  /// Formats last transfer as "من X إلى Y (سنة)" when possible.
+  /// Falls back to "انتقل إلى X (سنة)" if only one club is available.
+  String _formatTransfer(String raw) {
     if (raw.isEmpty) return '';
 
-    // Handle format "FromClub to ToClub (Year)"
-    final match = RegExp(r'^(.+?)\s+to\s+(.+?)(\s*\((\d{4})\))?$')
-        .firstMatch(raw);
+    // Case 1: "FromClub to ToClub (Year)"
+    final match = RegExp(
+      r'^(.+?)\s+to\s+(.+?)(\s*\((\d{4})\))?$',
+      caseSensitive: false,
+    ).firstMatch(raw);
+
     if (match != null) {
       final from = _translateClub(match.group(1)!.trim());
       final to = _translateClub(match.group(2)!.trim());
       final year = match.group(4);
-      if (year != null) {
-        return 'من $from إلى $to ($year)';
+      if (from.isNotEmpty && to.isNotEmpty) {
+        return year != null
+            ? 'من $from إلى $to ($year)'
+            : 'من $from إلى $to';
       }
-      return 'من $from إلى $to';
     }
 
-    // Fallback: translate clubs found in the string.
-    String result = raw;
-    for (final entry in {
-      'Real Madrid': 'ريال مدريد',
-      'FC Barcelona': 'برشلونة',
-      'Barcelona': 'برشلونة',
-      'Paris Saint-Germain': 'باريس سان جيرمان',
-      'Manchester City': 'مانشستر سيتي',
-      'Manchester United': 'مانشستر يونايتد',
-      'Liverpool': 'ليفربول',
-      'Chelsea': 'تشيلسي',
-      'Arsenal': 'أرسنال',
-      'Bayern Munich': 'بايرن ميونخ',
-      'Juventus': 'يوفنتوس',
-      'Inter Milan': 'إنتر ميلان',
-      'AC Milan': 'ميلان',
-      'Al Hilal': 'الهلال',
-      'Al Nassr': 'النصر',
-      'Inter Miami': 'إنتر ميامي',
-    }.entries) {
-      result = result.replaceAll(entry.key, entry.value);
-    }
-    return result;
-  }
+    // Case 2: "ClubName (Year)" — no "from" info available
+    final singleMatch = RegExp(
+      r'^(.+?)(\s*\((\d{4})\))?$',
+    ).firstMatch(raw);
 
-  String _translateNews(String raw) {
-    if (raw.isEmpty) return '';
-    // News often comes in English. Translate common football terms.
-    return raw
-        .replaceAll('signs', 'يوقع')
-        .replaceAll('signed', 'وقع')
-        .replaceAll('joins', 'ينضم إلى')
-        .replaceAll('joined', 'انضم إلى')
-        .replaceAll('transfer', 'انتقال')
-        .replaceAll('contract', 'عقد')
-        .replaceAll('goals', 'أهداف')
-        .replaceAll('assists', 'صناعة أهداف')
-        .replaceAll('injury', 'إصابة')
-        .replaceAll('injured', 'مصاب')
-        .replaceAll('match', 'مباراة')
-        .replaceAll('season', 'موسم');
+    if (singleMatch != null) {
+      final club = _translateClub(singleMatch.group(1)!.trim());
+      final year = singleMatch.group(3);
+      if (club.isNotEmpty) {
+        return year != null
+            ? 'انتقل إلى $club ($year)'
+            : 'انتقل إلى $club';
+      }
+    }
+
+    return raw;
   }
 
   // ---------------------------------------------------------------------------
@@ -666,7 +682,7 @@ class PlayerCard extends StatelessWidget {
   }
 
   // ---------------------------------------------------------------------------
-  // Helpers — widgets
+  // Widgets — smaller pieces
   // ---------------------------------------------------------------------------
 
   Widget _fallbackAvatar(WeuraColors colors, String name) {
