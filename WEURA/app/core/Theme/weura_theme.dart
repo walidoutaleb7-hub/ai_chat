@@ -51,15 +51,15 @@ class WeuraColors extends ThemeExtension<WeuraColors> {
     surface: Color(0xFF111119),
     surfaceAlt: Color(0xFF15151D),
     surfaceElevated: Color(0xFF0A0B12),
-    border: Color(0x0FFFFFFF),
-    borderStrong: Color(0x1FFFFFFF),
+    border: Color(0x1AFFFFFF),
+    borderStrong: Color(0x2EFFFFFF),
     textPrimary: Color(0xFFFFFFFF),
     textSecondary: Color(0xB3FFFFFF),
     textMuted: Color(0x61FFFFFF),
     textFaint: Color(0x3DFFFFFF),
     accent: Color(0xFF315DFF),
     accentGlow: Color(0xFF3B82F6),
-    accentSoft: Color(0x1F1D4ED8),
+    accentSoft: Color(0x1F315DFF),
     danger: Color(0xFFFF6B6B),
     userBubble: Color(0xFF1D4ED8),
     userBubbleText: Color(0xFFFFFFFF),
@@ -89,8 +89,7 @@ class WeuraColors extends ThemeExtension<WeuraColors> {
   );
 
   static WeuraColors of(BuildContext context) {
-    final colors =
-        Theme.of(context).extension<WeuraColors>();
+    final colors = Theme.of(context).extension<WeuraColors>();
     return colors ?? dark;
   }
 
@@ -174,13 +173,55 @@ ThemeData weuraDarkTheme() {
   return ThemeData(
     brightness: Brightness.dark,
     scaffoldBackgroundColor: colors.background,
-    fontFamily: 'sans',
     useMaterial3: true,
     colorScheme: ColorScheme.fromSeed(
       seedColor: colors.accent,
       brightness: Brightness.dark,
+    ).copyWith(
+      surface: colors.surface,
+      error: colors.danger,
     ),
     extensions: const [colors],
+    appBarTheme: AppBarTheme(
+      backgroundColor: colors.background,
+      foregroundColor: colors.textPrimary,
+      elevation: 0,
+      centerTitle: false,
+      titleTextStyle: TextStyle(
+        color: colors.textPrimary,
+        fontSize: 18,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 1.0,
+      ),
+    ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: colors.surfaceAlt,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+      ),
+    ),
+    bottomSheetTheme: BottomSheetThemeData(
+      backgroundColor: colors.surfaceAlt,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(24),
+        ),
+      ),
+    ),
+    snackBarTheme: SnackBarThemeData(
+      backgroundColor: colors.surfaceAlt,
+      contentTextStyle: TextStyle(color: colors.textPrimary),
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+    ),
+    dividerTheme: DividerThemeData(
+      color: colors.border,
+      thickness: 1,
+    ),
+    splashColor: colors.accent.withValues(alpha: 0.08),
+    highlightColor: colors.accent.withValues(alpha: 0.04),
   );
 }
 
@@ -190,12 +231,54 @@ ThemeData weuraLightTheme() {
   return ThemeData(
     brightness: Brightness.light,
     scaffoldBackgroundColor: colors.background,
-    fontFamily: 'sans',
     useMaterial3: true,
     colorScheme: ColorScheme.fromSeed(
       seedColor: colors.accent,
       brightness: Brightness.light,
+    ).copyWith(
+      surface: colors.surface,
+      error: colors.danger,
     ),
     extensions: const [colors],
+    appBarTheme: AppBarTheme(
+      backgroundColor: colors.background,
+      foregroundColor: colors.textPrimary,
+      elevation: 0,
+      centerTitle: false,
+      titleTextStyle: TextStyle(
+        color: colors.textPrimary,
+        fontSize: 18,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 1.0,
+      ),
+    ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: colors.surfaceAlt,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+      ),
+    ),
+    bottomSheetTheme: BottomSheetThemeData(
+      backgroundColor: colors.surfaceAlt,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(24),
+        ),
+      ),
+    ),
+    snackBarTheme: SnackBarThemeData(
+      backgroundColor: colors.surfaceAlt,
+      contentTextStyle: TextStyle(color: colors.textPrimary),
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+    ),
+    dividerTheme: DividerThemeData(
+      color: colors.border,
+      thickness: 1,
+    ),
+    splashColor: colors.accent.withValues(alpha: 0.08),
+    highlightColor: colors.accent.withValues(alpha: 0.04),
   );
 }
