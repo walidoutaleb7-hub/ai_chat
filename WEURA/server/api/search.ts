@@ -12,7 +12,10 @@ export type TavilyResult = {
   query?: string;
 };
 
-/// In-memory cache: same query within TTL → reuse.
+/* ============================================================
+ *  CACHE
+ * ============================================================ */
+
 type CacheEntry = {
   results: TavilyResult[];
   expiresAt: number;
@@ -20,22 +23,71 @@ type CacheEntry = {
 
 const SEARCH_CACHE = new Map<string, CacheEntry>();
 const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const CACHE_MAX_ENTRIES = 200;
+
+/** Removes expired entries + enforces max size. */
+function pruneCache(): void {
+  const now = Date.now();
+
+  for (const [key, entry] of SEARCH_CACHE.entries()) {
+    if (entry.expiresAt <= now) {
+      SEARCH_CACHE.delete(key);
+    }
+  }
+
+  // If still too big, drop oldest entries.
+  if (SEARCH_CACHE.size > CACHE_MAX_ENTRIES) {
+    const overflow = SEARCH_CACHE.size - CACHE_MAX_ENTRIES;
+    let removed = 0;
+    for (const key of SEARCH_CACHE.keys()) {
+      if (removed >= overflow) break;
+      SEARCH_CACHE.delete(key);
+      removed++;
+    }
+  }
+}
+
+// Run cleanup every 10 minutes.
+setInterval(pruneCache, 10 * 60 * 1000).unref();
+
+/* ============================================================
+ *  DOMAINS
+ * ============================================================ */
 
 const TRUSTED_GENERAL = [
-  'reuters.com', 'apnews.com', 'bbc.com',
-  'aljazeera.net', 'aljazeera.com', 'cnn.com',
-  'nytimes.com', 'theguardian.com', 'euronews.com',
-  'france24.com', 'lemonde.fr',
-  'wikipedia.org', 'britannica.com',
-  'espn.com', 'skysports.com', 'marca.com', 'as.com',
-  'goal.com', 'transfermarkt.com', 'fotmob.com',
-  'sofascore.com', 'fifa.com', 'uefa.com',
+  'reuters.com',
+  'apnews.com',
+  'bbc.com',
+  'aljazeera.net',
+  'aljazeera.com',
+  'cnn.com',
+  'nytimes.com',
+  'theguardian.com',
+  'euronews.com',
+  'france24.com',
+  'lemonde.fr',
+  'wikipedia.org',
+  'britannica.com',
+  'espn.com',
+  'skysports.com',
+  'marca.com',
+  'as.com',
+  'goal.com',
+  'transfermarkt.com',
+  'fotmob.com',
+  'sofascore.com',
+  'fifa.com',
+  'uefa.com',
 ];
 
 const TRUSTED_TECH = [
-  'github.com', 'stackoverflow.com',
-  'developer.mozilla.org', 'flutter.dev',
-  'dart.dev', 'pub.dev', 'docs.flutter.dev',
+  'github.com',
+  'stackoverflow.com',
+  'developer.mozilla.org',
+  'flutter.dev',
+  'dart.dev',
+  'pub.dev',
+  'docs.flutter.dev',
 ];
 
 export type SearchOptions = {
@@ -60,6 +112,10 @@ function buildDomainList(options: SearchOptions): string[] | null {
   return Array.from(merged);
 }
 
+/* ============================================================
+ *  TAVILY
+ * ============================================================ */
+
 async function runSearch(
   query: string,
   limit: number,
@@ -69,9 +125,8 @@ async function runSearch(
   if (!apiKey) throw new Error('TAVILY_API_KEY is not configured.');
 
   const body: Record<string, unknown> = {
-    api_key: apiKey,
     query,
-    max_results: limit,
+    max_results: Math.min(limit, 10),
     include_answer: false,
     include_raw_content: true,
     search_depth: 'advanced',
@@ -79,7 +134,7 @@ async function runSearch(
 
   if (options.timeSensitive) {
     body.topic = 'news';
-    body.days = 30;
+    body.days = 180;
   } else {
     body.topic = 'general';
   }
@@ -89,13 +144,16 @@ async function runSearch(
 
   const response = await fetch(TAVILY_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(20000),
+    signal: AbortSignal.timeout(15000),
   });
 
   if (!response.ok) {
-    const errText = await response.text();
+    const errText = await response.text().catch(() => '');
     console.error(
       `[WEURA] Tavily error ${response.status}:`,
       errText.slice(0, 300),
@@ -104,7 +162,9 @@ async function runSearch(
   }
 
   const data = await response.json();
-  const results = Array.isArray(data?.results) ? data.results : [];
+  const results = Array.isArray((data as any)?.results)
+    ? (data as any).results
+    : [];
 
   return results.map((item: any) => {
     const raw =
@@ -125,42 +185,42 @@ async function runSearch(
   });
 }
 
-/// Runs the main query + (optionally) a time-sensitive variant.
-/// Caches the merged results for 30 minutes.
+/* ============================================================
+ *  MAIN
+ * ============================================================ */
+
 export async function searchTavily(
   query: string,
   limit: number = 6,
   options: SearchOptions = {},
 ): Promise<TavilyResult[]> {
-  const cacheKey = `${query}|${limit}|${JSON.stringify(options)}`;
+  const safeLimit = Math.min(Math.max(limit, 1), 10);
+  const cacheKey = `${query}|${safeLimit}|${JSON.stringify(options)}`;
   const now = Date.now();
 
   const cached = SEARCH_CACHE.get(cacheKey);
   if (cached && cached.expiresAt > now) {
-    console.log(`[WEURA] Search cache HIT: "${query}"`);
     return cached.results;
   }
 
-  // Variants to search in parallel.
+  const currentYear = new Date().getFullYear();
+
   const variants: { q: string; opts: SearchOptions }[] = [
     { q: query, opts: options },
   ];
 
-  // Add a time-sensitive variant for fresh news when the query is
-  // about a person/event/current topic.
   if (options.timeSensitive) {
     variants.push({
-      q: `${query} آخر التطورات 2026`,
+      q: `${query} latest ${currentYear}`,
       opts: { ...options, timeSensitive: true },
     });
   }
 
-  // Cap at 2 variants to stay within rate limits.
   const batch = variants.slice(0, 2);
 
   const settled = await Promise.all(
     batch.map((v) =>
-      runSearch(v.q, Math.max(limit, 3), v.opts).catch(() => []),
+      runSearch(v.q, safeLimit, v.opts).catch(() => []),
     ),
   );
 
@@ -176,15 +236,24 @@ export async function searchTavily(
     }
   }
 
-  const finalResults = merged.slice(0, Math.max(limit, 6));
+  const finalResults = merged.slice(0, safeLimit);
 
   SEARCH_CACHE.set(cacheKey, {
     results: finalResults,
     expiresAt: now + CACHE_TTL_MS,
   });
 
+  // Opportunistic prune after each insert.
+  if (SEARCH_CACHE.size > CACHE_MAX_ENTRIES) {
+    pruneCache();
+  }
+
   return finalResults;
 }
+
+/* ============================================================
+ *  ROUTE
+ * ============================================================ */
 
 router.get('/search', async (req, res) => {
   const query = String(req.query.q ?? '').trim();
