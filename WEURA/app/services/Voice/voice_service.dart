@@ -52,14 +52,9 @@ class VoiceService {
   }
 
   /// Picks the best Arabic or English locale for the requested prefix.
-  ///
-  /// Returns:
-  /// - the locale ID if the prefix is available
-  /// - null if the prefix is not available
   String? findLocale(String prefix) {
     final lowerPrefix = prefix.toLowerCase();
 
-    // 1. Try a preferred full locale.
     final preferred = <String>[
       if (prefix == 'ar') ...[
         'ar-sa', 'ar-eg', 'ar-dz', 'ar-ma', 'ar-tn', 'ar-ae', 'ar-qa',
@@ -77,7 +72,6 @@ class VoiceService {
       }
     }
 
-    // 2. Fall back to any locale that starts with the prefix.
     for (final locale in _cachedLocales) {
       if (locale.localeId.toLowerCase().startsWith(lowerPrefix)) {
         return locale.localeId;
@@ -103,14 +97,14 @@ class VoiceService {
 
     try {
       await _speech.listen(
-        localeId: localeId,
         onResult: (SpeechRecognitionResult result) {
           onResult(result.recognizedWords, result.finalResult);
         },
         listenOptions: SpeechListenOptions(
           partialResults: true,
-          cancelOnError: true,
+          cancelOnError: false,
           listenMode: ListenMode.dictation,
+          localeId: localeId,
         ),
       );
 
