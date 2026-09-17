@@ -18,22 +18,45 @@ export type AskOptions = {
   maxTokens?: number;
 };
 
-/// Returns the list of available providers in priority order.
-/// Groq is PRIMARY (per WEURA rules).
-/// Cerebras is FALLBACK only.
+/* ============================================================
+ *  PROVIDER COOLDOWN (skip dead providers for 5 min)
+ * ============================================================ */
+
+type CooldownEntry = {
+  until: number;
+  reason: string;
+};
+
+const COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
+const COOLDOWNS = new Map<string, CooldownEntry>();
+
+function isOnCooldown(name: string): boolean {
+  const entry = COOLDOWNS.get(name);
+  if (!entry) return false;
+  if (entry.until <= Date.now()) {
+    COOLDOWNS.delete(name);
+    return false;
+  }
+  return true;
+}
+
+function setCooldown(name: string, reason: string): void {
+  COOLDOWNS.set(name, {
+    until: Date.now() + COOLDOWN_MS,
+    reason,
+  });
+}
+
+/* ============================================================
+ *  PROVIDER REGISTRY
+ * ============================================================ */
+
+/// Cerebras is PRIMARY (1M tokens/day, ultra-fast inference).
+/// Groq is FALLBACK (200K tokens/day).
 function getProviders(): Provider[] {
   const providers: Provider[] = [];
 
-  const groqKey = process.env.GROQ_API_KEY?.trim();
-  if (groqKey) {
-    providers.push({
-      name: 'groq',
-      url: 'https://api.groq.com/openai/v1/chat/completions',
-      apiKey: groqKey,
-      model: process.env.GROQ_MODEL?.trim() || 'openai/gpt-oss-120b',
-    });
-  }
-
+  // 1. Cerebras — primary
   const cerebrasKey = process.env.CEREBRAS_API_KEY?.trim();
   if (cerebrasKey) {
     providers.push({
@@ -44,16 +67,30 @@ function getProviders(): Provider[] {
     });
   }
 
+  // 2. Groq — fallback
+  const groqKey = process.env.GROQ_API_KEY?.trim();
+  if (groqKey) {
+    providers.push({
+      name: 'groq',
+      url: 'https://api.groq.com/openai/v1/chat/completions',
+      apiKey: groqKey,
+      model: process.env.GROQ_MODEL?.trim() || 'openai/gpt-oss-120b',
+    });
+  }
+
   if (providers.length === 0) {
     throw new Error(
-      'No AI provider is configured. Set GROQ_API_KEY (primary) or CEREBRAS_API_KEY (fallback).',
+      'No AI provider is configured. Set CEREBRAS_API_KEY (primary) or GROQ_API_KEY (fallback).',
     );
   }
 
   return providers;
 }
 
-/// Extracts text from a provider response.
+/* ============================================================
+ *  CONTENT EXTRACTION
+ * ============================================================ */
+
 /// Some models return content as a string, others as an array of parts.
 function extractContent(raw: unknown): string {
   if (typeof raw === 'string') return raw;
@@ -72,16 +109,24 @@ function extractContent(raw: unknown): string {
   return '';
 }
 
-/// Calls a single provider once.
+/* ============================================================
+ *  SINGLE PROVIDER CALL
+ * ============================================================ */
+
 async function callProvider(
   provider: Provider,
   messages: GrokMessage[],
   options: AskOptions,
-): Promise<{ content: string; model: string; usage: unknown; provider: string }> {
+): Promise<{
+  content: string;
+  model: string;
+  usage: unknown;
+  provider: string;
+}> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 90000);
+  const timeout = setTimeout(() => controller.abort(), 90_000);
 
-  const temperature = options.temperature ?? 0.7;
+  const temperature = options.temperature ?? 0.85;
   const maxTokens = options.maxTokens ?? 2048;
 
   try {
@@ -125,7 +170,9 @@ async function callProvider(
         (typeof obj.error === 'object' && obj.error?.message) ||
         obj.error ||
         `request failed with HTTP ${response.status}.`;
-      throw new Error(`${provider.name}: ${String(providerError)}`);
+      throw new Error(
+        `${provider.name}: HTTP ${response.status} - ${String(providerError)}`,
+      );
     }
 
     const rawContent = obj?.choices?.[0]?.message?.content;
@@ -151,30 +198,91 @@ async function callProvider(
   }
 }
 
-/// Detects whether an error should trigger a fallback to the next provider.
+/* ============================================================
+ *  RETRYABLE / FATAL CLASSIFICATION
+ * ============================================================ */
+
+/// Returns TRUE if the error should trigger a fallback to the next provider.
+///
+/// Key cases:
+///   402 → payment required (no credits)
+///   401/403 → auth/forbidden
+///   429 → rate limit
+///   5xx → server errors
+///   timeouts / network errors
 function isRetryableError(error: unknown): boolean {
   if (!(error instanceof Error)) return true;
 
   const msg = error.message.toLowerCase();
 
   return (
+    // Auth / billing / access
+    msg.includes('402') ||
+    msg.includes('payment required') ||
+    msg.includes('payment') ||
+    msg.includes('credit') ||
+    msg.includes('billing') ||
+    msg.includes('insufficient') ||
+    msg.includes('401') ||
+    msg.includes('unauthorized') ||
+    msg.includes('invalid api key') ||
+    msg.includes('403') ||
+    msg.includes('forbidden') ||
+    // Rate limits / quotas
     msg.includes('429') ||
     msg.includes('rate limit') ||
     msg.includes('too many') ||
     msg.includes('quota') ||
     msg.includes('exceeded') ||
+    // Server errors
     msg.includes('500') ||
     msg.includes('502') ||
     msg.includes('503') ||
     msg.includes('504') ||
+    // Network / timing
     msg.includes('timed out') ||
+    msg.includes('timeout') ||
+    msg.includes('network') ||
+    msg.includes('econnrefused') ||
+    msg.includes('enotfound') ||
+    // Response issues
     msg.includes('empty response') ||
-    msg.includes('network')
+    // Model issues
+    msg.includes('model_not_found') ||
+    msg.includes('model not found') ||
+    msg.includes('does not exist') ||
+    msg.includes('not available')
   );
 }
 
-/// Tries each provider in order. On failure, falls back to the next.
-/// Groq is tried FIRST. Cerebras is fallback.
+/// Returns TRUE if the error means "this provider is dead for a while".
+/// (e.g. no credits, invalid key). We should not keep trying it.
+function isProviderDeadError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+
+  const msg = error.message.toLowerCase();
+
+  return (
+    msg.includes('402') ||
+    msg.includes('payment required') ||
+    msg.includes('insufficient') ||
+    msg.includes('401') ||
+    msg.includes('unauthorized') ||
+    msg.includes('invalid api key') ||
+    msg.includes('403') ||
+    msg.includes('forbidden')
+  );
+}
+
+/* ============================================================
+ *  MAIN ENTRY
+ * ============================================================ */
+
+/// Tries each provider in order.
+///   - Cerebras is tried FIRST.
+///   - Groq is fallback.
+///   - Dead providers (payment/auth errors) are put on a 5-min cooldown
+///     so we don't waste time on them on every request.
 export async function askGrok(
   messages: GrokMessage[],
   options: AskOptions = {},
@@ -187,9 +295,13 @@ export async function askGrok(
   const errors: string[] = [];
   const rid = options.requestId ?? '-';
 
-  for (let i = 0; i < providers.length; i++) {
-    const provider = providers[i];
-    const isLast = i === providers.length - 1;
+  // Filter out providers on cooldown — unless ALL are on cooldown.
+  const available = providers.filter((p) => !isOnCooldown(p.name));
+  const candidates = available.length > 0 ? available : providers;
+
+  for (let i = 0; i < candidates.length; i++) {
+    const provider = candidates[i];
+    const isLast = i === candidates.length - 1;
 
     try {
       const result = await callProvider(provider, messages, options);
@@ -197,29 +309,42 @@ export async function askGrok(
       if (i > 0) {
         console.log(
           `[WEURA][${rid}] Fallback succeeded on ${provider.name} ` +
-            `after ${providers[i - 1].name} failed.`,
+            `after ${candidates[i - 1].name} failed.`,
         );
       }
 
       return result;
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message =
+        error instanceof Error ? error.message : String(error);
       errors.push(message);
 
       console.error(
         `[WEURA][${rid}] Provider ${provider.name} failed: ${message}`,
       );
 
+      // If it's a "dead" error → cooldown this provider for 5 min.
+      if (isProviderDeadError(error)) {
+        setCooldown(provider.name, message);
+        console.warn(
+          `[WEURA][${rid}] Provider ${provider.name} on cooldown for 5 min.`,
+        );
+      }
+
+      // If it's not retryable → give up immediately.
       if (!isRetryableError(error)) {
         throw error;
       }
 
+      // If this was the last → throw combined error.
       if (isLast) {
-        throw new Error(`All AI providers failed:\n${errors.join('\n')}`);
+        throw new Error(
+          `All AI providers failed:\n${errors.join('\n')}`,
+        );
       }
 
       console.log(
-        `[WEURA][${rid}] Falling back from ${provider.name} to ${providers[i + 1].name}...`,
+        `[WEURA][${rid}] Falling back from ${provider.name} to ${candidates[i + 1].name}...`,
       );
     }
   }
