@@ -9,19 +9,30 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: build-apk-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     name: Build WEURA Android APK
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.35.0"
+          flutter-version: "3.24.5"
           channel: stable
           cache: true
 
@@ -31,8 +42,9 @@ jobs:
       - name: Repair Android project
         working-directory: WEURA
         run: |
+          set -e
           if [ ! -f "android/settings.gradle" ] && [ ! -f "android/settings.gradle.kts" ]; then
-            echo "Creating Android project..."
+            echo "Creating Android project scaffolding..."
             rm -rf /tmp/weura_backup
             mkdir -p /tmp/weura_backup
             cp -r app /tmp/weura_backup/app
@@ -42,19 +54,24 @@ jobs:
             cp -r /tmp/weura_backup/app app
             cp /tmp/weura_backup/pubspec.yaml pubspec.yaml
           else
-            echo "Android project exists."
+            echo "Android project already exists."
           fi
           rm -f test/widget_test.dart
 
       - name: Fix icon assets structure
         working-directory: WEURA
         run: |
+          set -e
           mkdir -p assets/icons
           for f in assets/logo/*.svg; do
             [ -e "$f" ] || continue
             name=$(basename "$f")
             if [ "$name" != "weura.svg" ]; then
-              mv "$f" "assets/icons/$name"
+              if [ ! -f "assets/icons/$name" ]; then
+                mv "$f" "assets/icons/$name"
+              else
+                rm -f "$f"
+              fi
             fi
           done
           echo "assets/icons:"
@@ -65,27 +82,25 @@ jobs:
       - name: Patch AndroidManifest
         working-directory: WEURA
         run: |
+          set -e
           MANIFEST="android/app/src/main/AndroidManifest.xml"
           if [ ! -f "$MANIFEST" ]; then
             echo "Manifest not found!"
             exit 1
           fi
 
-          # Add permissions
           if ! grep -q "android.permission.RECORD_AUDIO" "$MANIFEST"; then
             sed -i 's|<manifest[^>]*>|&\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>|' "$MANIFEST"
           fi
           if ! grep -q "android.permission.INTERNET" "$MANIFEST"; then
             sed -i 's|<manifest[^>]*>|&\n    <uses-permission android:name="android.permission.INTERNET"/>|' "$MANIFEST"
           fi
-          if ! grep -q "android.permission.BLUETOOTH" "$MANIFEST"; then
+          if ! grep -q "android.permission.BLUETOOTH_CONNECT" "$MANIFEST"; then
             sed -i 's|<manifest[^>]*>|&\n    <uses-permission android:name="android.permission.BLUETOOTH"/>\n    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"/>\n    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>|' "$MANIFEST"
           fi
           if ! grep -q "WRITE_EXTERNAL_STORAGE" "$MANIFEST"; then
             sed -i 's|<manifest[^>]*>|&\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29"/>\n    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>|' "$MANIFEST"
           fi
-
-          # Add queries for speech recognition
           if ! grep -q "android.speech.RecognitionService" "$MANIFEST"; then
             sed -i 's|<application|    <queries>\n        <intent>\n            <action android:name="android.speech.RecognitionService" />\n        </intent>\n    </queries>\n\n    <application|' "$MANIFEST"
           fi
@@ -103,12 +118,14 @@ jobs:
 
       - name: Analyze
         working-directory: WEURA
-        run: flutter analyze
-        continue-on-error: true
+        run: flutter analyze --no-fatal-infos
 
-      - name: Build APK
+      - name: Build APK (debug)
         working-directory: WEURA
-        run: flutter build apk --debug --target=app/main.dart
+        run: |
+          flutter clean
+          flutter pub get
+          flutter build apk --debug --target=app/main.dart
 
       - name: Verify APK
         working-directory: WEURA
@@ -119,6 +136,7 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: WEURA-APK
+          name: WEURA-APK-${{ github.run_number }}
           path: WEURA/build/app/outputs/flutter-apk/app-debug.apk
           if-no-files-found: error
+          retention-days: 14
