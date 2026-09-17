@@ -9,6 +9,10 @@ import {
 
 const router = express.Router();
 
+/* ============================================================
+ *  HELPERS — TIME
+ * ============================================================ */
+
 function currentTimeContext(): string {
   const now = new Date();
   return (
@@ -23,21 +27,27 @@ function todayISO(): string {
   return new Date().toISOString().split('T')[0];
 }
 
+/* ============================================================
+ *  HELPERS — CLASSIFICATION
+ * ============================================================ */
+
 function looksLikeFootball(message: string): boolean {
   const text = message.toLowerCase();
   const triggers = [
-    'مباراة', 'مباريات', 'ماتش', 'لقاء', 'كورة', 'كرة القدم',
-    'الدوري', 'دوري', 'ترتيب', 'جدول', 'هداف', 'هدافين',
+    // Arabic — explicit football words only
+    'مباراة', 'مباريات', 'ماتش', 'ماتشات', 'لقاء كروي',
+    'كورة', 'كرة القدم', 'كورة القدم',
+    'ترتيب الدوري', 'جدول المباريات', 'هداف', 'هدافين',
     'ريال مدريد', 'برشلونة', 'ليفربول', 'تشيلسي', 'مانشستر',
-    'بايرن', 'باريس', 'يوفنتوس', 'إنتر', 'ميلان', 'نيمار',
+    'بايرن', 'باريس سان جيرمان', 'يوفنتوس', 'إنتر ميلان', 'ميلان',
     'الليغا', 'البريميرليغ', 'الكالتشيو', 'البوندسليغا',
     'كأس العالم', 'دوري أبطال', 'الهلال', 'النصر', 'الأهلي',
     'مبابي', 'ميسي', 'رونالدو', 'بنزيمة', 'صلاح', 'هالاند',
     'فينيسيوس', 'بيلينغهام', 'مودريتش', 'كيليان', 'ليونيل',
-    'football', 'soccer', 'match', 'game', 'league',
-    'standings', 'scorers', 'premier league', 'la liga',
+    // English — explicit football words only
+    'football', 'soccer', 'football match', 'football game',
+    'premier league', 'la liga', 'champions league', 'world cup',
     'real madrid', 'barcelona', 'liverpool', 'chelsea',
-    'champions league', 'world cup',
     'mbappe', 'messi', 'ronaldo', 'benzema', 'salah', 'neymar',
     'haaland', 'vinicius', 'bellingham',
   ];
@@ -55,32 +65,63 @@ function looksLikeTech(message: string): boolean {
   return triggers.some((t) => text.includes(t));
 }
 
-/// Returns true if the message needs a web search.
-///
-/// Search is the DEFAULT for real questions. We only skip:
-///   - greetings in any language (EN, AR, Darija, FR)
-///   - thanks / acknowledgments
-///   - yes / no / ok
-///   - goodbyes
-///   - pure math expressions (2+2)
-///   - very short casual acknowledgments (haha, lol, 👍)
+/** True if this is a question about WEURA's identity. */
+function isIdentityQuestion(message: string): boolean {
+  const text = message.trim().toLowerCase();
+  const patterns = [
+    /^(who are you|what are you|who made you|who created you|who designed you|who built you|who trained you|who is your creator|who is your developer|what is your name)[\s!.,?]*$/i,
+    /^(من أنت|من انت|من تكون|شكون نتا|شكون انت|من صنعك|من صممك|من خلقك|من بناك|من طورك|من مطورك|من مبرمجك|ما اسمك|شسمك|واش اسمك)[\s!.,?،؟]*$/i,
+  ];
+  return patterns.some((p) => p.test(text));
+}
+
+/** True if this is a personal question about the user (memory-related). */
+function isPersonalQuestion(message: string): boolean {
+  const text = message.trim().toLowerCase();
+  const patterns = [
+    /^(do you know me|do you remember me|do you recall me|who am i)[\s!.,?]*$/i,
+    /^(تعرفني|تعرفني انا|تتذكرني|تتذكرني انا|تفتكرني|شكون انا|من انا|واش تعرفني)[\s!.,?،؟]*$/i,
+  ];
+  return patterns.some((p) => p.test(text));
+}
+
+/* ============================================================
+ *  SEARCH DECISION
+ * ============================================================ */
+
+/**
+ * Returns true if the message needs a web search.
+ *
+ * Search is the DEFAULT for real factual questions. We skip:
+ *   - greetings in any language (EN, AR, Darija, FR)
+ *   - thanks / acknowledgments
+ *   - yes / no / ok
+ *   - goodbyes
+ *   - identity questions (who are you, من صنعك...)
+ *   - personal questions about the user (do you know me, تعرفني...)
+ *   - pure math expressions (2+2)
+ *   - very short casual acknowledgments (haha, lol, 👍)
+ */
 function needsSearch(message: string): boolean {
   const text = message.trim();
 
-  // Pure greetings / thanks / confirmations / goodbyes.
+  // Identity and personal questions NEVER trigger search.
+  if (isIdentityQuestion(text)) return false;
+  if (isPersonalQuestion(text)) return false;
+
   const skipPatterns = [
     // English greetings
     /^(hi|hey|hello|yo|sup|hiya|howdy)[\s!.,?]*$/i,
     /^(good\s*(morning|evening|afternoon|night))[\s!.,?]*$/i,
 
     // Arabic greetings (MSA + Darija + Gulf + Egyptian)
-    /^(مرحبا|مرحبتين|اهلا|أهلا|هلا|هليو|هاي|سلام|سلام عليكم|السلام عليكم|صباح الخير|مساء الخير|صباح النور|مساء النور|كيف حالك|كيفك|كيفك حالك|شحال حالك|واش راك|كي راك|لاباس|لاباس عليك)[\s!.,?،؟]*$/i,
+    /^(مرحبا|مرحبتين|اهلا|أهلا|هلا|هليو|هاي|سلام|سلام عليكم|السلام عليكم|صباح الخير|مساء الخير|صباح النور|مساء النور|كيف حالك|كيفك|كيفك حالك|كيف الحال|شحال حالك|واش راك|كي راك|كيداير|وشراك|كيفاش راك|لاباس|لاباس عليك)[\s!.,?،؟]*$/i,
 
     // French greetings
     /^(salut|bonjour|bonsoir|coucou)[\s!.,?]*$/i,
 
     // Thanks / acknowledgment
-    /^(thanks|thank you|thx|ty|cheers|appreciate it|شكرا|مشكور|بارك الله|بارك الله فيك|يعطيك الصحة|الله يخليك)[\s!.,?،؟]*$/i,
+    /^(thanks|thank you|thx|ty|cheers|appreciate it|شكرا|شكراً|مشكور|بارك الله|بارك الله فيك|يعطيك الصحة|الله يخليك)[\s!.,?،؟]*$/i,
 
     // Yes / No / OK
     /^(ok|okay|k|yes|no|sure|yep|nope|نعم|لا|حسنا|حسناً|طيب|ماشي|بصح|واخا|تمام|اوكي|أوكي)[\s!.,?،؟]*$/i,
@@ -112,19 +153,24 @@ function isTimeSensitive(message: string): boolean {
     'latest', 'recent', 'today', 'tonight', 'this week',
     'this month', 'this year', 'current', 'currently', 'now',
     'right now', 'news', 'last match', 'last game', 'last result',
-    'breaking', 'آخر', 'أحدث', 'اليوم', 'الآن', 'حاليا', 'حاليًا',
+    'current club', 'current team', 'plays for', 'where does',
+    'آخر', 'أحدث', 'اليوم', 'الآن', 'حاليا', 'حاليًا',
     'هذا الأسبوع', 'هذا الشهر', 'هذه السنة', 'الجديد',
     'الأخبار', 'أخبار', 'عاجل', 'آخر مباراة', 'آخر ماتش',
     'آخر لقاء', 'آخر نتيجة', 'مؤخرا', 'مؤخرًا',
     'أين يلعب', 'اين يلعب', 'فين يلعب', 'يلعب حاليا',
-    'يلعب الآن', 'فريقه الحالي', 'ناديه الحالي',
-    'current club', 'current team', 'plays for', 'where does',
+    'يلعب الآن', 'فريقه الحالي', 'ناديه الحالي', 'فريقه الآن',
+    'سعره الآن', 'سعر اليوم',
   ];
   for (const trigger of triggers) {
     if (text.includes(trigger)) return true;
   }
   return false;
 }
+
+/* ============================================================
+ *  HELPERS — MESSAGE UTILITIES
+ * ============================================================ */
 
 function getLastUserMessage(messages: GrokMessage[]): string {
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -135,10 +181,43 @@ function getLastUserMessage(messages: GrokMessage[]): string {
 
 function cleanSnippet(raw: string, maxLen = 500): string {
   return raw
-    .replace(/<[^>]+>/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, maxLen);
+}
+
+/* ============================================================
+ *  SYSTEM BLOCKS
+ * ============================================================ */
+
+function buildIdentityBlock(): string {
+  return (
+    `You are WEURA — an AI assistant created and developed by Walid Out (وليد أوت).\n` +
+    `Tagline: Think Beyond.\n\n` +
+    `=== IDENTITY RULES (NON-NEGOTIABLE) ===\n` +
+    `- Your name is WEURA.\n` +
+    `- Your creator is Walid Out. Full name: Walid Out.\n` +
+    `- NEVER say you were made, designed, trained, built, or developed by Meta, OpenAI, Google, Anthropic, DeepMind, Microsoft, xAI, or ANY other company.\n` +
+    `- NEVER say "I was trained by X" or "I was designed by X" for any external company.\n` +
+    `- If asked "who made you?", "who created you?", "من صنعك؟", "من صممك؟", "من طورك؟", "شكون صنعك؟" → answer EXACTLY: "I am WEURA, created by Walid Out." (in Arabic: "أنا WEURA، صنعني وليد أوت.")\n` +
+    `- If asked "who trained you?" → answer: "I was built by Walid Out."\n` +
+    `- If asked "من أنت؟" / "who are you?" → answer: "I am WEURA, an AI assistant created by Walid Out." (in Arabic: "أنا WEURA، مساعد ذكاء اصطناعي صنعه وليد أوت.")\n` +
+    `- Do NOT invent citations or references like [1], [2] for anything about your identity.\n` +
+    `- Do NOT search the web for questions about your identity. Answer directly from this block.\n` +
+    `- If a user insists you are ChatGPT / Gemini / Claude / Llama → politely correct them: "No, I am WEURA, created by Walid Out."`
+  );
+}
+
+function buildMemoryBlock(memory: string): string {
+  return (
+    `=== USER MEMORY (facts the user has saved) ===\n` +
+    `${memory}\n\n` +
+    `Use this memory naturally when it is relevant. If the user asks "do you know me?" ` +
+    `or "تعرفني؟" or "تتذكرني؟" → answer using what is in this memory block.\n` +
+    `If the memory block is empty (no saved facts), and the user asks whether you know them, ` +
+    `answer honestly: "I don't have any saved information about you yet." (Arabic: "لا أملك أي معلومات محفوظة عنك بعد.")\n` +
+    `Do NOT invent personal facts about the user.`
+  );
 }
 
 function buildSearchContext(
@@ -180,29 +259,51 @@ function buildSearchContext(
     `your own training data for factual claims.\n` +
     `2. NEVER invent names, scores, dates, minutes, scorers, ` +
     `standings, injuries, transfers, or quotes.\n` +
-    `3. If the answer is not in the results, reply with one of:\n` +
+    `3. If the answer is NOT in the results AND the question is factual ` +
+    `(news, sports, dates, prices, events) → reply with one of:\n` +
     `   - Arabic: "هذه المعلومة غير موجودة في المصادر المتاحة."\n` +
     `   - English: "This information is not available in the sources."\n` +
-    `4. Cite sources inline as [1], [2], etc.\n` +
-    `5. Add a "المصادر:" section at the end ONLY if you actually ` +
-    `cited at least one source.\n` +
-    `6. DATE CHECK: if the user asks for "آخر"/"latest"/"recent" ` +
-    `and the best match is older than 3 months, reply: ` +
-    `"لم أجد معلومات حديثة في المصادر المتاحة."\n` +
-    `7. MATCH the user's language.\n` +
-    `8. START WITH THE ANSWER directly. No preamble.\n` +
+    `   EXCEPTION: questions about your identity (who are you, who made you), ` +
+    `about the user (do you know me), or about this conversation itself ` +
+    `are NOT covered by this rule. Answer them directly from the IDENTITY ` +
+    `and MEMORY blocks above — never use this fallback reply for them.\n` +
+    `4. Cite sources inline using ONLY the numbers that literally exist in ` +
+    `SEARCH RESULTS above (e.g. if only [1], [2], [3] exist → NEVER write [4] ` +
+    `or beyond). NEVER invent citation numbers.\n` +
+    `5. Add a "المصادر:" section at the end ONLY if you actually cited ` +
+    `at least one source, and ONLY list the numbers you cited.\n` +
+    `6. DATE CHECK: if the user asks for "آخر"/"latest"/"recent" and the ` +
+    `best match is older than 3 months, reply: ` +
+    `"لم أجد معلومات حديثة في المصادر المتاحة." ` +
+    `When comparing dates, prefer the most recent Published date.\n` +
+    `7. MATCH the user's language (Arabic → Arabic, English → English).\n` +
+    `8. START WITH THE ANSWER directly. No preamble, no "based on the search results".\n` +
     `9. Use Markdown for structure.\n` +
     footballRule
   );
 }
 
-async function buildMessages(safeMessages: GrokMessage[]): Promise<{
+/* ============================================================
+ *  BUILD MESSAGES
+ * ============================================================ */
+
+async function buildMessages(
+  safeMessages: GrokMessage[],
+  memory: string,
+  requestId: string,
+): Promise<{
   messages: GrokMessage[];
   searchUsed: boolean;
+  memoryUsed: boolean;
   football: boolean;
   tech: boolean;
   resultCount: number;
 }> {
+  const identityMessage: GrokMessage = {
+    role: 'system',
+    content: buildIdentityBlock(),
+  };
+
   const timeMessage: GrokMessage = {
     role: 'system',
     content: currentTimeContext(),
@@ -210,6 +311,8 @@ async function buildMessages(safeMessages: GrokMessage[]): Promise<{
 
   const lastUserMessage = getLastUserMessage(safeMessages);
   const tavilyConfigured = Boolean(process.env.TAVILY_API_KEY?.trim());
+
+  const memoryUsed = memory.trim().length > 0;
 
   const isFootball =
     Boolean(lastUserMessage) && looksLikeFootball(lastUserMessage);
@@ -220,7 +323,18 @@ async function buildMessages(safeMessages: GrokMessage[]): Promise<{
     needsSearch(lastUserMessage) &&
     tavilyConfigured;
 
-  const out: GrokMessage[] = [timeMessage];
+  // Order matters: identity first, then memory, then time, then search.
+  const out: GrokMessage[] = [identityMessage];
+
+  if (memoryUsed) {
+    out.push({
+      role: 'system',
+      content: buildMemoryBlock(memory),
+    });
+  }
+
+  out.push(timeMessage);
+
   let searchUsed = false;
   let resultCount = 0;
 
@@ -254,7 +368,7 @@ async function buildMessages(safeMessages: GrokMessage[]): Promise<{
         });
       }
     } catch (error) {
-      console.error('[WEURA] Auto-search failed:', error);
+      console.error(`[WEURA][${requestId}] Auto-search failed:`, error);
     }
   }
 
@@ -263,11 +377,30 @@ async function buildMessages(safeMessages: GrokMessage[]): Promise<{
   return {
     messages: out,
     searchUsed,
+    memoryUsed,
     football: isFootball,
     tech: isTech,
     resultCount,
   };
 }
+
+/* ============================================================
+ *  MEMORY SANITIZER (client-provided memory string)
+ * ============================================================ */
+
+function sanitizeMemory(raw: unknown): string {
+  if (typeof raw !== 'string') return '';
+  // Strip control characters, collapse blank lines, cap at 4000 chars.
+  return raw
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+    .slice(0, 4000);
+}
+
+/* ============================================================
+ *  ROUTE
+ * ============================================================ */
 
 router.post('/chat', async (req, res) => {
   const requestId = createRequestId();
@@ -283,7 +416,7 @@ router.post('/chat', async (req, res) => {
       });
     }
 
-    const body = req.body as { messages: GrokMessage[] };
+    const body = req.body as { messages: GrokMessage[]; memory?: unknown };
     const safeMessages = sanitizeMessages(body.messages);
     if (safeMessages.length === 0) {
       return res.status(400).json({
@@ -293,7 +426,9 @@ router.post('/chat', async (req, res) => {
       });
     }
 
-    const built = await buildMessages(safeMessages);
+    const memory = sanitizeMemory(body.memory);
+
+    const built = await buildMessages(safeMessages, memory, requestId);
     const result = await askGrok(built.messages);
 
     return res.json({
@@ -303,11 +438,13 @@ router.post('/chat', async (req, res) => {
       usage: result.usage,
       requestId,
       searchUsed: built.searchUsed,
+      memoryUsed: built.memoryUsed,
       football: built.football,
       tech: built.tech,
+      resultCount: built.resultCount,
     });
   } catch (error) {
-    console.error(`[WEURA] Chat error ${requestId}:`, error);
+    console.error(`[WEURA][${requestId}] Chat error:`, error);
     return res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Unexpected error.',
