@@ -7,21 +7,49 @@ const GROQ_API_URL =
   'https://api.groq.com/openai/v1/chat/completions';
 const TAVILY_URL = 'https://api.tavily.com/search';
 
-// ---------------------------------------------------------------------------
-// Caches
-// ---------------------------------------------------------------------------
+/* ============================================================
+ *  CACHES (with eviction)
+ * ============================================================ */
 
 type TranslationCache = { english: string; expiresAt: number };
 const TRANSLATION_CACHE = new Map<string, TranslationCache>();
 const TRANSLATION_TTL = 24 * 60 * 60 * 1000;
+const TRANSLATION_MAX = 500;
 
 type CardCache = { data: any; expiresAt: number };
 const CARD_CACHE = new Map<string, CardCache>();
 const CARD_TTL = 5 * 60 * 1000;
+const CARD_MAX = 100;
 
-// ---------------------------------------------------------------------------
-// Fast dictionary (40+ popular Arabic player names)
-// ---------------------------------------------------------------------------
+function pruneCache<K, V extends { expiresAt: number }>(
+  map: Map<K, V>,
+  max: number,
+): void {
+  const now = Date.now();
+
+  for (const [key, entry] of map.entries()) {
+    if (entry.expiresAt <= now) map.delete(key);
+  }
+
+  if (map.size > max) {
+    const overflow = map.size - max;
+    let removed = 0;
+    for (const key of map.keys()) {
+      if (removed >= overflow) break;
+      map.delete(key);
+      removed++;
+    }
+  }
+}
+
+setInterval(() => {
+  pruneCache(TRANSLATION_CACHE, TRANSLATION_MAX);
+  pruneCache(CARD_CACHE, CARD_MAX);
+}, 10 * 60 * 1000).unref();
+
+/* ============================================================
+ *  FAST ALIASES
+ * ============================================================ */
 
 const FAST_ALIASES: Record<string, string> = {
   'مبابي': 'Kylian Mbappe',
@@ -95,7 +123,7 @@ const FAST_ALIASES: Record<string, string> = {
   'جيرارد': 'Steven Gerrard',
   'لامبارد': 'Frank Lampard',
   'دروغبا': 'Didier Drogba',
-  'إيتو': 'Samuel Eto\'o',
+  'إيتو': "Samuel Eto'o",
   'فيرنانديز': 'Bruno Fernandes',
   'برونو فيرنانديز': 'Bruno Fernandes',
   'راشفورد': 'Marcus Rashford',
@@ -110,11 +138,9 @@ const FAST_ALIASES: Record<string, string> = {
   'تير شتيغن': 'Marc-Andre ter Stegen',
   'دوناروما': 'Gianluigi Donnarumma',
   'ميندي': 'Edouard Mendy',
-  'حكيم ضياء': 'Hakim Ziyech',
   'عوار': 'Houssem Aouar',
   'بن ناصر': 'Ismael Bennacer',
   'إسماعيل بن ناصر': 'Ismael Bennacer',
-  'عماني': 'Rayan Ait-Nouri',
   'بلعيد': 'Youcef Belaili',
   'بلايلي': 'Youcef Belaili',
   'ياسين براهيمي': 'Yacine Brahimi',
@@ -124,6 +150,10 @@ const FAST_ALIASES: Record<string, string> = {
   'بن سبعيني': 'Ramy Bensebaini',
   'رامي بن سبعيني': 'Ramy Bensebaini',
 };
+
+/* ============================================================
+ *  TRANSLATOR
+ * ============================================================ */
 
 const TRANSLATOR_SYSTEM_PROMPT = [
   'You are a football expert.',
@@ -158,7 +188,7 @@ async function translatePlayerName(raw: string): Promise<string> {
     if (clean.includes(ar)) return en;
   }
 
-  // Latin already?
+  // Already Latin?
   if (/^[\x00-\x7F\s.\-']+$/.test(clean)) return clean;
 
   const cached = TRANSLATION_CACHE.get(clean);
@@ -199,7 +229,7 @@ async function translatePlayerName(raw: string): Promise<string> {
 
     if (
       !translated ||
-      translated === 'UNKNOWN' ||
+      translated.toUpperCase() === 'UNKNOWN' ||
       /[\u0600-\u06FF]/.test(translated)
     ) {
       return clean;
@@ -210,15 +240,19 @@ async function translatePlayerName(raw: string): Promise<string> {
       expiresAt: Date.now() + TRANSLATION_TTL,
     });
 
+    if (TRANSLATION_CACHE.size > TRANSLATION_MAX) {
+      pruneCache(TRANSLATION_CACHE, TRANSLATION_MAX);
+    }
+
     return translated;
-  } catch (_) {
+  } catch {
     return clean;
   }
 }
 
-// ---------------------------------------------------------------------------
-// Tavily
-// ---------------------------------------------------------------------------
+/* ============================================================
+ *  TAVILY
+ * ============================================================ */
 
 const FOOTBALL_DOMAINS = [
   'espn.com', 'bbc.com', 'skysports.com', 'marca.com', 'as.com',
@@ -241,7 +275,6 @@ async function tavilySearch(
 
   try {
     const body: Record<string, unknown> = {
-      api_key: apiKey,
       query,
       max_results: limit,
       include_answer: false,
@@ -254,7 +287,10 @@ async function tavilySearch(
 
     const res = await fetch(TAVILY_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(20000),
     });
@@ -281,20 +317,17 @@ async function tavilySearch(
         title: String(r?.title ?? ''),
         url: String(r?.url ?? ''),
         snippet: clean,
-        date: r?.published_date
-          ? String(r.published_date)
-          : undefined,
+        date: r?.published_date ? String(r.published_date) : undefined,
       };
     });
-  } catch (e) {
-    console.error('[WEURA] Player Tavily error:', e);
+  } catch {
     return [];
   }
 }
 
-// ---------------------------------------------------------------------------
-// Description fallback
-// ---------------------------------------------------------------------------
+/* ============================================================
+ *  DESCRIPTION FALLBACK
+ * ============================================================ */
 
 const CLUB_ALIASES: Record<string, string> = {
   'real madrid': 'Real Madrid',
@@ -329,13 +362,15 @@ const CLUB_ALIASES: Record<string, string> = {
   esperance: 'Esperance',
 };
 
+/// Sorted keys for the longest-match-first algorithm.
+const CLUB_ALIASES_SORTED = Object.keys(CLUB_ALIASES).sort(
+  (a, b) => b.length - a.length,
+);
+
 function detectClubFromText(text: string): string {
   const lower = text.toLowerCase();
-  const sorted = Object.keys(CLUB_ALIASES).sort(
-    (a, b) => b.length - a.length,
-  );
 
-  for (const alias of sorted) {
+  for (const alias of CLUB_ALIASES_SORTED) {
     if (lower.includes(alias)) return CLUB_ALIASES[alias];
   }
   return '';
@@ -398,9 +433,9 @@ function extractFallbackFromDescription(description: string): {
   return { currentClub, lastTransfer, latestNews };
 }
 
-// ---------------------------------------------------------------------------
-// Groq extractor
-// ---------------------------------------------------------------------------
+/* ============================================================
+ *  GROQ EXTRACTOR
+ * ============================================================ */
 
 const EXTRACTOR_SYSTEM_PROMPT = [
   'You are a football data extractor. Return a JSON object.',
@@ -430,6 +465,7 @@ const EXTRACTOR_SYSTEM_PROMPT = [
   '- CurrentClub: the club the player plays for RIGHT NOW.',
   '  Use the MOST RECENT source (by date).',
   '- lastTransfer: format "FromClub to ToClub (Year)".',
+  '- trophies: array of STRINGS only (trophy names with year if known).',
   '- If a field is absent, leave it "".',
   '- Return ONLY JSON.',
 ].join('\n');
@@ -510,6 +546,20 @@ async function extractPlayerData(
       }
     }
 
+    // Force trophies to be string array.
+    const trophiesRaw = Array.isArray(parsed.trophies)
+      ? parsed.trophies
+      : [];
+    const trophies = trophiesRaw
+      .map((t: any) => {
+        if (typeof t === 'string') return t.trim();
+        if (t && typeof t === 'object') {
+          return String(t.name ?? t.title ?? '').trim();
+        }
+        return '';
+      })
+      .filter((t: string) => t.length > 0);
+
     return {
       currentClub: String(parsed.currentClub ?? ''),
       currentClubCountry: String(parsed.currentClubCountry ?? ''),
@@ -521,42 +571,48 @@ async function extractPlayerData(
         appearances: String(parsed?.stats?.appearances ?? ''),
         season: String(parsed?.stats?.season ?? ''),
       },
-      trophies: Array.isArray(parsed.trophies) ? parsed.trophies : [],
+      trophies,
       latestNews: String(parsed.latestNews ?? ''),
     };
-  } catch (_) {
+  } catch {
     return null;
   }
 }
 
-// ---------------------------------------------------------------------------
-// Flag emoji
-// ---------------------------------------------------------------------------
+/* ============================================================
+ *  FLAG EMOJI
+ * ============================================================ */
+
+const FLAG_MAP: Record<string, string> = {
+  france: '🇫🇷', argentina: '🇦🇷', portugal: '🇵🇹',
+  brazil: '🇧🇷', spain: '🇪🇸', england: '🏴󠁧󠁢󠁥󠁮󠁧󠁿',
+  germany: '🇩🇪', italy: '🇮🇹', netherlands: '🇳🇱',
+  belgium: '🇧🇪', algeria: '🇩🇿', morocco: '🇲🇦',
+  tunisia: '🇹🇳', egypt: '🇪🇬', norway: '🇳🇴',
+  croatia: '🇭🇷', poland: '🇵🇱', usa: '🇺🇸',
+  'united states': '🇺🇸', uruguay: '🇺🇾',
+  senegal: '🇸🇳', cameroon: '🇨🇲', nigeria: '🇳🇬',
+  ghana: '🇬🇭', 'ivory coast': '🇨🇮', japan: '🇯🇵',
+  'south korea': '🇰🇷', australia: '🇦🇺', mexico: '🇲🇽',
+  canada: '🇨🇦', sweden: '🇸🇪', denmark: '🇩🇰',
+  switzerland: '🇨🇭', turkey: '🇹🇷', greece: '🇬🇷',
+  russia: '🇷🇺', serbia: '🇷🇸', colombia: '🇨🇴',
+  chile: '🇨🇱', peru: '🇵🇪', ecuador: '🇪🇨',
+  scotland: '🏴󠁧󠁢󠁳󠁣󠁴󠁿', wales: '🏴󠁧󠁢󠁷󠁬󠁳󠁿',
+  ireland: '🇮🇪', austria: '🇦🇹', finland: '🇫🇮',
+  iceland: '🇮🇸', ukraine: '🇺🇦', romania: '🇷🇴',
+  bulgaria: '🇧🇬', hungary: '🇭🇺', 'czech republic': '🇨🇿',
+  czechia: '🇨🇿', slovakia: '🇸🇰', slovenia: '🇸🇮',
+};
 
 function flagEmoji(country: string | undefined): string {
   if (!country) return '';
-  const map: Record<string, string> = {
-    france: '🇫🇷', argentina: '🇦🇷', portugal: '🇵🇹',
-    brazil: '🇧🇷', spain: '🇪🇸', england: '🏴󠁧󠁢󠁥󠁮󠁧󠁿',
-    germany: '🇩🇪', italy: '🇮🇹', netherlands: '🇳🇱',
-    belgium: '🇧🇪', algeria: '🇩🇿', morocco: '🇲🇦',
-    tunisia: '🇹🇳', egypt: '🇪🇬', norway: '🇳🇴',
-    croatia: '🇭🇷', poland: '🇵🇱', usa: '🇺🇸',
-    'united states': '🇺🇸', uruguay: '🇺🇾',
-    senegal: '🇸🇳', cameroon: '🇨🇲', nigeria: '🇳🇬',
-    ghana: '🇬🇭', 'ivory coast': '🇨🇮', japan: '🇯🇵',
-    'south korea': '🇰🇷', australia: '🇦🇺', mexico: '🇲🇽',
-    canada: '🇨🇦', sweden: '🇸🇪', denmark: '🇩🇰',
-    switzerland: '🇨🇭', turkey: '🇹🇷', greece: '🇬🇷',
-    russia: '🇷🇺', serbia: '🇷🇸', colombia: '🇨🇴',
-    chile: '🇨🇱', peru: '🇵🇪', ecuador: '🇪🇨',
-  };
-  return map[country.toLowerCase()] ?? '';
+  return FLAG_MAP[country.toLowerCase()] ?? '';
 }
 
-// ---------------------------------------------------------------------------
-// Endpoint
-// ---------------------------------------------------------------------------
+/* ============================================================
+ *  ROUTE
+ * ============================================================ */
 
 router.get('/player', async (req, res) => {
   const rawName = String(req.query.name ?? '').trim();
@@ -568,16 +624,19 @@ router.get('/player', async (req, res) => {
     });
   }
 
+  if (rawName.length > 60) {
+    return res.status(400).json({
+      success: false,
+      error: 'name is too long.',
+    });
+  }
+
   const cached = CARD_CACHE.get(rawName);
   if (cached && cached.expiresAt > Date.now()) {
     return res.json(cached.data);
   }
 
   const englishName = await translatePlayerName(rawName);
-
-  console.log(
-    `[WEURA] Player lookup: "${rawName}" -> "${englishName}"`,
-  );
 
   // Validate the translated name — must be Latin script.
   const stillArabic = /[\u0600-\u06FF]/.test(englishName);
@@ -590,9 +649,7 @@ router.get('/player', async (req, res) => {
   }
 
   try {
-    // -------------------------------------------------------------------
-    // 1. TheSportsDB
-    // -------------------------------------------------------------------
+    /* ---- 1. TheSportsDB ---- */
     let player: any = null;
 
     try {
@@ -607,7 +664,6 @@ router.get('/player', async (req, res) => {
           ? searchData.player
           : [];
 
-        // STRICT: must be a Soccer player.
         const soccerPlayers = players.filter(
           (p: any) => p.strSport === 'Soccer',
         );
@@ -630,14 +686,13 @@ router.get('/player', async (req, res) => {
                 player = detailData.players[0];
               }
             }
-          } catch (_) {}
+          } catch {}
         }
       }
     } catch (e) {
       console.error('[WEURA] TheSportsDB error:', e);
     }
 
-    // STRICT: if no soccer player was found, return 404.
     if (!player) {
       return res.status(404).json({
         success: false,
@@ -646,13 +701,13 @@ router.get('/player', async (req, res) => {
       });
     }
 
-    // -------------------------------------------------------------------
-    // 2. Tavily
-    // -------------------------------------------------------------------
+    /* ---- 2. Tavily ---- */
+    const currentYear = new Date().getFullYear();
+
     const searchQueries = [
-      `${englishName} current club 2026`,
+      `${englishName} current club ${currentYear}`,
       `${englishName} transfer news`,
-      `${englishName} stats goals 2025 2026`,
+      `${englishName} stats goals 2025 ${currentYear}`,
     ];
 
     const allResults: Array<{
@@ -674,15 +729,14 @@ router.get('/player', async (req, res) => {
       return true;
     });
 
+    // Sort by date DESC (dates come as ISO "YYYY-MM-DD").
     uniqueResults.sort((a, b) => {
       const da = a.date ?? '';
       const db = b.date ?? '';
       return db.localeCompare(da);
     });
 
-    // -------------------------------------------------------------------
-    // 3. Groq extractor
-    // -------------------------------------------------------------------
+    /* ---- 3. Groq extractor ---- */
     let freshData = await extractPlayerData(
       englishName,
       player?.strNationality ?? '',
@@ -690,9 +744,7 @@ router.get('/player', async (req, res) => {
       uniqueResults.slice(0, 8),
     );
 
-    // -------------------------------------------------------------------
-    // 4. Fallback from description
-    // -------------------------------------------------------------------
+    /* ---- 4. Fallback from description ---- */
     const fallback = extractFallbackFromDescription(
       player?.strDescriptionEN ?? '',
     );
@@ -724,9 +776,7 @@ router.get('/player', async (req, res) => {
       }
     }
 
-    // -------------------------------------------------------------------
-    // 5. Merge
-    // -------------------------------------------------------------------
+    /* ---- 5. Merge ---- */
     const nationality = String(player?.strNationality ?? '');
     const flag = flagEmoji(nationality);
 
@@ -769,6 +819,10 @@ router.get('/player', async (req, res) => {
       data: responseData,
       expiresAt: Date.now() + CARD_TTL,
     });
+
+    if (CARD_CACHE.size > CARD_MAX) {
+      pruneCache(CARD_CACHE, CARD_MAX);
+    }
 
     return res.json(responseData);
   } catch (error) {
