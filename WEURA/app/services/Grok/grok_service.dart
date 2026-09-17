@@ -20,12 +20,24 @@ class GrokMessage {
 class GrokResponse {
   final String content;
   final String? model;
+  final String? provider;
   final String? requestId;
+  final bool searchUsed;
+  final bool memoryUsed;
+  final bool football;
+  final bool tech;
+  final int resultCount;
 
   const GrokResponse({
     required this.content,
     this.model,
+    this.provider,
     this.requestId,
+    this.searchUsed = false,
+    this.memoryUsed = false,
+    this.football = false,
+    this.tech = false,
+    this.resultCount = 0,
   });
 }
 
@@ -39,14 +51,40 @@ class GrokService {
   final String baseUrl;
   final http.Client _client;
 
+  /// Sends a chat request to the WEURA server.
+  ///
+  /// [messages]   — user/assistant conversation history.
+  ///                NEVER include system messages here (server builds them).
+  /// [memory]     — relevant memory string built by MemoryManager.
+  /// [mode]       — AI mode name (auto/smart/fast/code/...).
+  /// [language]   — ISO code (ar/en), optional.
   Future<GrokResponse> sendMessage({
     required List<GrokMessage> messages,
+    String? memory,
+    String? mode,
+    String? language,
   }) async {
     if (messages.isEmpty) {
       throw const GrokException('No messages were provided.');
     }
 
     final uri = Uri.parse('$baseUrl/api/chat');
+
+    final body = <String, dynamic>{
+      'messages': messages.map((m) => m.toJson()).toList(),
+    };
+
+    if (memory != null && memory.trim().isNotEmpty) {
+      body['memory'] = memory.trim();
+    }
+
+    if (mode != null && mode.trim().isNotEmpty) {
+      body['mode'] = mode.trim();
+    }
+
+    if (language != null && language.trim().isNotEmpty) {
+      body['language'] = language.trim();
+    }
 
     try {
       final response = await _client
@@ -56,12 +94,9 @@ class GrokService {
               'Content-Type': 'application/json',
               'Accept': 'application/json',
             },
-            body: jsonEncode({
-              'messages':
-                  messages.map((message) => message.toJson()).toList(),
-            }),
+            body: jsonEncode(body),
           )
-          .timeout(const Duration(seconds: 120));
+          .timeout(const Duration(seconds: 90));
 
       return _parseResponse(response);
     } on TimeoutException {
@@ -139,8 +174,16 @@ class GrokService {
     return GrokResponse(
       content: content,
       model: data['model']?.toString(),
+      provider: data['provider']?.toString(),
       requestId: data['requestId']?.toString() ??
           response.headers['x-weura-request-id'],
+      searchUsed: data['searchUsed'] == true,
+      memoryUsed: data['memoryUsed'] == true,
+      football: data['football'] == true,
+      tech: data['tech'] == true,
+      resultCount: (data['resultCount'] is int)
+          ? data['resultCount'] as int
+          : 0,
     );
   }
 
@@ -151,6 +194,11 @@ class GrokService {
     }
     if (result.isEmpty) {
       throw const FormatException('WEURA server URL is empty.');
+    }
+    if (!result.startsWith('http://') && !result.startsWith('https://')) {
+      throw const FormatException(
+        'WEURA server URL must start with http:// or https://',
+      );
     }
     return result;
   }
@@ -167,6 +215,8 @@ class GrokService {
         return 'WEURA chat endpoint was not found.';
       case 408:
         return 'The server request timed out.';
+      case 413:
+        return 'The request is too large.';
       case 429:
         return 'Too many requests. Please try again shortly.';
       case 500:
