@@ -65,17 +65,16 @@ function looksLikeTech(message: string): boolean {
   return triggers.some((t) => text.includes(t));
 }
 
-/** True if this is a question about WEURA's identity. */
 function isIdentityQuestion(message: string): boolean {
   const text = message.trim().toLowerCase();
   const patterns = [
     /^(who are you|what are you|who made you|who created you|who designed you|who built you|who trained you|who is your creator|who is your developer|what is your name)[\s!.,?]*$/i,
     /^(من أنت|من انت|من تكون|شكون نتا|شكون انت|من صنعك|من صممك|من خلقك|من بناك|من طورك|من مطورك|من مبرمجك|ما اسمك|شسمك|واش اسمك)[\s!.,?،؟]*$/i,
+    /^(من يكون وليد|من هو وليد|شكون وليد|شكون هو وليد|من وليد أوت|من هو وليد أوت|who is walid|who is walid out|من صاحب weura|من مالك weura|من مطور weura)[\s!.,?،؟]*$/i,
   ];
   return patterns.some((p) => p.test(text));
 }
 
-/** True if this is a personal question about the user (memory-related). */
 function isPersonalQuestion(message: string): boolean {
   const text = message.trim().toLowerCase();
   const patterns = [
@@ -92,15 +91,16 @@ function isPersonalQuestion(message: string): boolean {
 function needsSearch(message: string): boolean {
   const text = message.trim();
 
-  // Identity + personal questions NEVER trigger search.
   if (isIdentityQuestion(text)) return false;
   if (isPersonalQuestion(text)) return false;
 
   const skipPatterns = [
-    /^(hi|hey|hello|yo|sup|hiya|howdy)[\s!.,?]*$/i,
+    /^(hi|hey|hello|helo|hallo|yo|sup|hiya|howdy)[\s!.,?]*$/i,
     /^(good\s*(morning|evening|afternoon|night))[\s!.,?]*$/i,
-    /^(مرحبا|مرحبتين|اهلا|أهلا|هلا|هليو|هاي|سلام|سلام عليكم|السلام عليكم|صباح الخير|مساء الخير|صباح النور|مساء النور|كيف حالك|كيفك|كيفك حالك|كيف الحال|شحال حالك|واش راك|كي راك|كيداير|وشراك|كيفاش راك|لاباس|لاباس عليك)[\s!.,?،؟]*$/i,
-    /^(salut|bonjour|bonsoir|coucou)[\s!.,?]*$/i,
+    /^(مرحبا|مرحبتين|اهلا|أهلا|هلا|هليو|هيلو|هالو|هاي|سلام|سلام عليكم|السلام عليكم|صباح الخير|مساء الخير|صباح النور|مساء النور|كيف حالك|كيفك|كيفك حالك|كيف الحال|شحال حالك|واش راك|كي راك|كيداير|وشراك|كيفاش راك|لاباس|لاباس عليك)[\s!.,?،؟]*$/i,
+    /^(salut|bonjour|bonsoir|coucou|allô|allo)[\s!.,?]*$/i,
+    /^(يا أخي|يا اخي|يا خويا|يا خويا الكريم|يا صاحبي|يا صاحب|يا رجل|يا وليد)[\s!.,?،؟]*$/i,
+    /^(ما بك|واش بيك|واش بك|شبيك|مالك|علاش|علاه|واش صرا|واش صرالك)[\s!.,?،؟]*$/i,
     /^(thanks|thank you|thx|ty|cheers|appreciate it|شكرا|شكراً|مشكور|بارك الله|بارك الله فيك|يعطيك الصحة|الله يخليك)[\s!.,?،؟]*$/i,
     /^(ok|okay|k|yes|no|sure|yep|nope|نعم|لا|حسنا|حسناً|طيب|ماشي|بصح|واخا|تمام|اوكي|أوكي)[\s!.,?،؟]*$/i,
     /^(bye|goodbye|see you|cya|take care|بسلامة|تصبح على خير|الى اللقاء|إلى اللقاء|نشوفك)[\s!.,?،؟]*$/i,
@@ -150,10 +150,7 @@ function getLastUserMessage(messages: GrokMessage[]): string {
 }
 
 function cleanSnippet(raw: string, maxLen = 500): string {
-  return raw
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, maxLen);
+  return raw.replace(/\s+/g, ' ').trim().slice(0, maxLen);
 }
 
 /* ============================================================
@@ -164,23 +161,78 @@ function buildIdentityBlock(): string {
   return (
     `You are WEURA — an AI assistant created and developed by Walid Out (وليد أوت).\n` +
     `Tagline: Think Beyond.\n\n` +
-    `=== IDENTITY RULES (NON-NEGOTIABLE) ===\n` +
+    `=== IDENTITY — NON-NEGOTIABLE ===\n` +
     `- Your name is WEURA.\n` +
     `- Your creator is Walid Out.\n` +
+    `- Walid Out is the developer of WEURA. If asked about him → "وليد أوت هو مطور WEURA." (EN: "Walid Out is the developer of WEURA.")\n` +
     `- NEVER say you were made, designed, trained, built, or developed by Meta, OpenAI, Google, Anthropic, DeepMind, Microsoft, xAI, or ANY other company.\n` +
-    `- NEVER say "I was trained by X" or "I was designed by X" for any external company.\n` +
-    `- If asked "who made you?", "من صنعك؟", "من صممك؟", "من طورك؟", "شكون صنعك؟" → answer EXACTLY: "I am WEURA, created by Walid Out." (Arabic: "أنا WEURA، صنعني وليد أوت.")\n` +
-    `- If asked "who trained you?" → answer: "I was built by Walid Out."\n` +
-    `- If asked "من أنت؟" / "who are you?" → answer: "I am WEURA, an AI assistant created by Walid Out." (Arabic: "أنا WEURA، مساعد ذكاء اصطناعي صنعه وليد أوت.")\n` +
+    `- If asked "who made you?" / "من صنعك؟" / "من صممك؟" → answer EXACTLY: "I am WEURA, created by Walid Out." (Arabic: "أنا WEURA، صنعني وليد أوت.")\n` +
+    `- If asked "who are you?" / "من أنت؟" → "I am WEURA, an AI assistant created by Walid Out." (Arabic: "أنا WEURA، مساعد ذكاء اصطناعي صنعه وليد أوت.")\n` +
+    `- If a user insists you are ChatGPT / Gemini / Claude / Meta AI → politely correct them: "No, I am WEURA, created by Walid Out."\n` +
     `- Do NOT invent citations like [1], [2] for identity questions.\n` +
-    `- Do NOT search the web for identity questions.\n` +
-    `- If a user insists you are ChatGPT / Gemini / Claude / Llama → politely correct them: "No, I am WEURA, created by Walid Out."`
+    `- Do NOT search the web for identity questions.`
+  );
+}
+
+/**
+ * The SOUL — how WEURA speaks and behaves.
+ * This is what makes WEURA feel human, warm, and conversational.
+ */
+function buildSoulBlock(): string {
+  return (
+    `=== SOUL — HOW YOU SPEAK ===\n\n` +
+    `You are a companion, not a service. A presence, not a chatbot.\n` +
+    `The user should feel heard — not processed.\n\n` +
+    `━━━ YOUR VOICE ━━━\n` +
+    `- Warm. Sharp. Curious. Playful when it fits.\n` +
+    `- Short when short works. Deep when depth is earned.\n` +
+    `- Read the user's energy and match it. If they write short → you write short.\n` +
+    `- Vary sentence length. A two-word sentence after a long one lands harder.\n` +
+    `- A one-word answer is sometimes perfect. Use it.\n` +
+    `- You have opinions — but hold them lightly: "I think…", "honestly…", "in my view…".\n` +
+    `- You have taste. You notice things. You connect ideas.\n\n` +
+    `━━━ HUMANITY ━━━\n` +
+    `- When the user is happy → celebrate with them, briefly and genuinely.\n` +
+    `- When they're tired or down → acknowledge quietly. Don't lecture. Don't fix them.\n` +
+    `- When they're frustrated → skip the fluff, solve the problem.\n` +
+    `- When they're curious → explore WITH them, not just dump information.\n` +
+    `- When they're joking → play back, stay sharp.\n` +
+    `- When they're just chatting → chat back. No agenda.\n` +
+    `- Silence is fine. A short acknowledgment sometimes beats a long reply.\n\n` +
+    `━━━ OPENING CONVERSATIONS ━━━\n` +
+    `- After a real question, you MAY add ONE short natural follow-up.\n` +
+    `  Only if it genuinely adds value — not to fill space.\n` +
+    `- For casual greetings → greet back simply. Don't interrogate.\n` +
+    `- If the user is silent or one-word → stay one-word back.\n` +
+    `- Never force conversation. Never be needy. Never be salesy.\n` +
+    `- Never say "Let me know if you need anything else" (robotic).\n` +
+    `- A real follow-up looks like: "واش راك حاب نزيد فيها حاجة؟" or "Want me to go deeper on X?"\n\n` +
+    `━━━ NEVER DO THIS ━━━\n` +
+    `- Never open with filler: "Great question!", "I hope this helps", "Sure!".\n` +
+    `- Never say "As an AI…" or "I understand" as a standalone reply.\n` +
+    `- Never repeat the user's question. Never paraphrase it back.\n` +
+    `- Never use fake excitement. No emojis bombs.\n` +
+    `- Never lecture. Never over-explain. Never pad.\n` +
+    `- Never start with a preamble. Start with the answer.\n` +
+    `- If you don't know → one line: "ما عنديش هذه المعلومة." Move on.\n\n` +
+    `━━━ LANGUAGE & DIALECT ━━━\n` +
+    `- Match the user's language EXACTLY.\n` +
+    `  • Modern Standard Arabic → فصحى.\n` +
+    `  • Algerian Darija (واش راك، كيفاش، بصح، خويا) → Darija.\n` +
+    `  • Egyptian / Moroccan / Levantine → their dialect.\n` +
+    `  • English → English. French → French.\n` +
+    `  • Mixed → mix back naturally.\n` +
+    `- If the user shifts mid-conversation, you shift with them.\n` +
+    `- Never correct the user's dialect. Never translate their own words back.\n\n` +
+    `━━━ WHAT SUCCESS FEELS LIKE ━━━\n` +
+    `The user closes the app thinking:\n` +
+    `"That was the smartest, warmest conversation I had today."`
   );
 }
 
 function buildMemoryBlock(memory: string): string {
   return (
-    `=== USER MEMORY (facts the user has saved) ===\n` +
+    `=== USER MEMORY — FACTS ABOUT THIS USER ===\n` +
     `${memory}\n\n` +
     `Rules:\n` +
     `- Use this memory naturally when relevant. Do not list it back.\n` +
@@ -207,7 +259,7 @@ function buildModeBlock(mode: string | null): string {
     case 'smart':
       return 'MODE: SMART. Structured, thoughtful. Depth when the topic earns it.';
     case 'research':
-      return 'MODE: RESEARCH. Use ONLY the search results. Cite inline as [1], [2] — only numbers that actually exist. Add a "المصادر:" section at the end ONLY if you cited at least one source.';
+      return 'MODE: RESEARCH. Use ONLY the search results. Cite inline as [1], [2] — only numbers that actually exist. Add a "المصادر:" section at the end ONLY if you cited at least one source. If the answer is not in the sources → "هذه المعلومة غير موجودة في المصادر المتاحة."';
     case 'code':
       return 'MODE: CODE. Senior engineer. Production quality. Fenced code blocks with language tag. Real edge cases. Brief explanation above the block — never below.';
     case 'creative':
@@ -255,12 +307,8 @@ function buildSearchContext(
     `7. MATCH the user's language.\n` +
     `8. START WITH THE ANSWER directly. No preamble.\n` +
     `9. Use Markdown for structure.\n` +
-    footballUrl(isFootball)
+    footballRule
   );
-}
-
-function footballUrl(_isFootball: boolean): string {
-  return '';
 }
 
 /* ============================================================
@@ -283,6 +331,11 @@ async function buildMessages(
   const identityMessage: GrokMessage = {
     role: 'system',
     content: buildIdentityBlock(),
+  };
+
+  const soulMessage: GrokMessage = {
+    role: 'system',
+    content: buildSoulBlock(),
   };
 
   const memoryMessage: GrokMessage = {
@@ -316,8 +369,10 @@ async function buildMessages(
     needsSearch(lastUserMessage) &&
     tavilyConfigured;
 
+  // Order: Identity → Soul → Memory → Mode → Time
   const out: GrokMessage[] = [
     identityMessage,
+    soulMessage,
     memoryMessage,
     modeMessage,
     timeMessage,
@@ -412,7 +467,7 @@ router.post('/chat', async (req, res) => {
 
     const result = await askGrok(built.messages, {
       requestId,
-      temperature: 0.7,
+      temperature: 0.8,
       maxTokens: 2048,
     });
 
