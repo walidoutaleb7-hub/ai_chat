@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+
+import '../../core/Settings/app_settings.dart';
+import '../../core/Theme/weura_theme.dart';
 
 enum WeuraSidebarPage {
   home,
@@ -29,24 +33,31 @@ class WeuraSidebar extends StatelessWidget {
   final VoidCallback? onSettings;
   final VoidCallback? onNewChat;
 
+  bool get _isArabic =>
+      AppSettingsManager.instance.language == 'Arabic';
+
+  String _t(String en, String ar) => _isArabic ? ar : en;
+
   @override
   Widget build(BuildContext context) {
+    final colors = WeuraColors.of(context);
+
     return Container(
       width: 270,
       decoration: BoxDecoration(
-        color: const Color(0xFF08080F),
+        color: colors.surfaceElevated,
         border: Border(
-          right: BorderSide(
-            color: Colors.white.withValues(alpha: 0.06),
+          left: BorderSide(
+            color: colors.border,
           ),
         ),
       ),
       child: SafeArea(
         child: Column(
           children: [
-            _buildHeader(),
+            _buildHeader(colors),
             const SizedBox(height: 18),
-            _buildNewChatButton(),
+            _buildNewChatButton(colors),
             const SizedBox(height: 18),
             Expanded(
               child: SingleChildScrollView(
@@ -56,29 +67,33 @@ class WeuraSidebar extends StatelessWidget {
                 child: Column(
                   children: [
                     _item(
+                      colors: colors,
                       page: WeuraSidebarPage.home,
-                      icon: Icons.home_outlined,
-                      label: 'Home',
+                      asset: 'assets/icons/home.svg',
+                      label: _t('Home', 'الرئيسية'),
                       onTap: onHome,
                     ),
                     _item(
+                      colors: colors,
                       page: WeuraSidebarPage.chat,
-                      icon: Icons.chat_bubble_outline_rounded,
-                      label: 'Chat',
+                      asset: 'assets/icons/message.svg',
+                      label: _t('Chat', 'المحادثة'),
                       onTap: onChat,
                     ),
                     const SizedBox(height: 12),
-                    _sectionTitle('Workspace'),
+                    _sectionTitle(colors, _t('Workspace', 'مساحة العمل')),
                     _item(
+                      colors: colors,
                       page: WeuraSidebarPage.history,
-                      icon: Icons.history_rounded,
-                      label: 'History',
+                      asset: 'assets/icons/history.svg',
+                      label: _t('History', 'السجل'),
                       onTap: onHistory,
                     ),
                     _item(
+                      colors: colors,
                       page: WeuraSidebarPage.memory,
-                      icon: Icons.psychology_outlined,
-                      label: 'Memory',
+                      asset: 'assets/icons/mode.svg',
+                      label: _t('Memory', 'الذاكرة'),
                       onTap: onMemory,
                     ),
                   ],
@@ -86,16 +101,12 @@ class WeuraSidebar extends StatelessWidget {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(
-                12,
-                8,
-                12,
-                14,
-              ),
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 14),
               child: _item(
+                colors: colors,
                 page: WeuraSidebarPage.settings,
-                icon: Icons.settings_outlined,
-                label: 'Settings',
+                asset: 'assets/icons/settings.svg',
+                label: _t('Settings', 'الإعدادات'),
                 onTap: onSettings,
               ),
             ),
@@ -105,7 +116,7 @@ class WeuraSidebar extends StatelessWidget {
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(WeuraColors colors) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 20, 16, 0),
       child: Row(
@@ -113,47 +124,35 @@ class WeuraSidebar extends StatelessWidget {
           Container(
             width: 38,
             height: 38,
+            padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Color(0xFF4C7DFF),
-                  Color(0xFF1C39B8),
-                ],
+              color: colors.surface,
+              border: Border.all(
+                color: colors.accentGlow.withValues(alpha: 0.25),
               ),
             ),
-            child: const Center(
-              child: Text(
-                'W',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
+            child: SvgPicture.asset('assets/logo/weura.svg'),
           ),
           const SizedBox(width: 11),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'WEURA',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: colors.textPrimary,
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
                     letterSpacing: 1.2,
                   ),
                 ),
-                SizedBox(height: 2),
+                const SizedBox(height: 2),
                 Text(
                   'Think Beyond.',
                   style: TextStyle(
-                    color: Colors.white38,
+                    color: colors.textMuted,
                     fontSize: 11,
                   ),
                 ),
@@ -165,7 +164,7 @@ class WeuraSidebar extends StatelessWidget {
     );
   }
 
-  Widget _buildNewChatButton() {
+  Widget _buildNewChatButton(WeuraColors colors) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Material(
@@ -177,24 +176,22 @@ class WeuraSidebar extends StatelessWidget {
             height: 48,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(13),
-              color: const Color(0xFF11131D),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.07),
-              ),
+              color: colors.surface,
+              border: Border.all(color: colors.border),
             ),
-            child: const Row(
+            child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(
-                  Icons.add_rounded,
-                  color: Colors.white,
-                  size: 20,
+                SvgPicture.asset(
+                  'assets/icons/plus.svg',
+                  width: 20,
+                  height: 20,
                 ),
-                SizedBox(width: 8),
+                const SizedBox(width: 8),
                 Text(
-                  'New Chat',
+                  _t('New Chat', 'محادثة جديدة'),
                   style: TextStyle(
-                    color: Colors.white,
+                    color: colors.textPrimary,
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                   ),
@@ -207,18 +204,19 @@ class WeuraSidebar extends StatelessWidget {
     );
   }
 
-  Widget _sectionTitle(String title) {
+  Widget _sectionTitle(WeuraColors colors, String title) {
     return Align(
-      alignment: Alignment.centerLeft,
+      alignment: AlignmentDirectional.centerStart,
       child: Padding(
         padding: const EdgeInsets.only(
           left: 13,
+          right: 13,
           bottom: 7,
         ),
         child: Text(
           title.toUpperCase(),
-          style: const TextStyle(
-            color: Colors.white24,
+          style: TextStyle(
+            color: colors.textFaint,
             fontSize: 10,
             fontWeight: FontWeight.w700,
             letterSpacing: 1.2,
@@ -229,8 +227,9 @@ class WeuraSidebar extends StatelessWidget {
   }
 
   Widget _item({
+    required WeuraColors colors,
     required WeuraSidebarPage page,
-    required IconData icon,
+    required String asset,
     required String label,
     VoidCallback? onTap,
   }) {
@@ -249,33 +248,34 @@ class WeuraSidebar extends StatelessWidget {
             height: 46,
             padding: const EdgeInsets.symmetric(horizontal: 13),
             decoration: BoxDecoration(
-              color: selected
-                  ? const Color(0xFF151C35)
-                  : Colors.transparent,
+              color: selected ? colors.accentSoft : Colors.transparent,
               borderRadius: BorderRadius.circular(11),
               border: selected
                   ? Border.all(
-                      color: const Color(0xFF315DFF)
-                          .withValues(alpha: 0.20),
+                      color: colors.accentGlow.withValues(alpha: 0.30),
                     )
                   : null,
             ),
             child: Row(
               children: [
-                Icon(
-                  icon,
-                  size: 20,
-                  color: selected
-                      ? const Color(0xFF6D8DFF)
-                      : Colors.white54,
+                ColorFiltered(
+                  colorFilter: ColorFilter.mode(
+                    selected ? colors.accentGlow : colors.textMuted,
+                    BlendMode.srcIn,
+                  ),
+                  child: SvgPicture.asset(
+                    asset,
+                    width: 20,
+                    height: 20,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Text(
                   label,
                   style: TextStyle(
                     color: selected
-                        ? Colors.white
-                        : Colors.white60,
+                        ? colors.textPrimary
+                        : colors.textSecondary,
                     fontSize: 14,
                     fontWeight: selected
                         ? FontWeight.w600
