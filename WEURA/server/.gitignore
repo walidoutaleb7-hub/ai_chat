@@ -1,22 +1,81 @@
+# ─── Dependencies ─────────────────────────────────────
 node_modules/
+.pnp/
+.pnp.js
+
+# ─── Environment ──────────────────────────────────────
 .env
-.env.*
+.env.local
+.env.development
+.env.production
+.env.staging
+.env.*.local
 !.env.example
 
+# ─── Build output ─────────────────────────────────────
 dist/
 build/
-coverage/
+out/
+*.tsbuildinfo
 
+# ─── Cache ────────────────────────────────────────────
+.cache/
+.turbo/
+.eslintcache
+
+# ─── Logs ─────────────────────────────────────────────
 *.log
 npm-debug.log*
 yarn-debug.log*
+yarn-error.log*
 pnpm-debug.log*
+lerna-debug.log*
 
+# ─── Coverage ─────────────────────────────────────────
+coverage/
+*.lcov
+
+# ─── OS ───────────────────────────────────────────────
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
 Thumbs.db
+ehthumbs.db
 
+# ─── Editors ──────────────────────────────────────────
 .vscode/
+!.vscode/extensions.json
 .idea/
+*.swp
+*.swo
+*~
 
+# ─── Temp ─────────────────────────────────────────────
 *.tmp
 *.temp
+*.bak
+
+# ─── PID ──────────────────────────────────────────────
+*.pid
+*.pid.lock
+
+# ─── Keys (security) ──────────────────────────────────
+*.pem
+*.key
+*.jks
+*.keystore
+keys/
+secrets/
+
+# ─── Firebase (if used) ───────────────────────────────
+google-services.json
+GoogleService-Info.plist
+.firebase/
+firebase-debug.log
+
+# ─── Runtime ──────────────────────────────────────────
+*.seed
+*.pid
+*.pid.lock
