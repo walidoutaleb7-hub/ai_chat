@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:excel/excel.dart';
@@ -197,6 +198,10 @@ class FileService {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // PDF
+  // ---------------------------------------------------------------------------
+
   Future<String> _extractPdf(File file) async {
     final bytes = await file.readAsBytes();
     final document = PdfDocument(inputBytes: bytes);
@@ -223,6 +228,10 @@ class FileService {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // DOCX
+  // ---------------------------------------------------------------------------
+
   Future<String> _extractDocx(File file) async {
     final bytes = await file.readAsBytes();
     final archive = ZipDecoder().decodeBytes(bytes, verify: true);
@@ -241,10 +250,37 @@ class FileService {
       );
     }
 
-    final xmlBytes = entry.content as List<int>;
-    final xmlString = utf8.decode(xmlBytes, allowMalformed: true);
+    // Safe cast: archive content can be List<int>, Uint8List, or InputStream.
+    final content = entry.content;
+    List<int> xmlBytes;
 
-    final document = XmlDocument.parse(xmlString);
+    if (content is Uint8List) {
+      xmlBytes = content;
+    } else if (content is List<int>) {
+      xmlBytes = content;
+    } else {
+      // Fallback: read via InputStream.
+      try {
+        xmlBytes = content as dynamic;
+        if (xmlBytes is! List<int>) {
+          throw const FileExtractionException('Invalid DOCX content.');
+        }
+      } catch (_) {
+        throw const FileExtractionException('Invalid DOCX content.');
+      }
+    }
+
+    final xmlString = _decodeText(xmlBytes);
+
+    final XmlDocument document;
+    try {
+      document = XmlDocument.parse(xmlString);
+    } catch (_) {
+      throw const FileExtractionException(
+        'Invalid DOCX XML structure.',
+      );
+    }
+
     final buffer = StringBuffer();
 
     for (final paragraph in document.findAllElements('w:p')) {
@@ -260,6 +296,10 @@ class FileService {
 
     return buffer.toString();
   }
+
+  // ---------------------------------------------------------------------------
+  // XLSX
+  // ---------------------------------------------------------------------------
 
   Future<String> _extractXlsx(File file) async {
     final bytes = await file.readAsBytes();
@@ -293,6 +333,10 @@ class FileService {
     return buffer.toString();
   }
 
+  // ---------------------------------------------------------------------------
+  // CSV / TXT
+  // ---------------------------------------------------------------------------
+
   Future<String> _extractCsv(File file) async {
     final bytes = await file.readAsBytes();
     return _decodeText(bytes);
@@ -303,10 +347,17 @@ class FileService {
     return _decodeText(bytes);
   }
 
+  // ---------------------------------------------------------------------------
+  // Helpers
+  // ---------------------------------------------------------------------------
+
+  /// Decodes bytes as UTF-8, falling back to Latin-1 for non-UTF8 files.
+  /// Uses strict mode so bad bytes trigger the fallback (instead of silently
+  /// producing a corrupted string full of U+FFFD).
   String _decodeText(List<int> bytes) {
     try {
-      return utf8.decode(bytes);
-    } catch (_) {
+      return utf8.decode(bytes, allowMalformed: false);
+    } on FormatException {
       return latin1.decode(bytes, allowInvalid: true);
     }
   }
@@ -315,8 +366,14 @@ class FileService {
     return raw
         .replaceAll('\r\n', '\n')
         .replaceAll('\r', '\n')
-        .replaceAll(RegExp(r'[\u0000-\u0008\u000B\u000C\u000E-\u001F]'), '')
+        // Remove control chars + Unicode line separators.
+        .replaceAll(
+          RegExp(r'[\u0000-\u0008\u000B\u000C\u000E-\u001F\u2028\u2029]'),
+          '',
+        )
+        // Collapse 4+ blank lines into 2.
         .replaceAll(RegExp(r'\n{4,}'), '\n\n\n')
+        // Collapse excessive spaces per line.
         .replaceAll(RegExp(r'[ \t]{3,}'), '  ')
         .trim();
   }
@@ -348,6 +405,10 @@ class FileService {
         return WeuraFileType.unknown;
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // Temp file utilities (reserved)
+  // ---------------------------------------------------------------------------
 
   Future<Directory> getTempDir() async {
     final dir = await getTemporaryDirectory();
