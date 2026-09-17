@@ -84,6 +84,7 @@ class _ChatScreenState extends State<ChatScreen>
 
   final List<_ChatMessage> _messages = [];
   final Map<int, String> _ratings = {};
+  final Set<int> _typingIndices = {};
 
   AIMode _mode = AIMode.auto;
   bool _isLoading = false;
@@ -313,6 +314,20 @@ class _ChatScreenState extends State<ChatScreen>
   }
 
   // ---------------------------------------------------------------------------
+  // Auto-scroll during typing
+  // ---------------------------------------------------------------------------
+
+  void _autoScrollDuringTyping() {
+    if (!_scrollController.hasClients) return;
+    final pos = _scrollController.position;
+    final distanceFromBottom = pos.maxScrollExtent - pos.pixels;
+    // Only auto-scroll if the user is already near the bottom.
+    if (distanceFromBottom < 120) {
+      _scrollController.jumpTo(pos.maxScrollExtent);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // File picker + analysis
   // ---------------------------------------------------------------------------
 
@@ -419,6 +434,7 @@ class _ChatScreenState extends State<ChatScreen>
 
       setState(() {
         _messages.add(_ChatMessage(text: content, isUser: false));
+        _typingIndices.add(_messages.length - 1);
       });
 
       await _persistMessages();
@@ -816,6 +832,7 @@ class _ChatScreenState extends State<ChatScreen>
         _messages.add(
           _ChatMessage(text: content, isUser: false),
         );
+        _typingIndices.add(_messages.length - 1);
       });
 
       await _persistMessages();
@@ -943,6 +960,7 @@ class _ChatScreenState extends State<ChatScreen>
           _messages.add(
             _ChatMessage(text: result.content, isUser: false),
           );
+          _typingIndices.add(_messages.length - 1);
         });
 
         if (AppSettingsManager.instance.voiceOutputEnabled) {
@@ -1022,6 +1040,7 @@ class _ChatScreenState extends State<ChatScreen>
 
     _messages.removeRange(lastUserIndex + 1, _messages.length);
     _ratings.removeWhere((key, _) => key > lastUserIndex);
+    _typingIndices.removeWhere((i) => i > lastUserIndex);
 
     setState(() {});
     _sendMessage(userText);
@@ -1034,6 +1053,7 @@ class _ChatScreenState extends State<ChatScreen>
     if (userMessages.isEmpty) return;
 
     _messages.removeWhere((m) => !m.isUser && m.isError);
+    _typingIndices.clear();
     setState(() {});
 
     _regenerateLast();
@@ -1903,6 +1923,8 @@ class _ChatScreenState extends State<ChatScreen>
     final mainText = parsed.$1;
     final sources = parsed.$2;
 
+    final isTyping = _typingIndices.contains(index);
+
     return Container(
       margin: const EdgeInsets.only(bottom: 24, right: 16),
       child: Directionality(
@@ -1912,6 +1934,20 @@ class _ChatScreenState extends State<ChatScreen>
           children: [
             if (message.isError)
               _errorMessage(colors, mainText)
+            else if (isTyping)
+              _TypedMarkdown(
+                fullText: mainText,
+                styleSheet: _markdownStyle(colors),
+                builders: {
+                  'code': _CodeBlockBuilder(colors: colors),
+                },
+                onComplete: () {
+                  if (mounted) {
+                    setState(() => _typingIndices.remove(index));
+                  }
+                },
+                onTick: _autoScrollDuringTyping,
+              )
             else
               MarkdownBody(
                 data: mainText,
@@ -1922,13 +1958,13 @@ class _ChatScreenState extends State<ChatScreen>
                 },
               ),
 
-            if (sources.isNotEmpty)
+            if (sources.isNotEmpty && !isTyping)
               Padding(
                 padding: const EdgeInsets.only(top: 14),
                 child: _sourcesSection(colors, sources),
               ),
 
-            if (!message.isError)
+            if (!message.isError && !isTyping)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: _actionBar(
@@ -2043,7 +2079,6 @@ class _ChatScreenState extends State<ChatScreen>
                   ],
                 ),
               ),
-            // Tappable image → opens fullscreen zoom viewer
             GestureDetector(
               onTap: () => _openImageZoom(message.imageUrl!),
               child: ClipRRect(
@@ -2447,6 +2482,102 @@ class _ChatScreenState extends State<ChatScreen>
 }
 
 // ---------------------------------------------------------------------------
+// Typing markdown widget — reveals text progressively
+// ---------------------------------------------------------------------------
+
+class _TypedMarkdown extends StatefulWidget {
+  const _TypedMarkdown({
+    required this.fullText,
+    required this.styleSheet,
+    this.builders = const {},
+    this.onComplete,
+    this.onTick,
+  });
+
+  final String fullText;
+  final MarkdownStyleSheet styleSheet;
+  final Map<String, MarkdownElementBuilder> builders;
+  final VoidCallback? onComplete;
+  final VoidCallback? onTick;
+
+  @override
+  State<_TypedMarkdown> createState() => _TypedMarkdownState();
+}
+
+class _TypedMarkdownState extends State<_TypedMarkdown>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late String _visibleText;
+  bool _done = false;
+
+  @override
+  void initState() {
+    super.initState();
+
+    final len = widget.fullText.length;
+
+    // Skip animation for very long texts.
+    if (len > 4000) {
+      _visibleText = widget.fullText;
+      _done = true;
+      _controller = AnimationController(vsync: this);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        widget.onComplete?.call();
+      });
+      return;
+    }
+
+    // Duration: 15ms per char, clamped between 400ms and 6000ms.
+    final durationMs = (len * 15).clamp(400, 6000);
+
+    _controller = AnimationController(
+      vsync: this,
+      duration: Duration(milliseconds: durationMs),
+    );
+
+    _visibleText = '';
+
+    _controller.addListener(_onTick);
+    _controller.forward().whenComplete(() {
+      if (!mounted) return;
+      _done = true;
+      widget.onComplete?.call();
+    });
+  }
+
+  void _onTick() {
+    final len = widget.fullText.length;
+    final chars = (_controller.value * len).floor();
+    if (chars == _visibleText.length) return;
+
+    setState(() {
+      _visibleText = widget.fullText.substring(0, chars.clamp(0, len));
+    });
+
+    widget.onTick?.call();
+  }
+
+  @override
+  void dispose() {
+    _controller.removeListener(_onTick);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final display = _done ? _visibleText : '$_visibleText ▌';
+
+    return MarkdownBody(
+      data: display,
+      selectable: _done,
+      styleSheet: widget.styleSheet,
+      builders: widget.builders,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Code block builder — colored + copyable
 // ---------------------------------------------------------------------------
 
@@ -2796,11 +2927,8 @@ class _ImageZoomViewerState extends State<_ImageZoomViewer>
     if (_isZoomed) {
       _resetZoom();
     } else {
-      final target = Matrix4.identity()..scale(
-        _doubleTapScale,
-        _doubleTapScale,
-        1.0,
-      );
+      final target = Matrix4.identity()
+        ..scale(_doubleTapScale, _doubleTapScale, 1.0);
       _animateTo(target);
     }
   }
@@ -2815,7 +2943,6 @@ class _ImageZoomViewerState extends State<_ImageZoomViewer>
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // ─── Zoomable image ──────────────────────────────────────
           Positioned.fill(
             child: GestureDetector(
               onDoubleTap: _handleDoubleTap,
@@ -2823,7 +2950,6 @@ class _ImageZoomViewerState extends State<_ImageZoomViewer>
                 transformationController: _transformController,
                 minScale: 1.0,
                 maxScale: 6.0,
-                // Browser-like: image stays fixed within bounds.
                 boundaryMargin: EdgeInsets.zero,
                 constrained: true,
                 panEnabled: true,
@@ -2873,8 +2999,6 @@ class _ImageZoomViewerState extends State<_ImageZoomViewer>
               ),
             ),
           ),
-
-          // ─── Top bar ─────────────────────────────────────────────
           Positioned(
             top: 0,
             left: 0,
@@ -2930,8 +3054,6 @@ class _ImageZoomViewerState extends State<_ImageZoomViewer>
               ),
             ),
           ),
-
-          // ─── Bottom hint ─────────────────────────────────────────
           Positioned(
             bottom: 0,
             left: 0,
