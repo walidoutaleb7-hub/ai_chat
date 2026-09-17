@@ -12,20 +12,17 @@ type Provider = {
   model: string;
 };
 
+export type AskOptions = {
+  requestId?: string;
+  temperature?: number;
+  maxTokens?: number;
+};
+
 /// Returns the list of available providers in priority order.
-/// Cerebras is tried first (1M tokens/day), Groq as fallback (200K).
+/// Groq is PRIMARY (per WEURA rules).
+/// Cerebras is FALLBACK only.
 function getProviders(): Provider[] {
   const providers: Provider[] = [];
-
-  const cerebrasKey = process.env.CEREBRAS_API_KEY?.trim();
-  if (cerebrasKey) {
-    providers.push({
-      name: 'cerebras',
-      url: 'https://api.cerebras.ai/v1/chat/completions',
-      apiKey: cerebrasKey,
-      model: process.env.CEREBRAS_MODEL?.trim() || 'gpt-oss-120b',
-    });
-  }
 
   const groqKey = process.env.GROQ_API_KEY?.trim();
   if (groqKey) {
@@ -37,23 +34,55 @@ function getProviders(): Provider[] {
     });
   }
 
+  const cerebrasKey = process.env.CEREBRAS_API_KEY?.trim();
+  if (cerebrasKey) {
+    providers.push({
+      name: 'cerebras',
+      url: 'https://api.cerebras.ai/v1/chat/completions',
+      apiKey: cerebrasKey,
+      model: process.env.CEREBRAS_MODEL?.trim() || 'gpt-oss-120b',
+    });
+  }
+
   if (providers.length === 0) {
     throw new Error(
-      'No AI provider is configured. Set CEREBRAS_API_KEY or GROQ_API_KEY.',
+      'No AI provider is configured. Set GROQ_API_KEY (primary) or CEREBRAS_API_KEY (fallback).',
     );
   }
 
   return providers;
 }
 
+/// Extracts text from a provider response.
+/// Some models return content as a string, others as an array of parts.
+function extractContent(raw: unknown): string {
+  if (typeof raw === 'string') return raw;
+  if (Array.isArray(raw)) {
+    return raw
+      .map((part) => {
+        if (typeof part === 'string') return part;
+        if (part && typeof part === 'object' && 'text' in part) {
+          const text = (part as { text?: unknown }).text;
+          return typeof text === 'string' ? text : '';
+        }
+        return '';
+      })
+      .join('');
+  }
+  return '';
+}
+
 /// Calls a single provider once.
-/// Returns the assistant text or throws an error.
 async function callProvider(
   provider: Provider,
   messages: GrokMessage[],
-): Promise<{ content: string; model: string; usage: any }> {
+  options: AskOptions,
+): Promise<{ content: string; model: string; usage: unknown; provider: string }> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 120000);
+  const timeout = setTimeout(() => controller.abort(), 90000);
+
+  const temperature = options.temperature ?? 0.7;
+  const maxTokens = options.maxTokens ?? 2048;
 
   try {
     const response = await fetch(provider.url, {
@@ -67,13 +96,14 @@ async function callProvider(
       body: JSON.stringify({
         model: provider.model,
         messages,
-        temperature: 0.7,
+        temperature,
+        max_tokens: maxTokens,
         stream: false,
       }),
     });
 
     const raw = await response.text();
-    let data: any;
+    let data: unknown;
 
     try {
       data = JSON.parse(raw);
@@ -83,24 +113,33 @@ async function callProvider(
       );
     }
 
+    const obj = data as {
+      error?: { message?: string } | string;
+      choices?: Array<{ message?: { content?: unknown } }>;
+      model?: string;
+      usage?: unknown;
+    };
+
     if (!response.ok) {
       const providerError =
-        data?.error?.message ??
-        data?.error ??
+        (typeof obj.error === 'object' && obj.error?.message) ||
+        obj.error ||
         `request failed with HTTP ${response.status}.`;
       throw new Error(`${provider.name}: ${String(providerError)}`);
     }
 
-    const content = data?.choices?.[0]?.message?.content;
+    const rawContent = obj?.choices?.[0]?.message?.content;
+    const content = extractContent(rawContent).trim();
 
-    if (typeof content !== 'string' || content.trim().length === 0) {
+    if (!content) {
       throw new Error(`${provider.name}: returned an empty response.`);
     }
 
     return {
-      content: content.trim(),
-      model: data?.model ?? provider.model,
-      usage: data?.usage ?? null,
+      content,
+      model: obj?.model ?? provider.model,
+      usage: obj?.usage ?? null,
+      provider: provider.name,
     };
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
@@ -112,9 +151,7 @@ async function callProvider(
   }
 }
 
-/// Detects whether an error should trigger a fallback to the next
-/// provider. Rate-limit, quota, 5xx and timeout errors are all
-/// considered retryable.
+/// Detects whether an error should trigger a fallback to the next provider.
 function isRetryableError(error: unknown): boolean {
   if (!(error instanceof Error)) return true;
 
@@ -137,56 +174,52 @@ function isRetryableError(error: unknown): boolean {
 }
 
 /// Tries each provider in order. On failure, falls back to the next.
-export async function askGrok(messages: GrokMessage[]) {
+/// Groq is tried FIRST. Cerebras is fallback.
+export async function askGrok(
+  messages: GrokMessage[],
+  options: AskOptions = {},
+) {
   if (messages.length === 0) {
     throw new Error('No messages were provided.');
   }
 
   const providers = getProviders();
   const errors: string[] = [];
+  const rid = options.requestId ?? '-';
 
   for (let i = 0; i < providers.length; i++) {
     const provider = providers[i];
     const isLast = i === providers.length - 1;
 
     try {
-      const result = await callProvider(provider, messages);
+      const result = await callProvider(provider, messages, options);
 
       if (i > 0) {
         console.log(
-          `[WEURA] Fallback succeeded on ${provider.name} ` +
-          `after ${providers[i - 1].name} failed.`,
+          `[WEURA][${rid}] Fallback succeeded on ${provider.name} ` +
+            `after ${providers[i - 1].name} failed.`,
         );
       }
 
-      return {
-        ...result,
-        provider: provider.name,
-      };
+      return result;
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : String(error);
+      const message = error instanceof Error ? error.message : String(error);
       errors.push(message);
 
       console.error(
-        `[WEURA] Provider ${provider.name} failed: ${message}`,
+        `[WEURA][${rid}] Provider ${provider.name} failed: ${message}`,
       );
 
-      // If it's not a retryable error, stop immediately.
       if (!isRetryableError(error)) {
         throw error;
       }
 
-      // If this was the last provider, throw a combined error.
       if (isLast) {
-        throw new Error(
-          `All AI providers failed:\n${errors.join('\n')}`,
-        );
+        throw new Error(`All AI providers failed:\n${errors.join('\n')}`);
       }
 
-      // Otherwise continue to the next provider.
       console.log(
-        `[WEURA] Falling back from ${provider.name} to ${providers[i + 1].name}...`,
+        `[WEURA][${rid}] Falling back from ${provider.name} to ${providers[i + 1].name}...`,
       );
     }
   }
