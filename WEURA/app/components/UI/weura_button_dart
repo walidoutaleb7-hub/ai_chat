@@ -1,68 +1,140 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+
+import '../../core/Theme/weura_theme.dart';
+
+/// WEURA Button — 4 variants:
+///   primary   → filled blue
+///   secondary → outlined
+///   text      → no background
+///   danger    → filled red
+enum WeuraButtonVariant {
+  primary,
+  secondary,
+  text,
+  danger,
+}
 
 class WeuraButton extends StatelessWidget {
   const WeuraButton({
     super.key,
     required this.label,
     required this.onPressed,
-    this.icon,
+    this.variant = WeuraButtonVariant.primary,
+    this.iconAsset,
     this.loading = false,
     this.expanded = false,
+    this.height = 48,
   });
 
   final String label;
   final VoidCallback? onPressed;
-  final IconData? icon;
+  final WeuraButtonVariant variant;
+  final String? iconAsset;
   final bool loading;
   final bool expanded;
+  final double height;
 
   @override
   Widget build(BuildContext context) {
-    final button = SizedBox(
-      height: 48,
-      child: ElevatedButton(
-        onPressed: loading ? null : onPressed,
-        style: ElevatedButton.styleFrom(
-          elevation: 0,
-          backgroundColor: const Color(0xFF315DFF),
-          disabledBackgroundColor: const Color(0xFF202331),
-          foregroundColor: Colors.white,
-          disabledForegroundColor: Colors.white38,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(13),
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 18),
-        ),
-        child: loading
-            ? const SizedBox(
-                width: 19,
-                height: 19,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.white,
-                ),
-              )
-            : Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (icon != null) ...[
-                    Icon(icon, size: 19),
-                    const SizedBox(width: 8),
-                  ],
-                  Text(
-                    label,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
+    final colors = WeuraColors.of(context);
+    final enabled = onPressed != null && !loading;
+
+    final bg = _backgroundColor(colors);
+    final fg = _foregroundColor(colors);
+    final border = _borderColor(colors);
+
+    final child = loading
+        ? SizedBox(
+            width: 19,
+            height: 19,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: fg,
+            ),
+          )
+        : Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (iconAsset != null) ...[
+                ColorFiltered(
+                  colorFilter: ColorFilter.mode(fg, BlendMode.srcIn),
+                  child: SvgPicture.asset(
+                    iconAsset!,
+                    width: 19,
+                    height: 19,
                   ),
-                ],
+                ),
+                const SizedBox(width: 8),
+              ],
+              Text(
+                label,
+                style: TextStyle(
+                  color: fg,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
+            ],
+          );
+
+    final button = Material(
+      color: enabled ? bg : bg.withValues(alpha: 0.5),
+      borderRadius: BorderRadius.circular(13),
+      child: InkWell(
+        onTap: enabled ? onPressed : null,
+        borderRadius: BorderRadius.circular(13),
+        child: Container(
+          height: height,
+          padding: const EdgeInsets.symmetric(horizontal: 18),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(13),
+            border: border != null
+                ? Border.all(color: border)
+                : null,
+          ),
+          alignment: Alignment.center,
+          child: child,
+        ),
       ),
     );
 
     return expanded
         ? SizedBox(width: double.infinity, child: button)
         : button;
+  }
+
+  Color _backgroundColor(WeuraColors colors) {
+    switch (variant) {
+      case WeuraButtonVariant.primary:
+        return colors.accent;
+      case WeuraButtonVariant.secondary:
+      case WeuraButtonVariant.text:
+        return Colors.transparent;
+      case WeuraButtonVariant.danger:
+        return colors.danger;
+    }
+  }
+
+  Color _foregroundColor(WeuraColors colors) {
+    switch (variant) {
+      case WeuraButtonVariant.primary:
+      case WeuraButtonVariant.danger:
+        return Colors.white;
+      case WeuraButtonVariant.secondary:
+      case WeuraButtonVariant.text:
+        return colors.textPrimary;
+    }
+  }
+
+  Color? _borderColor(WeuraColors colors) {
+    switch (variant) {
+      case WeuraButtonVariant.secondary:
+        return colors.borderStrong;
+      case WeuraButtonVariant.primary:
+      case WeuraButtonVariant.text:
+      case WeuraButtonVariant.danger:
+        return null;
+    }
   }
 }
