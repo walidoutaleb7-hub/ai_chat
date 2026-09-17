@@ -27,7 +27,7 @@ type CooldownEntry = {
   reason: string;
 };
 
-const COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes
+const COOLDOWN_MS = 10 * 60 * 1000;
 const COOLDOWNS = new Map<string, CooldownEntry>();
 
 function isOnCooldown(name: string): boolean {
@@ -143,6 +143,11 @@ async function callProvider(
         temperature,
         max_tokens: maxTokens,
         stream: false,
+        // Disable function/tool calling.
+        // Some Groq models (gpt-oss-120b) hallucinate tool calls
+        // and return HTTP 400 "tool choice is none, but model called a tool".
+        tools: [],
+        tool_choice: 'none',
       }),
     });
 
@@ -227,6 +232,9 @@ function isRetryableError(error: unknown): boolean {
     msg.includes('503') ||
     msg.includes('504') ||
     msg.includes('520') ||
+    msg.includes('400') ||
+    msg.includes('tool choice') ||
+    msg.includes('called a tool') ||
     msg.includes('timed out') ||
     msg.includes('timeout') ||
     msg.includes('network') ||
