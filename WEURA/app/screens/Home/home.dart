@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-import '../../core/Settings/app_settings.dart';
 import '../../core/Theme/weura_theme.dart';
 import '../Chat/chat.dart';
 import '../History/history.dart';
@@ -21,6 +20,13 @@ class _HomeScreenState extends State<HomeScreen>
 
   final TextEditingController _controller = TextEditingController();
   final FocusNode _focusNode = FocusNode();
+
+  static const List<String> _suggestions = [
+    'Explain something to me',
+    'Help me write something',
+    'Analyze this idea',
+    'Help me code',
+  ];
 
   @override
   void initState() {
@@ -48,28 +54,6 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   bool get _canSend => _controller.text.trim().isNotEmpty;
-
-  // ---------------------------------------------------------------------------
-  // Suggestions
-  // ---------------------------------------------------------------------------
-
-  List<String> get _suggestions {
-    final isArabic = AppSettingsManager.instance.language == 'Arabic';
-    if (isArabic) {
-      return const [
-        'اشرح لي شيئاً',
-        'ساعدني في الكتابة',
-        'حلل هذه الفكرة',
-        'ساعدني في البرمجة',
-      ];
-    }
-    return const [
-      'Explain something to me',
-      'Help me write something',
-      'Analyze this idea',
-      'Help me code',
-    ];
-  }
 
   // ---------------------------------------------------------------------------
   // Navigation
@@ -154,14 +138,14 @@ class _HomeScreenState extends State<HomeScreen>
           _iconButton(
             colors: colors,
             asset: 'assets/icons/history.svg',
-            tooltip: 'السجل',
+            tooltip: 'History',
             onTap: _openHistory,
           ),
           const SizedBox(width: 4),
           _iconButton(
             colors: colors,
             asset: 'assets/icons/user.svg',
-            tooltip: 'الذاكرة',
+            tooltip: 'Memory',
             onTap: _openMemory,
           ),
           const Spacer(),
@@ -191,7 +175,7 @@ class _HomeScreenState extends State<HomeScreen>
           _iconButton(
             colors: colors,
             asset: 'assets/icons/settings.svg',
-            tooltip: 'الإعدادات',
+            tooltip: 'Settings',
             onTap: _openSettings,
           ),
         ],
@@ -224,7 +208,7 @@ class _HomeScreenState extends State<HomeScreen>
             ),
             const SizedBox(height: 10),
             Text(
-              'مساحتك الذكية للأفكار والأجوبة والإبداع.',
+              'Your intelligent space for ideas, answers and creation.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: colors.textSecondary,
@@ -317,7 +301,7 @@ class _HomeScreenState extends State<HomeScreen>
           children: [
             const SizedBox(width: 7),
             IconButton(
-              tooltip: 'محادثة جديدة',
+              tooltip: 'New chat',
               onPressed: () => _openChat(),
               icon: SvgPicture.asset(
                 'assets/icons/plus.svg',
@@ -340,7 +324,7 @@ class _HomeScreenState extends State<HomeScreen>
                 ),
                 cursorColor: colors.accent,
                 decoration: InputDecoration(
-                  hintText: 'راسل WEURA...',
+                  hintText: 'Message WEURA...',
                   hintStyle: TextStyle(color: colors.textFaint),
                   border: InputBorder.none,
                 ),
