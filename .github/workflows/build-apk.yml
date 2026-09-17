@@ -58,6 +58,61 @@ jobs:
           fi
           rm -f test/widget_test.dart
 
+      - name: Fix Kotlin plugin repository
+        working-directory: WEURA
+        run: |
+          set -e
+
+          SETTINGS_KTS="android/settings.gradle.kts"
+          SETTINGS_GROOVY="android/settings.gradle"
+
+          if [ -f "$SETTINGS_KTS" ]; then
+            echo "=== Patching settings.gradle.kts ==="
+
+            # Add mavenCentral + google to pluginManagement repositories
+            if ! grep -q "mavenCentral()" "$SETTINGS_KTS"; then
+              # Insert repositories block after pluginManagement {
+              sed -i '/pluginManagement {/a\
+                repositories {\
+                    google()\
+                    mavenCentral()\
+                    gradlePluginPortal()\
+                }' "$SETTINGS_KTS"
+            fi
+
+            # Also add google() and mavenCentral() to dependencyResolutionManagement
+            if ! grep -q "dependencyResolutionManagement" "$SETTINGS_KTS"; then
+              echo "No dependencyResolutionManagement block found, adding one..."
+              cat >> "$SETTINGS_KTS" << 'EOF'
+
+          dependencyResolutionManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          EOF
+            fi
+
+            echo "=== Result ==="
+            cat "$SETTINGS_KTS"
+
+          elif [ -f "$SETTINGS_GROOVY" ]; then
+            echo "=== Patching settings.gradle (Groovy) ==="
+
+            if ! grep -q "mavenCentral()" "$SETTINGS_GROOVY"; then
+              sed -i '/pluginManagement {/a\
+                repositories {\
+                    google()\
+                    mavenCentral()\
+                    gradlePluginPortal()\
+                }' "$SETTINGS_GROOVY"
+            fi
+
+            echo "=== Result ==="
+            cat "$SETTINGS_GROOVY"
+          fi
+
       - name: Fix Android SDK versions
         working-directory: WEURA
         run: |
