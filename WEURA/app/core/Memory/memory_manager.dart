@@ -56,11 +56,7 @@ class MemoryManager {
       : _storage = storage ?? StorageService.instance;
 
   static const String _storageKey = 'weura_memory';
-
-  /// Maximum number of memories kept at once. Prevents unbounded growth.
   static const int _maxMemories = 500;
-
-  /// Maximum characters for a single memory.
   static const int _maxContentLength = 2000;
 
   final StorageService _storage;
@@ -70,7 +66,6 @@ class MemoryManager {
 
   int get count => _memories.length;
 
-  /// Common words that should never be used for scoring.
   static const Set<String> _stopWords = {
     // Arabic
     'من', 'ما', 'هل', 'في', 'على', 'عن', 'إلى', 'الى', 'هذا', 'هذه',
@@ -85,11 +80,16 @@ class MemoryManager {
   };
 
   /// Patterns to detect a name inside a memory.
+  /// Note: raw strings with DOUBLE quotes (r"...") so \' works safely.
   static final List<RegExp> _namePatterns = [
-    RegExp(r'(?:my name is|i am|i\'m|call me)\s+([A-Za-z\u0600-\u06FF][A-Za-z\u0600-\u06FF\s\-]{1,40})',
-        caseSensitive: false),
-    RegExp(r'(?:اسمي|انا|أنا|إسمي|نادى علي|نادني)\s+([A-Za-z\u0600-\u06FF][A-Za-z\u0600-\u06FF\s\-]{1,40})',
-        caseSensitive: false),
+    RegExp(
+      r"(?:my name is|i am|i'm|call me)\s+([A-Za-z\u0600-\u06FF][A-Za-z\u0600-\u06FF\s\-]{1,40})",
+      caseSensitive: false,
+    ),
+    RegExp(
+      r"(?:اسمي|انا|أنا|إسمي|نادى علي|نادني)\s+([A-Za-z\u0600-\u06FF][A-Za-z\u0600-\u06FF\s\-]{1,40})",
+      caseSensitive: false,
+    ),
   ];
 
   // ---------------------------------------------------------------------------
@@ -148,7 +148,6 @@ class MemoryManager {
 
     _memories.insert(0, memory);
 
-    // Enforce cap: remove oldest if over limit.
     if (_memories.length > _maxMemories) {
       _memories.removeRange(_maxMemories, _memories.length);
     }
@@ -213,11 +212,6 @@ class MemoryManager {
   // ---------------------------------------------------------------------------
 
   /// Selects the most relevant memories for a given query.
-  ///
-  /// Strategy:
-  /// 1. Score each memory by matching words (stopwords excluded).
-  /// 2. If nothing matched, fall back to the most recent memories.
-  /// 3. Return a clean bullet list (no header) for the AI.
   String buildRelevantContext(String query, {int maxItems = 5}) {
     if (_memories.isEmpty) return '';
 
@@ -238,7 +232,6 @@ class MemoryManager {
         if (content.contains(word)) score++;
       }
 
-      // Bonus for memories that look like a name declaration.
       if (_looksLikeNameMemory(content)) score += 1;
 
       if (score > 0) {
@@ -272,7 +265,7 @@ class MemoryManager {
     return lowerContent.contains('اسمي') ||
         lowerContent.contains('my name is') ||
         lowerContent.contains('i am ') ||
-        lowerContent.contains('i\'m ') ||
+        lowerContent.contains("i'm ") ||
         lowerContent.contains('نادني') ||
         lowerContent.contains('call me');
   }
@@ -282,8 +275,6 @@ class MemoryManager {
   // ---------------------------------------------------------------------------
 
   /// Returns the user's name if it was saved in memory, otherwise null.
-  ///
-  /// Looks at the most recent memories first.
   String? getUserName() {
     for (final memory in _memories) {
       final content = memory.content.trim();
@@ -302,10 +293,8 @@ class MemoryManager {
   }
 
   String _cleanName(String raw) {
-    // Cut at the first sentence-ending punctuation or common connector.
     var result = raw.split(RegExp(r'[.,!?؟\n]')).first.trim();
 
-    // Cut at the first stop word if it appears after at least one word.
     final tokens = result.split(RegExp(r'\s+'));
     final kept = <String>[];
     for (final token in tokens) {
@@ -323,12 +312,10 @@ class MemoryManager {
   // Export / Import
   // ---------------------------------------------------------------------------
 
-  /// Returns all memories as a JSON-serializable list.
   List<Map<String, dynamic>> exportJson() {
     return _memories.map((m) => m.toJson()).toList();
   }
 
-  /// Imports memories from a JSON list. Replaces existing ones.
   Future<void> importJson(List<dynamic> data) async {
     _memories.clear();
 
