@@ -1,10 +1,9 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:excel/excel.dart';
-import 'package:file_picker/file_picker.dart';
+import 'package:file_picker/file_picker.dart' as picker;
 import 'package:path_provider/path_provider.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 import 'package:xml/xml.dart';
@@ -13,7 +12,7 @@ import 'package:xml/xml.dart';
 // Types
 // ---------------------------------------------------------------------------
 
-enum FileType {
+enum WeuraFileType {
   pdf,
   docx,
   xlsx,
@@ -22,20 +21,20 @@ enum FileType {
   unknown,
 }
 
-extension FileTypeLabel on FileType {
+extension WeuraFileTypeLabel on WeuraFileType {
   String get label {
     switch (this) {
-      case FileType.pdf:
+      case WeuraFileType.pdf:
         return 'PDF';
-      case FileType.docx:
+      case WeuraFileType.docx:
         return 'DOCX';
-      case FileType.xlsx:
+      case WeuraFileType.xlsx:
         return 'XLSX';
-      case FileType.csv:
+      case WeuraFileType.csv:
         return 'CSV';
-      case FileType.txt:
+      case WeuraFileType.txt:
         return 'TXT';
-      case FileType.unknown:
+      case WeuraFileType.unknown:
         return 'File';
     }
   }
@@ -53,7 +52,7 @@ class WeuraFile {
 
   final String path;
   final String name;
-  final FileType type;
+  final WeuraFileType type;
   final int size;
   final String extractedText;
   final bool wasTruncated;
@@ -94,8 +93,9 @@ class FileService {
   };
 
   Future<WeuraFile?> pickAndExtract() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType,
+    final result = await picker.FilePicker.platform.pickFiles(
+      type: picker.FileType.custom,
+      allowedExtensions: supportedExtensions.toList(),
       allowMultiple: false,
       withData: false,
     );
@@ -147,27 +147,27 @@ class FileService {
     String raw;
     try {
       switch (type) {
-        case FileType.pdf:
+        case WeuraFileType.pdf:
           raw = await _extractPdf(file);
           break;
-        case FileType.docx:
+        case WeuraFileType.docx:
           raw = await _extractDocx(file);
           break;
-        case FileType.xlsx:
+        case WeuraFileType.xlsx:
           raw = await _extractXlsx(file);
           break;
-        case FileType.csv:
+        case WeuraFileType.csv:
           raw = await _extractCsv(file);
           break;
-        case FileType.txt:
+        case WeuraFileType.txt:
           raw = await _extractTxt(file);
           break;
-        case FileType.unknown:
+        case WeuraFileType.unknown:
           throw const FileExtractionException('Unsupported file type.');
       }
     } on FileExtractionException {
       rethrow;
-    } catch (error) {
+    } catch (_) {
       throw const FileExtractionException(
         'Could not read this file. It may be corrupted or password-protected.',
       );
@@ -332,20 +332,20 @@ class FileService {
     return name.substring(idx + 1).toLowerCase();
   }
 
-  FileType _detectType(String extension) {
+  WeuraFileType _detectType(String extension) {
     switch (extension) {
       case 'pdf':
-        return FileType.pdf;
+        return WeuraFileType.pdf;
       case 'docx':
-        return FileType.docx;
+        return WeuraFileType.docx;
       case 'xlsx':
-        return FileType.xlsx;
+        return WeuraFileType.xlsx;
       case 'csv':
-        return FileType.csv;
+        return WeuraFileType.csv;
       case 'txt':
-        return FileType.txt;
+        return WeuraFileType.txt;
       default:
-        return FileType.unknown;
+        return WeuraFileType.unknown;
     }
   }
 
