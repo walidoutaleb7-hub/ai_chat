@@ -850,7 +850,6 @@ class _ChatScreenState extends State<ChatScreen>
 
     final message = text.trim();
 
-    // File attached → analyze it first.
     if (_attachedFile != null) {
       final file = _attachedFile!;
       setState(() => _attachedFile = null);
@@ -860,7 +859,6 @@ class _ChatScreenState extends State<ChatScreen>
 
     if (message.isEmpty) return;
 
-    // Player card detection (before image).
     final playerName = _detectPlayerIntent(message);
     if (playerName != null) {
       await _maybeStoreMemory(message);
@@ -947,7 +945,6 @@ class _ChatScreenState extends State<ChatScreen>
           );
         });
 
-        // Auto-read the response if voice output is enabled.
         if (AppSettingsManager.instance.voiceOutputEnabled) {
           final newIndex = _messages.length - 1;
           _voiceOut.speak(id: 'msg_$newIndex', text: result.content);
@@ -1093,6 +1090,44 @@ class _ChatScreenState extends State<ChatScreen>
       MaterialPageRoute(builder: (_) => const SettingsScreen()),
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // Image Zoom
+  // ---------------------------------------------------------------------------
+
+  void _openImageZoom(String imageUrl) {
+    Navigator.of(context).push(
+      PageRouteBuilder<void>(
+        opaque: false,
+        barrierColor: Colors.black,
+        transitionDuration: const Duration(milliseconds: 250),
+        reverseTransitionDuration: const Duration(milliseconds: 200),
+        pageBuilder: (_, __, ___) => _ImageZoomViewer(
+          imageUrl: imageUrl,
+          onSave: () => _saveImageToGallery(imageUrl),
+          onCopyUrl: () => _copyMessage(imageUrl),
+        ),
+        transitionsBuilder: (_, animation, __, child) {
+          return FadeTransition(
+            opacity: animation,
+            child: ScaleTransition(
+              scale: Tween<double>(begin: 0.92, end: 1.0).animate(
+                CurvedAnimation(
+                  parent: animation,
+                  curve: Curves.easeOutCubic,
+                ),
+              ),
+              child: child,
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Drawer
+  // ---------------------------------------------------------------------------
 
   Widget _buildDrawer(WeuraColors colors) {
     return Drawer(
@@ -1288,6 +1323,10 @@ class _ChatScreenState extends State<ChatScreen>
       ),
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // Sheets
+  // ---------------------------------------------------------------------------
 
   void _showAttachmentSheet(WeuraColors colors) {
     showModalBottomSheet<void>(
@@ -1493,6 +1532,10 @@ class _ChatScreenState extends State<ChatScreen>
       },
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // Build
+  // ---------------------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
@@ -2000,19 +2043,23 @@ class _ChatScreenState extends State<ChatScreen>
                   ],
                 ),
               ),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: Container(
-                width: 320,
-                height: 320,
-                decoration: BoxDecoration(
-                  color: colors.surface,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: colors.border),
-                ),
-                child: _NetworkImageWithLoader(
-                  url: message.imageUrl!,
-                  colors: colors,
+            // Tappable image → opens fullscreen zoom viewer
+            GestureDetector(
+              onTap: () => _openImageZoom(message.imageUrl!),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  width: 320,
+                  height: 320,
+                  decoration: BoxDecoration(
+                    color: colors.surface,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: colors.border),
+                  ),
+                  child: _NetworkImageWithLoader(
+                    url: message.imageUrl!,
+                    colors: colors,
+                  ),
                 ),
               ),
             ),
@@ -2034,6 +2081,13 @@ class _ChatScreenState extends State<ChatScreen>
                     tooltip: 'Copy image URL',
                     onPressed: () =>
                         _copyMessage(message.imageUrl ?? ''),
+                  ),
+                  _actionIcon(
+                    colors: colors,
+                    icon: Icons.zoom_in_rounded,
+                    tooltip: 'View fullscreen',
+                    onPressed: () =>
+                        _openImageZoom(message.imageUrl ?? ''),
                   ),
                   _actionIcon(
                     colors: colors,
@@ -2581,7 +2635,7 @@ class _CodeBlockState extends State<_CodeBlock> {
 }
 
 // ---------------------------------------------------------------------------
-// Image loading
+// Network image with loader
 // ---------------------------------------------------------------------------
 
 class _NetworkImageWithLoader extends StatelessWidget {
@@ -2645,6 +2699,319 @@ class _NetworkImageWithLoader extends StatelessWidget {
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// Fullscreen Image Zoom Viewer (browser-like)
+// ---------------------------------------------------------------------------
+
+class _ImageZoomViewer extends StatefulWidget {
+  const _ImageZoomViewer({
+    required this.imageUrl,
+    this.onSave,
+    this.onCopyUrl,
+  });
+
+  final String imageUrl;
+  final VoidCallback? onSave;
+  final VoidCallback? onCopyUrl;
+
+  @override
+  State<_ImageZoomViewer> createState() => _ImageZoomViewerState();
+}
+
+class _ImageZoomViewerState extends State<_ImageZoomViewer>
+    with SingleTickerProviderStateMixin {
+  final TransformationController _transformController =
+      TransformationController();
+
+  late final AnimationController _animController;
+  late Animation<Matrix4> _animation;
+
+  bool _isZoomed = false;
+
+  static const double _doubleTapScale = 2.5;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 220),
+    );
+
+    _animation = Matrix4Tween(
+      begin: Matrix4.identity(),
+      end: Matrix4.identity(),
+    ).animate(
+      CurvedAnimation(
+        parent: _animController,
+        curve: Curves.easeOutCubic,
+      ),
+    );
+
+    _animController.addListener(_onTick);
+    _transformController.addListener(_onTransformChanged);
+  }
+
+  @override
+  void dispose() {
+    _animController.removeListener(_onTick);
+    _animController.dispose();
+    _transformController.removeListener(_onTransformChanged);
+    _transformController.dispose();
+    super.dispose();
+  }
+
+  void _onTick() {
+    _transformController.value = _animation.value;
+  }
+
+  void _onTransformChanged() {
+    final scale = _transformController.value.getMaxScaleOnAxis();
+    final zoomed = scale > 1.05;
+    if (zoomed != _isZoomed) {
+      setState(() => _isZoomed = zoomed);
+    }
+  }
+
+  void _animateTo(Matrix4 target) {
+    _animation = Matrix4Tween(
+      begin: _transformController.value,
+      end: target,
+    ).animate(
+      CurvedAnimation(
+        parent: _animController,
+        curve: Curves.easeOutCubic,
+      ),
+    );
+    _animController.forward(from: 0);
+  }
+
+  void _resetZoom() {
+    _animateTo(Matrix4.identity());
+  }
+
+  void _handleDoubleTap() {
+    if (_isZoomed) {
+      _resetZoom();
+    } else {
+      final target = Matrix4.identity()..scale(
+        _doubleTapScale,
+        _doubleTapScale,
+        1.0,
+      );
+      _animateTo(target);
+    }
+  }
+
+  void _close() {
+    Navigator.of(context).maybePop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          // ─── Zoomable image ──────────────────────────────────────
+          Positioned.fill(
+            child: GestureDetector(
+              onDoubleTap: _handleDoubleTap,
+              child: InteractiveViewer(
+                transformationController: _transformController,
+                minScale: 1.0,
+                maxScale: 6.0,
+                // Browser-like: image stays fixed within bounds.
+                boundaryMargin: EdgeInsets.zero,
+                constrained: true,
+                panEnabled: true,
+                scaleEnabled: true,
+                clipBehavior: Clip.hardEdge,
+                child: Center(
+                  child: Image.network(
+                    widget.imageUrl,
+                    fit: BoxFit.contain,
+                    loadingBuilder: (context, child, progress) {
+                      if (progress == null) return child;
+                      return const Center(
+                        child: SizedBox(
+                          width: 32,
+                          height: 32,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2.5,
+                          ),
+                        ),
+                      );
+                    },
+                    errorBuilder: (_, __, ___) {
+                      return const Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.broken_image_outlined,
+                              color: Colors.white54,
+                              size: 60,
+                            ),
+                            SizedBox(height: 14),
+                            Text(
+                              'Could not load image',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          // ─── Top bar ─────────────────────────────────────────────
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: SafeArea(
+              bottom: false,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withValues(alpha: 0.65),
+                      Colors.transparent,
+                    ],
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    _iconAction(
+                      icon: Icons.close_rounded,
+                      tooltip: 'Close',
+                      onTap: _close,
+                    ),
+                    const Spacer(),
+                    if (_isZoomed)
+                      _iconAction(
+                        icon: Icons.center_focus_strong_rounded,
+                        tooltip: 'Reset zoom',
+                        onTap: _resetZoom,
+                      ),
+                    if (widget.onCopyUrl != null)
+                      _iconAction(
+                        icon: Icons.link_rounded,
+                        tooltip: 'Copy URL',
+                        onTap: () {
+                          widget.onCopyUrl!();
+                          _close();
+                        },
+                      ),
+                    if (widget.onSave != null)
+                      _iconAction(
+                        icon: Icons.save_alt_rounded,
+                        tooltip: 'Save to gallery',
+                        onTap: widget.onSave!,
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          // ─── Bottom hint ─────────────────────────────────────────
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: SafeArea(
+              top: false,
+              child: AnimatedOpacity(
+                opacity: _isZoomed ? 0.0 : 1.0,
+                duration: const Duration(milliseconds: 300),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 16,
+                  ),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                      colors: [
+                        Colors.black.withValues(alpha: 0.65),
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.pinch_rounded,
+                        size: 16,
+                        color: Colors.white.withValues(alpha: 0.65),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Pinch to zoom • Double-tap to enlarge',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.75),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _iconAction({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(24),
+        child: Tooltip(
+          message: tooltip,
+          child: Padding(
+            padding: const EdgeInsets.all(10),
+            child: Icon(
+              icon,
+              size: 24,
+              color: Colors.white,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Image generating loader
+// ---------------------------------------------------------------------------
 
 class _ImageGeneratingLoader extends StatefulWidget {
   const _ImageGeneratingLoader({required this.colors});
@@ -2970,6 +3337,10 @@ class _ImageLoadingPainter extends CustomPainter {
         oldDelegate.sparkle != sparkle;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Thinking indicator
+// ---------------------------------------------------------------------------
 
 class _WeuraThinking extends StatefulWidget {
   const _WeuraThinking({required this.colors});
