@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../core/Settings/app_settings.dart';
 import '../../core/Theme/weura_theme.dart';
 import '../Chat/chat.dart';
 import '../History/history.dart';
@@ -18,17 +19,8 @@ class _HomeScreenState extends State<HomeScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _animationController;
 
-  final TextEditingController _controller =
-      TextEditingController();
-
+  final TextEditingController _controller = TextEditingController();
   final FocusNode _focusNode = FocusNode();
-
-  final List<String> _suggestions = const [
-    'Explain something to me',
-    'Help me write something',
-    'Analyze this idea',
-    'Help me code',
-  ];
 
   @override
   void initState() {
@@ -38,15 +30,50 @@ class _HomeScreenState extends State<HomeScreen>
       vsync: this,
       duration: const Duration(milliseconds: 900),
     )..forward();
+
+    _controller.addListener(_refresh);
   }
 
   @override
   void dispose() {
     _animationController.dispose();
+    _controller.removeListener(_refresh);
     _controller.dispose();
     _focusNode.dispose();
     super.dispose();
   }
+
+  void _refresh() {
+    if (mounted) setState(() {});
+  }
+
+  bool get _canSend => _controller.text.trim().isNotEmpty;
+
+  // ---------------------------------------------------------------------------
+  // Suggestions
+  // ---------------------------------------------------------------------------
+
+  List<String> get _suggestions {
+    final isArabic = AppSettingsManager.instance.language == 'Arabic';
+    if (isArabic) {
+      return const [
+        'اشرح لي شيئاً',
+        'ساعدني في الكتابة',
+        'حلل هذه الفكرة',
+        'ساعدني في البرمجة',
+      ];
+    }
+    return const [
+      'Explain something to me',
+      'Help me write something',
+      'Analyze this idea',
+      'Help me code',
+    ];
+  }
+
+  // ---------------------------------------------------------------------------
+  // Navigation
+  // ---------------------------------------------------------------------------
 
   void _openChat([String? message]) {
     final text = message ?? _controller.text.trim();
@@ -64,40 +91,32 @@ class _HomeScreenState extends State<HomeScreen>
 
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => ChatScreen(
-          initialMessage: text,
-        ),
+        builder: (_) => ChatScreen(initialMessage: text),
       ),
     );
   }
 
   void _openHistory() {
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => const HistoryScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const HistoryScreen()),
     );
   }
 
   void _openMemory() {
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => const MemoryScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const MemoryScreen()),
     );
   }
 
   void _openSettings() {
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => const SettingsScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => const SettingsScreen()),
     );
   }
 
-  void _useSuggestion(String text) {
-    _openChat(text);
-  }
+  // ---------------------------------------------------------------------------
+  // Build
+  // ---------------------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
@@ -114,9 +133,7 @@ class _HomeScreenState extends State<HomeScreen>
           child: Column(
             children: [
               _topBar(colors),
-              Expanded(
-                child: _mainContent(colors),
-              ),
+              Expanded(child: _mainContent(colors)),
               _composer(colors),
             ],
           ),
@@ -124,6 +141,10 @@ class _HomeScreenState extends State<HomeScreen>
       ),
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // Top bar
+  // ---------------------------------------------------------------------------
 
   Widget _topBar(WeuraColors colors) {
     return Padding(
@@ -133,14 +154,14 @@ class _HomeScreenState extends State<HomeScreen>
           _iconButton(
             colors: colors,
             asset: 'assets/icons/history.svg',
-            tooltip: 'History',
+            tooltip: 'السجل',
             onTap: _openHistory,
           ),
           const SizedBox(width: 4),
           _iconButton(
             colors: colors,
-            asset: 'assets/icons/mode.svg',
-            tooltip: 'Memory',
+            asset: 'assets/icons/user.svg',
+            tooltip: 'الذاكرة',
             onTap: _openMemory,
           ),
           const Spacer(),
@@ -170,13 +191,17 @@ class _HomeScreenState extends State<HomeScreen>
           _iconButton(
             colors: colors,
             asset: 'assets/icons/settings.svg',
-            tooltip: 'Settings',
+            tooltip: 'الإعدادات',
             onTap: _openSettings,
           ),
         ],
       ),
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // Main content
+  // ---------------------------------------------------------------------------
 
   Widget _mainContent(WeuraColors colors) {
     return Center(
@@ -199,7 +224,7 @@ class _HomeScreenState extends State<HomeScreen>
             ),
             const SizedBox(height: 10),
             Text(
-              'Your intelligent space for ideas, answers and creation.',
+              'مساحتك الذكية للأفكار والأجوبة والإبداع.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: colors.textSecondary,
@@ -212,9 +237,9 @@ class _HomeScreenState extends State<HomeScreen>
               alignment: WrapAlignment.center,
               spacing: 9,
               runSpacing: 9,
-              children: _suggestions.map((suggestion) {
-                return _suggestionChip(colors, suggestion);
-              }).toList(),
+              children: _suggestions
+                  .map((s) => _suggestionChip(colors, s))
+                  .toList(),
             ),
           ],
         ),
@@ -248,28 +273,36 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget _suggestionChip(WeuraColors colors, String text) {
-    return GestureDetector(
-      onTap: () => _useSuggestion(text),
-      child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: 15,
-          vertical: 11,
-        ),
-        decoration: BoxDecoration(
-          color: colors.surface,
-          borderRadius: BorderRadius.circular(15),
-          border: Border.all(color: colors.border),
-        ),
-        child: Text(
-          text,
-          style: TextStyle(
-            color: colors.textSecondary,
-            fontSize: 13,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _openChat(text),
+        borderRadius: BorderRadius.circular(15),
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: 15,
+            vertical: 11,
+          ),
+          decoration: BoxDecoration(
+            color: colors.surface,
+            borderRadius: BorderRadius.circular(15),
+            border: Border.all(color: colors.border),
+          ),
+          child: Text(
+            text,
+            style: TextStyle(
+              color: colors.textSecondary,
+              fontSize: 13,
+            ),
           ),
         ),
       ),
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // Composer
+  // ---------------------------------------------------------------------------
 
   Widget _composer(WeuraColors colors) {
     return Padding(
@@ -284,7 +317,7 @@ class _HomeScreenState extends State<HomeScreen>
           children: [
             const SizedBox(width: 7),
             IconButton(
-              tooltip: 'New chat',
+              tooltip: 'محادثة جديدة',
               onPressed: () => _openChat(),
               icon: SvgPicture.asset(
                 'assets/icons/plus.svg',
@@ -298,35 +331,50 @@ class _HomeScreenState extends State<HomeScreen>
                 focusNode: _focusNode,
                 minLines: 1,
                 maxLines: 5,
-                textInputAction: TextInputAction.send,
-                onSubmitted: (_) => _openChat(),
+                keyboardType: TextInputType.multiline,
+                textInputAction: TextInputAction.newline,
+                textCapitalization: TextCapitalization.sentences,
                 style: TextStyle(
                   color: colors.textPrimary,
                   fontSize: 15,
                 ),
                 cursorColor: colors.accent,
                 decoration: InputDecoration(
-                  hintText: 'Message WEURA...',
+                  hintText: 'راسل WEURA...',
                   hintStyle: TextStyle(color: colors.textFaint),
                   border: InputBorder.none,
                 ),
               ),
             ),
-            GestureDetector(
-              onTap: () => _openChat(),
-              child: Container(
-                width: 42,
-                height: 42,
-                margin: const EdgeInsets.only(right: 7),
-                decoration: BoxDecoration(
-                  color: colors.accent,
-                  shape: BoxShape.circle,
-                ),
-                child: Center(
-                  child: SvgPicture.asset(
-                    'assets/icons/send.svg',
-                    width: 22,
-                    height: 22,
+            AnimatedScale(
+              scale: _canSend ? 1 : 0.92,
+              duration: const Duration(milliseconds: 140),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: _canSend ? () => _openChat() : null,
+                  borderRadius: BorderRadius.circular(21),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 160),
+                    width: 42,
+                    height: 42,
+                    margin: const EdgeInsets.only(right: 7),
+                    decoration: BoxDecoration(
+                      color: _canSend
+                          ? colors.accent
+                          : colors.surfaceAlt,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Center(
+                      child: Opacity(
+                        opacity: _canSend ? 1 : 0.3,
+                        child: SvgPicture.asset(
+                          'assets/icons/send.svg',
+                          width: 22,
+                          height: 22,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -336,6 +384,10 @@ class _HomeScreenState extends State<HomeScreen>
       ),
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // Icon button
+  // ---------------------------------------------------------------------------
 
   Widget _iconButton({
     required WeuraColors colors,
