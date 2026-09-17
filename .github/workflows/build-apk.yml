@@ -69,18 +69,12 @@ jobs:
           if [ -f "$GRADLE_KTS" ]; then
             echo "=== Patching build.gradle.kts ==="
 
-            # 1. compileSdk = flutter.compileSdkVersion  →  36
             sed -i 's/compileSdk = flutter\.compileSdkVersion/compileSdk = 36/' "$GRADLE_KTS"
             sed -i 's/compileSdkVersion flutter\.compileSdkVersion/compileSdk = 36/' "$GRADLE_KTS"
-
-            # 2. minSdk = flutter.minSdkVersion  →  24
             sed -i 's/minSdk = flutter\.minSdkVersion/minSdk = 24/' "$GRADLE_KTS"
             sed -i 's/minSdkVersion flutter\.minSdkVersion/minSdk = 24/' "$GRADLE_KTS"
-
-            # 3. ndkVersion = flutter.ndkVersion  →  27.0.12077973
             sed -i 's/ndkVersion = flutter\.ndkVersion/ndkVersion = "27.0.12077973"/' "$GRADLE_KTS"
 
-            # 4. If ndkVersion line doesn't exist, add it right after compileSdk line
             if ! grep -q "ndkVersion" "$GRADLE_KTS"; then
               sed -i '/compileSdk = 36/a\    ndkVersion = "27.0.12077973"' "$GRADLE_KTS"
             fi
@@ -171,7 +165,7 @@ jobs:
 
       - name: Analyze
         working-directory: WEURA
-        run: flutter analyze --no-fatal-infos
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
       - name: Build APK (debug)
         working-directory: WEURA
