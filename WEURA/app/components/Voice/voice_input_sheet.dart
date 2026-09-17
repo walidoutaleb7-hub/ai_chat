@@ -32,9 +32,6 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
   /// 'ar' or 'en'
   String _requestedLang = 'ar';
 
-  /// The locale actually being used, or null if unavailable.
-  String? _activeLocale;
-
   @override
   void initState() {
     super.initState();
@@ -61,7 +58,6 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
     _didComplete = true;
     _pulseController.dispose();
     _controller.dispose();
-    // Fire-and-forget cancel (no await in dispose).
     _voice.cancel();
     super.dispose();
   }
@@ -112,7 +108,6 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
     }
 
     setState(() {
-      _activeLocale = activeLocale;
       _isListening = true;
       _error = null;
 
@@ -269,7 +264,6 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
 
                 const SizedBox(height: 10),
 
-                // Helper link
                 GestureDetector(
                   onTap: () => _showArabicHelp(colors),
                   child: Text(
