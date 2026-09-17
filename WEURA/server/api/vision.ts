@@ -10,13 +10,12 @@ const GROQ_API_URL =
  * ============================================================ */
 
 /// Groq image limit is 4MB. Base64 inflates ~33%.
-/// 4MB image → ~5.4MB base64. We cap at 5.5MB total.
-const MAX_IMAGE_DATA_URL_LENGTH = 5_500_000;
+/// 4MB image → ~5.4MB base64. We allow up to 8MB total to be safe.
+const MAX_IMAGE_DATA_URL_LENGTH = 8_000_000;
 
 const MAX_QUESTION_LENGTH = 2000;
-const MODEL_TIMEOUT_MS = 40_000;
+const MODEL_TIMEOUT_MS = 90_000;
 
-/// Try these models in order until one works.
 const VISION_MODELS = [
   'meta-llama/llama-4-maverick-17b-128e-instruct',
   'meta-llama/llama-4-scout-17b-16e-instruct',
@@ -24,7 +23,6 @@ const VISION_MODELS = [
   'llama-3.2-11b-vision-preview',
 ];
 
-/// Whitelist of allowed image mime types.
 const ALLOWED_MIME_TYPES = new Set([
   'image/jpeg',
   'image/jpg',
@@ -93,7 +91,8 @@ function validateImageData(raw: string): string | null {
   }
 
   if (raw.length > MAX_IMAGE_DATA_URL_LENGTH) {
-    return 'Image is too large. Maximum ~4 MB.';
+    const mb = (raw.length / (1024 * 1024)).toFixed(1);
+    return `Image is too large (${mb} MB). Maximum ~6 MB.`;
   }
 
   return null;
@@ -243,13 +242,16 @@ router.post('/vision', async (req, res) => {
       errors.push(`${model}: ${result.error}`);
     }
 
+    console.error('[WEURA] All vision models failed:', errors);
+
     return res.status(502).json({
       success: false,
       error:
         'Vision service is unavailable. ' +
-        'The image could not be analyzed.',
+        'The image could not be analyzed. Please try again.',
     });
   } catch (error) {
+    console.error('[WEURA] Vision handler error:', error);
     return res.status(500).json({
       success: false,
       error:
