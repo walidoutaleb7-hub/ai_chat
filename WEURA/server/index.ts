@@ -10,14 +10,30 @@ import visionRouter from './api/vision';
 import playerRouter from './api/player';
 import filesRouter from './api/files';
 
+import {
+  rateLimit,
+  requestId,
+  validateChatBody,
+} from './api/security_middleware';
+
 const app = express();
 
 const PORT = Number(process.env.PORT) || 8080;
 const HOST = '0.0.0.0';
 
+/* ============================================================
+ *  TRUST PROXY (for correct IP on Render)
+ * ============================================================ */
+
+app.set('trust proxy', 1);
+
+/* ============================================================
+ *  BASIC SETUP
+ * ============================================================ */
+
 app.disable('x-powered-by');
 
-app.use((req, res, next) => {
+app.use((_req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'no-referrer');
@@ -43,20 +59,35 @@ app.use(
   }),
 );
 
+/* ============================================================
+ *  REQUEST ID (all requests)
+ * ============================================================ */
+
+app.use(requestId);
+
+/* ============================================================
+ *  LOGGING
+ * ============================================================ */
+
 app.use((req, res, next) => {
   const startedAt = Date.now();
 
   res.on('finish', () => {
     const duration = Date.now() - startedAt;
+    const id = (res.locals.requestId as string | undefined) ?? '-';
 
     console.log(
-      `[WEURA] ${req.method} ${req.originalUrl} ` +
+      `[WEURA][${id}] ${req.method} ${req.originalUrl} ` +
         `${res.statusCode} ${duration}ms`,
     );
   });
 
   next();
 });
+
+/* ============================================================
+ *  ROOT
+ * ============================================================ */
 
 app.get('/', (_req, res) => {
   res.json({
@@ -68,7 +99,21 @@ app.get('/', (_req, res) => {
   });
 });
 
+/* ============================================================
+ *  HEALTH (no rate limit)
+ * ============================================================ */
+
 app.use(healthRouter);
+
+/* ============================================================
+ *  API ROUTES
+ * ============================================================ */
+
+// Rate limit applies to all /api routes.
+app.use('/api', rateLimit);
+
+// Chat has strict validation.
+app.use('/api/chat', validateChatBody);
 
 app.use('/api', chatRouter);
 app.use('/api', searchRouter);
@@ -77,12 +122,20 @@ app.use('/api', visionRouter);
 app.use('/api', playerRouter);
 app.use('/api', filesRouter);
 
+/* ============================================================
+ *  404
+ * ============================================================ */
+
 app.use((_req, res) => {
   res.status(404).json({
     success: false,
     error: 'Endpoint not found.',
   });
 });
+
+/* ============================================================
+ *  GLOBAL ERROR HANDLER
+ * ============================================================ */
 
 app.use(
   (
@@ -91,29 +144,29 @@ app.use(
     res: express.Response,
     _next: express.NextFunction,
   ) => {
-    console.error('[WEURA] Unhandled error:', error);
+    const id = (res.locals.requestId as string | undefined) ?? '-';
+    console.error(`[WEURA][${id}] Unhandled error:`, error);
 
     if (res.headersSent) return;
 
     res.status(500).json({
       success: false,
       error: 'Internal server error.',
+      requestId: id,
     });
   },
 );
 
+/* ============================================================
+ *  START SERVER
+ * ============================================================ */
+
 const server = app.listen(PORT, HOST, () => {
-  const groqReady = Boolean(
-    process.env.GROQ_API_KEY?.trim(),
-  );
-
-  const tavilyReady = Boolean(
-    process.env.TAVILY_API_KEY?.trim(),
-  );
-
+  const groqReady = Boolean(process.env.GROQ_API_KEY?.trim());
+  const tavilyReady = Boolean(process.env.TAVILY_API_KEY?.trim());
   const cfReady = Boolean(
     process.env.CLOUDFLARE_ACCOUNT_ID?.trim() &&
-    process.env.CLOUDFLARE_API_TOKEN?.trim(),
+      process.env.CLOUDFLARE_API_TOKEN?.trim(),
   );
 
   console.log('');
@@ -121,8 +174,8 @@ const server = app.listen(PORT, HOST, () => {
   console.log('          WEURA AI');
   console.log('          Think Beyond.');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log(`Bind: ${HOST}:${PORT}`);
-  console.log(`Health: /health`);
+  console.log(`Bind:        ${HOST}:${PORT}`);
+  console.log(`Health:      /health`);
   console.log(`Groq:        ${groqReady ? 'READY' : 'MISSING'}`);
   console.log(`Tavily:      ${tavilyReady ? 'READY' : 'MISSING'}`);
   console.log(`Cloudflare:  ${cfReady ? 'READY' : 'MISSING'}`);
