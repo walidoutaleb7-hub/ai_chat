@@ -1,20 +1,31 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
     "lib": ["ES2022"],
+    "types": ["node"],
+
     "strict": true,
+    "noImplicitOverride": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
-    "forceConsistentCasingInFileNames": true,
-    "skipLibCheck": true,
     "resolveJsonModule": true,
+    "skipLibCheck": true,
+
     "noEmit": true,
-    "types": ["node"]
+    "isolatedModules": true
   },
   "include": [
-    "**/*.ts"
+    "index.ts",
+    "api/**/*.ts",
+    "grok/**/*.ts",
+    "security/**/*.ts"
   ],
   "exclude": [
     "node_modules",
