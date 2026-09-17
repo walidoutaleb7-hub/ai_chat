@@ -8,6 +8,7 @@ import healthRouter from './api/health';
 import imageRouter from './api/image';
 import visionRouter from './api/vision';
 import playerRouter from './api/player';
+import filesRouter from './api/files';
 
 const app = express();
 
@@ -24,7 +25,6 @@ app.use((req, res, next) => {
     'Permissions-Policy',
     'camera=(), microphone=()',
   );
-
   next();
 });
 
@@ -75,6 +75,7 @@ app.use('/api', searchRouter);
 app.use('/api', imageRouter);
 app.use('/api', visionRouter);
 app.use('/api', playerRouter);
+app.use('/api', filesRouter);
 
 app.use((_req, res) => {
   res.status(404).json({
@@ -127,6 +128,7 @@ const server = app.listen(PORT, HOST, () => {
   console.log(`Cloudflare:  ${cfReady ? 'READY' : 'MISSING'}`);
   console.log(`Vision:      ${groqReady ? 'READY' : 'MISSING'}`);
   console.log(`Players:     READY`);
+  console.log(`Files:       READY`);
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('');
 });
