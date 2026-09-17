@@ -58,6 +58,59 @@ jobs:
           fi
           rm -f test/widget_test.dart
 
+      - name: Fix Android SDK versions
+        working-directory: WEURA
+        run: |
+          set -e
+
+          GRADLE_KTS="android/app/build.gradle.kts"
+          GRADLE_GROOVY="android/app/build.gradle"
+
+          if [ -f "$GRADLE_KTS" ]; then
+            echo "=== Patching build.gradle.kts ==="
+
+            # 1. compileSdk = flutter.compileSdkVersion  →  36
+            sed -i 's/compileSdk = flutter\.compileSdkVersion/compileSdk = 36/' "$GRADLE_KTS"
+            sed -i 's/compileSdkVersion flutter\.compileSdkVersion/compileSdk = 36/' "$GRADLE_KTS"
+
+            # 2. minSdk = flutter.minSdkVersion  →  24
+            sed -i 's/minSdk = flutter\.minSdkVersion/minSdk = 24/' "$GRADLE_KTS"
+            sed -i 's/minSdkVersion flutter\.minSdkVersion/minSdk = 24/' "$GRADLE_KTS"
+
+            # 3. ndkVersion = flutter.ndkVersion  →  27.0.12077973
+            sed -i 's/ndkVersion = flutter\.ndkVersion/ndkVersion = "27.0.12077973"/' "$GRADLE_KTS"
+
+            # 4. If ndkVersion line doesn't exist, add it right after compileSdk line
+            if ! grep -q "ndkVersion" "$GRADLE_KTS"; then
+              sed -i '/compileSdk = 36/a\    ndkVersion = "27.0.12077973"' "$GRADLE_KTS"
+            fi
+
+            echo "=== Result ==="
+            cat "$GRADLE_KTS"
+
+          elif [ -f "$GRADLE_GROOVY" ]; then
+            echo "=== Patching build.gradle (Groovy) ==="
+
+            sed -i 's/compileSdkVersion flutter\.compileSdkVersion/compileSdkVersion 36/' "$GRADLE_GROOVY"
+            sed -i 's/minSdkVersion flutter\.minSdkVersion/minSdkVersion 24/' "$GRADLE_GROOVY"
+            sed -i 's/ndkVersion flutter\.ndkVersion/ndkVersion "27.0.12077973"/' "$GRADLE_GROOVY"
+
+            echo "=== Result ==="
+            cat "$GRADLE_GROOVY"
+          fi
+
+          echo ""
+          echo "=== Checking AndroidManifest for uses-sdk ==="
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+          if [ -f "$MANIFEST" ]; then
+            if grep -q "uses-sdk" "$MANIFEST"; then
+              echo "Found uses-sdk — removing it..."
+              sed -i '/<uses-sdk/d' "$MANIFEST"
+            else
+              echo "No uses-sdk line — OK."
+            fi
+          fi
+
       - name: Fix icon assets structure
         working-directory: WEURA
         run: |
@@ -79,7 +132,7 @@ jobs:
           echo "assets/logo:"
           ls -la assets/logo
 
-      - name: Patch AndroidManifest
+      - name: Patch AndroidManifest permissions
         working-directory: WEURA
         run: |
           set -e
