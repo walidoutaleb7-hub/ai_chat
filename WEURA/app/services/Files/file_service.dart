@@ -82,18 +82,9 @@ class FileExtractionException implements Exception {
 // ---------------------------------------------------------------------------
 
 class FileService {
-  // ---------------------------------------------------------------------------
-  // Limits
-  // ---------------------------------------------------------------------------
-
-  /// Maximum file size (10 MB).
   static const int maxFileSizeBytes = 10 * 1024 * 1024;
-
-  /// Maximum characters extracted from a single file.
-  /// Groq accepts ~30k tokens, so 15k chars is safe + costs less.
   static const int maxExtractedChars = 15000;
 
-  /// Supported extensions.
   static const Set<String> supportedExtensions = {
     'pdf',
     'docx',
@@ -102,14 +93,6 @@ class FileService {
     'txt',
   };
 
-  // ---------------------------------------------------------------------------
-  // Public API
-  // ---------------------------------------------------------------------------
-
-  /// Opens the system file picker and returns the selected file,
-  /// or null if the user cancelled.
-  ///
-  /// Throws [FileExtractionException] on error.
   Future<WeuraFile?> pickAndExtract() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType,
@@ -129,7 +112,6 @@ class FileService {
     return extractFromPath(path);
   }
 
-  /// Extracts text from a file at [path].
   Future<WeuraFile> extractFromPath(String path) async {
     final file = File(path);
 
@@ -186,7 +168,7 @@ class FileService {
     } on FileExtractionException {
       rethrow;
     } catch (error) {
-      throw FileExtractionException(
+      throw const FileExtractionException(
         'Could not read this file. It may be corrupted or password-protected.',
       );
     }
@@ -215,10 +197,6 @@ class FileService {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // PDF
-  // ---------------------------------------------------------------------------
-
   Future<String> _extractPdf(File file) async {
     final bytes = await file.readAsBytes();
     final document = PdfDocument(inputBytes: bytes);
@@ -245,10 +223,6 @@ class FileService {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // DOCX (ZIP → word/document.xml)
-  // ---------------------------------------------------------------------------
-
   Future<String> _extractDocx(File file) async {
     final bytes = await file.readAsBytes();
     final archive = ZipDecoder().decodeBytes(bytes, verify: true);
@@ -267,14 +241,12 @@ class FileService {
       );
     }
 
-    final content = entry.content;
-    final xmlBytes = content is List<int> ? content : content as List<int>;
+    final xmlBytes = entry.content as List<int>;
     final xmlString = utf8.decode(xmlBytes, allowMalformed: true);
 
     final document = XmlDocument.parse(xmlString);
     final buffer = StringBuffer();
 
-    // Extract every <w:t> text node, insert line breaks on <w:p>.
     for (final paragraph in document.findAllElements('w:p')) {
       final lineBuffer = StringBuffer();
       for (final text in paragraph.findAllElements('w:t')) {
@@ -288,10 +260,6 @@ class FileService {
 
     return buffer.toString();
   }
-
-  // ---------------------------------------------------------------------------
-  // XLSX
-  // ---------------------------------------------------------------------------
 
   Future<String> _extractXlsx(File file) async {
     final bytes = await file.readAsBytes();
@@ -315,7 +283,6 @@ class FileService {
             cells.add(v.toString().trim());
           }
         }
-        // Skip fully empty rows.
         if (cells.every((c) => c.isEmpty)) continue;
         buffer.writeln(cells.join(' | '));
       }
@@ -326,29 +293,16 @@ class FileService {
     return buffer.toString();
   }
 
-  // ---------------------------------------------------------------------------
-  // CSV
-  // ---------------------------------------------------------------------------
-
   Future<String> _extractCsv(File file) async {
     final bytes = await file.readAsBytes();
     return _decodeText(bytes);
   }
-
-  // ---------------------------------------------------------------------------
-  // TXT
-  // ---------------------------------------------------------------------------
 
   Future<String> _extractTxt(File file) async {
     final bytes = await file.readAsBytes();
     return _decodeText(bytes);
   }
 
-  // ---------------------------------------------------------------------------
-  // Helpers
-  // ---------------------------------------------------------------------------
-
-  /// Decodes bytes as UTF-8, falling back to Latin-1 for non-UTF8 files.
   String _decodeText(List<int> bytes) {
     try {
       return utf8.decode(bytes);
@@ -359,14 +313,10 @@ class FileService {
 
   String _cleanText(String raw) {
     return raw
-        // Normalize newlines.
         .replaceAll('\r\n', '\n')
         .replaceAll('\r', '\n')
-        // Remove NUL and other control characters (except \n and \t).
         .replaceAll(RegExp(r'[\u0000-\u0008\u000B\u000C\u000E-\u001F]'), '')
-        // Collapse 4+ blank lines into 2.
         .replaceAll(RegExp(r'\n{4,}'), '\n\n\n')
-        // Collapse excessive spaces per line.
         .replaceAll(RegExp(r'[ \t]{3,}'), '  ')
         .trim();
   }
@@ -399,11 +349,6 @@ class FileService {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Temp file utility (reserved for future use)
-  // ---------------------------------------------------------------------------
-
-  /// Returns the app's temp directory (created on first access).
   Future<Directory> getTempDir() async {
     final dir = await getTemporaryDirectory();
     final weuraDir = Directory('${dir.path}/weura_files');
@@ -413,7 +358,6 @@ class FileService {
     return weuraDir;
   }
 
-  /// Deletes all cached temp files. Called on app reset.
   Future<void> clearTemp() async {
     try {
       final dir = await getTempDir();
