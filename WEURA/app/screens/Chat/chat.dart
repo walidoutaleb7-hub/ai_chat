@@ -23,6 +23,7 @@ import '../../core/History/chat_history.dart';
 import '../../core/Memory/memory_manager.dart';
 import '../../core/Settings/app_settings.dart';
 import '../../core/Theme/weura_theme.dart';
+import '../../services/Files/file_service.dart';
 import '../../services/Grok/grok_service.dart';
 import '../../services/Storage/storage_service.dart';
 import '../../services/Voice/voice_output_service.dart';
@@ -77,6 +78,7 @@ class _ChatScreenState extends State<ChatScreen>
   final MemoryManager _memory = MemoryManager();
   final VoiceOutputService _voiceOut = VoiceOutputService.instance;
   final ImagePicker _imagePicker = ImagePicker();
+  final FileService _fileService = FileService();
 
   late final GrokService _grok;
 
@@ -87,6 +89,7 @@ class _ChatScreenState extends State<ChatScreen>
   bool _isLoading = false;
   bool _requestCancelled = false;
   ChatSession? _session;
+  WeuraFile? _attachedFile;
 
   static const String _serverUrl =
       'https://ai-chat-tlol.onrender.com';
@@ -302,6 +305,136 @@ class _ChatScreenState extends State<ChatScreen>
     try {
       await _memory.add(content);
     } catch (_) {}
+  }
+
+  // ---------------------------------------------------------------------------
+  // File picker + analysis
+  // ---------------------------------------------------------------------------
+
+  Future<void> _pickFile() async {
+    try {
+      final file = await _fileService.pickAndExtract();
+
+      if (file == null) return;
+      if (!mounted) return;
+
+      setState(() {
+        _attachedFile = file;
+      });
+
+      if (file.wasTruncated) {
+        _showMessage(
+          'File was large — first part will be analyzed.',
+        );
+      }
+    } on FileExtractionException catch (e) {
+      if (!mounted) return;
+      _showMessage(e.message);
+    } catch (e) {
+      debugPrint('[WEURA] Pick file error: $e');
+      if (!mounted) return;
+      _showMessage('Could not read the file.');
+    }
+  }
+
+  Future<void> _sendFileToServer(WeuraFile file, String question) async {
+    await _ensureSession(
+      question.isNotEmpty ? question : '📄 ${file.name}',
+    );
+
+    setState(() {
+      _messages.add(
+        _ChatMessage(
+          text: question.isEmpty
+              ? 'حلل هذا الملف: ${file.name}'
+              : question,
+          isUser: true,
+        ),
+      );
+      _isLoading = true;
+      _requestCancelled = false;
+    });
+
+    await _persistMessages();
+    _scrollToBottom();
+
+    try {
+      final memoryContext = _memory.buildRelevantContext(question);
+      final userName = _memory.getUserName();
+      final enrichedMemory = _composeMemoryPayload(
+        memoryContext: memoryContext,
+        userName: userName,
+      );
+
+      final uri = Uri.parse('$_serverUrl/api/files/analyze');
+
+      final response = await http
+          .post(
+            uri,
+            headers: const {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode({
+              'fileName': file.name,
+              'fileType': file.type.name,
+              'fileSize': file.size,
+              'text': file.extractedText,
+              'question': question,
+              'memory': enrichedMemory,
+            }),
+          )
+          .timeout(const Duration(seconds: 120));
+
+      if (!mounted || _requestCancelled) return;
+
+      Map<String, dynamic> data;
+      try {
+        data = jsonDecode(response.body) as Map<String, dynamic>;
+      } catch (_) {
+        throw Exception('Invalid server response.');
+      }
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception(
+          data['error']?.toString() ?? 'File analysis failed.',
+        );
+      }
+
+      if (data['success'] != true) {
+        throw Exception(
+          data['error']?.toString() ?? 'File analysis failed.',
+        );
+      }
+
+      final content = data['content']?.toString().trim() ?? '';
+      if (content.isEmpty) {
+        throw Exception('AI returned an empty response.');
+      }
+
+      setState(() {
+        _messages.add(_ChatMessage(text: content, isUser: false));
+      });
+
+      await _persistMessages();
+      _scrollToBottom();
+    } catch (error) {
+      if (!mounted || _requestCancelled) return;
+      setState(() {
+        _messages.add(
+          _ChatMessage(
+            text: _cleanError(error),
+            isUser: false,
+            isError: true,
+          ),
+        );
+      });
+      _scrollToBottom();
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -711,6 +844,15 @@ class _ChatScreenState extends State<ChatScreen>
     if (_isLoading) return;
 
     final message = text.trim();
+
+    // File attached → analyze it first.
+    if (_attachedFile != null) {
+      final file = _attachedFile!;
+      setState(() => _attachedFile = null);
+      await _sendFileToServer(file, message);
+      return;
+    }
+
     if (message.isEmpty) return;
 
     // Player card detection (before image).
@@ -728,7 +870,6 @@ class _ChatScreenState extends State<ChatScreen>
       return;
     }
 
-    // Resolve AI mode.
     final resolvedMode = _router.resolve(
       message: message,
       selectedMode: _mode,
@@ -747,25 +888,15 @@ class _ChatScreenState extends State<ChatScreen>
     _scrollToBottom();
 
     try {
-      // -----------------------------------------------------------------
-      // Build memory context (user name + relevant memories).
-      // The server builds the identity + search system prompts.
-      // The client NEVER sends system messages.
-      // -----------------------------------------------------------------
       final memoryContext =
           _memory.buildRelevantContext(message, maxItems: 5);
       final userName = _memory.getUserName();
 
-      // Include the user name in the memory string when we know it,
-      // so the server-side identity block can address the user by name.
       final enrichedMemory = _composeMemoryPayload(
         memoryContext: memoryContext,
         userName: userName,
       );
 
-      // -----------------------------------------------------------------
-      // Build conversation history (user + assistant only).
-      // -----------------------------------------------------------------
       final recent = _messages
           .where((m) => !m.isError && m.imageUrl == null)
           .where((m) => m.visionImagePath == null)
@@ -786,9 +917,6 @@ class _ChatScreenState extends State<ChatScreen>
           )
           .toList();
 
-      // -----------------------------------------------------------------
-      // Send: messages + memory + mode (NO system).
-      // -----------------------------------------------------------------
       final result = await _grok.sendMessage(
         messages: history,
         memory: enrichedMemory,
@@ -838,12 +966,6 @@ class _ChatScreenState extends State<ChatScreen>
     }
   }
 
-  /// Composes the final memory string sent to the server.
-  ///
-  /// Format:
-  ///   User name: Walid
-  ///   - fact 1
-  ///   - fact 2
   String _composeMemoryPayload({
     required String memoryContext,
     required String? userName,
@@ -900,8 +1022,7 @@ class _ChatScreenState extends State<ChatScreen>
   void _retryLastMessage() {
     if (_isLoading || _messages.isEmpty) return;
 
-    final userMessages =
-        _messages.where((m) => m.isUser).toList();
+    final userMessages = _messages.where((m) => m.isUser).toList();
     if (userMessages.isEmpty) return;
 
     _messages.removeWhere((m) => !m.isUser && m.isError);
@@ -1209,9 +1330,7 @@ class _ChatScreenState extends State<ChatScreen>
                   subtitle: 'PDF, DOCX, XLSX, TXT, CSV',
                   onTap: () {
                     Navigator.pop(sheetContext);
-                    _showMessage(
-                      'File tools will be connected in the Files step.',
-                    );
+                    _pickFile();
                   },
                 ),
               ],
@@ -1433,6 +1552,8 @@ class _ChatScreenState extends State<ChatScreen>
                     },
                   ),
           ),
+          if (_attachedFile != null)
+            _attachedFileChip(colors, _attachedFile!),
           WeuraComposer(
             enabled: true,
             isLoading: _isLoading,
@@ -1443,6 +1564,81 @@ class _ChatScreenState extends State<ChatScreen>
             onStop: _cancelRequest,
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _attachedFileChip(WeuraColors colors, WeuraFile file) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 4, 14, 0),
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 10,
+        ),
+        decoration: BoxDecoration(
+          color: colors.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: colors.accentGlow.withValues(alpha: 0.30),
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: colors.accentSoft,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: SvgPicture.asset(
+                'assets/icons/file.svg',
+                width: 20,
+                height: 20,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    file.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: colors.textPrimary,
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${file.type.label} • ${file.sizeLabel}',
+                    style: TextStyle(
+                      color: colors.textMuted,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            InkWell(
+              onTap: () => setState(() => _attachedFile = null),
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.all(6),
+                child: Icon(
+                  Icons.close_rounded,
+                  size: 18,
+                  color: colors.textMuted,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
