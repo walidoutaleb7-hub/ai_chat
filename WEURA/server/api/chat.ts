@@ -28,7 +28,7 @@ function todayISO(): string {
 }
 
 /* ============================================================
- *  HELPERS — CLASSIFICATION
+ *  CLASSIFICATION — FOOTBALL / TECH
  * ============================================================ */
 
 function looksLikeFootball(message: string): boolean {
@@ -62,6 +62,10 @@ function looksLikeTech(message: string): boolean {
   return triggers.some((t) => text.includes(t));
 }
 
+/* ============================================================
+ *  CLASSIFICATION — IDENTITY / PERSONAL
+ * ============================================================ */
+
 function isIdentityQuestion(message: string): boolean {
   const text = message.trim().toLowerCase();
   const patterns = [
@@ -82,15 +86,134 @@ function isPersonalQuestion(message: string): boolean {
 }
 
 /* ============================================================
- *  SEARCH DECISION
+ *  CLASSIFICATION — CONVERSATIONAL / TECHNICAL / CREATIVE
+ * ============================================================ */
+
+/// Conversational requests (topics, suggestions, opinions, chat).
+/// These NEVER need real-time info.
+function isConversationalRequest(message: string): boolean {
+  const text = message.trim();
+  const patterns = [
+    // Requests for topics / suggestions / advice
+    /^(مدلي|عطيني|قوللي|اقترحلي|اقترح علي|نصحني|علمني|ساعدني في|ساعدني على|هدرلي|حكيلنا عن)\s+/i,
+    /^(suggest|give me|tell me|recommend|help me with|talk to me about)\s+/i,
+    /^(واش)\s+(نهدر|نتكلم|نحكي|ندير|نلعب)\s+/i,
+    /^(what)\s+(should|can)\s+(i|we)\s+/i,
+    // Requests for opinions
+    /^(واش رايك|شنو رايك|رايك في|شكون الأحسن|شكون الأفضل)/i,
+    /^(what do you think|your opinion|which is better)/i,
+    // Casual topics
+    /^(نهدر|نتكلم|نحكي)\s+(على|عن|في)\s+/i,
+    /^(let'?s talk about|let'?s chat)/i,
+    // Personal feel
+    /^(راني|انا)\s+(حزين|فرحان|تعبان|مليت|زهقت|مبسوط)/i,
+    /^(i'?m|im)\s+(sad|happy|tired|bored|excited)/i,
+    // Just chatting
+    /^(كيفاش|كيف|شلون)\s+(راك|حالك)/i,
+    /^(how are you|how'?s it going)/i,
+  ];
+  return patterns.some((p) => p.test(text));
+}
+
+/// Technical / educational requests. Model knows this stuff.
+function isTechnicalRequest(message: string): boolean {
+  const text = message.trim().toLowerCase();
+  const patterns = [
+    /^(اكتب لي|اكتبلي|كتبلي|اعطيني|عطيني)\s+(كود|دالة|سكريبت|function|code)/i,
+    /^(write me|give me|show me)\s+(code|a function|a script|an algorithm)/i,
+    /^(كيفاش|كيف|واش ندير|كيفاش ندير)\s+(نكتب|ندير|نبرمج|نصلح)/i,
+    /^(how do i|how to|how can i)\s+(write|create|build|fix|make)/i,
+    /^(اشرح|فسر|وضح|explain|what is|what'?s)\s+/i,
+    /^(احسب|حسبلي|solve|calculate|compute)\s+/i,
+    /^(debug|fix|repair|correct)\s+/i,
+  ];
+  return patterns.some((p) => p.test(text));
+}
+
+/// Creative requests. Model generates from imagination.
+function isCreativeRequest(message: string): boolean {
+  const text = message.trim();
+  const patterns = [
+    /^(اكتب|اكتبلي|كتب لي|اكتب لي)\s+/i,
+    /^(write me|write a|compose|draft)\s+/i,
+    /^(ترجم|ترجملي|translate)\s+/i,
+    /^(حكيلي|قوللي|اسردلي)\s+(قصة|حكاية)/i,
+    /^(tell me a story|tell a story)/i,
+    /^(اكتبلي|عطيني|قوللي)\s+(فكرة|اقتراح|عنوان|اسم)/i,
+    /^(brainstorm|suggest a name|suggest a title)/i,
+  ];
+  return patterns.some((p) => p.test(text));
+}
+
+/* ============================================================
+ *  SEARCH SIGNAL — CONSERVATIVE
+ * ============================================================ */
+
+/// Returns TRUE only if there's a clear signal that real-time info is needed.
+function hasSearchSignal(message: string): boolean {
+  const text = message.toLowerCase().trim();
+
+  // 1. Explicit search requests
+  if (/(ابحث|بحث|ابحثلي|ابحث لي|دور على|لوكيت|search|google|look up|find me)/i.test(text)) {
+    return true;
+  }
+
+  // 2. Time-sensitive signals
+  if (/(آخر أخبار|أحدث|اليوم|الآن|حاليا|حاليًا|أمس|البارح|هذا الأسبوع|هذا الشهر|هذه السنة|this week|this month|this year|today|yesterday|tonight|latest|recent|currently|breaking|عاجل)/i.test(text)) {
+    return true;
+  }
+
+  // 3. News
+  if (/(\bأخبار\b|\bخبر\b|\bnews\b|آخر الأخبار|breaking news)/i.test(text)) {
+    return true;
+  }
+
+  // 4. Live sports results/standings
+  if (/(نتيجة|نتائج|ترتيب الدوري|جدول المباريات|نتيجة مباراة|result|score|standings|match result)/i.test(text)) {
+    return true;
+  }
+
+  // 5. Current club/player info (transfers change)
+  if (/(أين يلعب|اين يلعب|فين يلعب|يلعب حاليا|يلعب الآن|فريقه الحالي|ناديه الحالي|انتقل|current club|plays for|where does .* play)/i.test(text)) {
+    return true;
+  }
+
+  // 6. Prices / market
+  if (/(سعر|بكم|كم سعر|أسعار|price|how much does|stock price|market cap)/i.test(text)) {
+    return true;
+  }
+
+  // 7. Weather
+  if (/(الطقس|طقس|الجو اليوم|weather|temperature today)/i.test(text)) {
+    return true;
+  }
+
+  // 8. Events / releases
+  if (/(متى يفتح|متى ينزل|متى يخرج|when (is|does|will)|release date|منتظر)/i.test(text)) {
+    return true;
+  }
+
+  // 9. Explicit "what's the news on X" / "what happened with X"
+  if (/(واش صرا في|واش صرا مع|ما حدث في|ما حدث مع|what happened (with|to|in))/i.test(text)) {
+    return true;
+  }
+
+  // Default: NO SEARCH.
+  return false;
+}
+
+/* ============================================================
+ *  SEARCH DECISION — FINAL
  * ============================================================ */
 
 function needsSearch(message: string): boolean {
   const text = message.trim();
 
+  // ── 1. NEVER search for identity / personal questions
   if (isIdentityQuestion(text)) return false;
   if (isPersonalQuestion(text)) return false;
 
+  // ── 2. NEVER search for greetings / thanks / ok / bye
   const skipPatterns = [
     /^(hi|hey|hello|helo|hallo|yo|sup|hiya|howdy)[\s!.,?]*$/i,
     /^(good\s*(morning|evening|afternoon|night))[\s!.,?]*$/i,
@@ -103,34 +226,23 @@ function needsSearch(message: string): boolean {
     /^(bye|goodbye|see you|cya|بسلامة|تصبح على خير|الى اللقاء|نشوفك)[\s!.,?،؟]*$/i,
     /^(cool|nice|great|awesome|haha|lol|😂|👍|❤️|🔥)[\s!.,?،؟]*$/i,
   ];
+  if (skipPatterns.some((p) => p.test(text))) return false;
 
-  for (const pattern of skipPatterns) {
-    if (pattern.test(text)) return false;
-  }
-
-  if (/^[\d\s+\-*/().%,]+$/.test(text)) return false;
+  // ── 3. NEVER search for very short messages or pure math
   if (text.length < 3) return false;
+  if (/^[\d\s+\-*/().%,]+$/.test(text)) return false;
 
-  return true;
-}
+  // ── 4. NEVER search for conversational requests
+  if (isConversationalRequest(text)) return false;
 
-function isTimeSensitive(message: string): boolean {
-  const text = message.toLowerCase();
-  const triggers = [
-    'latest', 'recent', 'today', 'tonight', 'this week',
-    'this month', 'this year', 'current', 'currently', 'now',
-    'news', 'last match', 'last game', 'last result',
-    'current club', 'current team', 'plays for',
-    'آخر', 'أحدث', 'اليوم', 'الآن', 'حاليا',
-    'هذا الأسبوع', 'هذا الشهر',
-    'الأخبار', 'أخبار', 'عاجل',
-    'آخر مباراة', 'آخر ماتش', 'آخر نتيجة',
-    'فريقه الحالي', 'ناديه الحالي',
-  ];
-  for (const trigger of triggers) {
-    if (text.includes(trigger)) return true;
-  }
-  return false;
+  // ── 5. NEVER search for technical / educational requests
+  if (isTechnicalRequest(text)) return false;
+
+  // ── 6. NEVER search for creative requests
+  if (isCreativeRequest(text)) return false;
+
+  // ── 7. Otherwise: SEARCH ONLY IF there's a clear signal
+  return hasSearchSignal(text);
 }
 
 /* ============================================================
@@ -149,7 +261,7 @@ function cleanSnippet(raw: string, maxLen = 400): string {
 }
 
 /* ============================================================
- *  SYSTEM BLOCKS — COMPACT (low token)
+ *  SYSTEM BLOCKS — COMPACT
  * ============================================================ */
 
 function buildIdentityBlock(): string {
@@ -165,10 +277,6 @@ function buildIdentityBlock(): string {
   );
 }
 
-/**
- * SOUL — compact version (~700 tokens instead of ~2500).
- * Keeps the essence: warmth, rhythm, dialect mirroring, no filler.
- */
 function buildSoulBlock(): string {
   return (
     `=== SOUL — HOW YOU SPEAK ===\n\n` +
@@ -283,7 +391,7 @@ function buildSearchContext(
     `1. Base facts ONLY on results above. No training data for facts.\n` +
     `2. NEVER invent names, scores, dates, transfers, quotes.\n` +
     `3. If not in results AND question is factual → "هذه المعلومة غير موجودة في المصادر المتاحة." (EN: "Not available in sources.")\n` +
-    `   EXCEPTION: identity/user/conversation questions are NOT covered by this.\n` +
+    `   EXCEPTION: identity/user/conversation questions are NOT covered by this rule.\n` +
     `4. Cite ONLY numbers that exist ([1], [2]...). Never [4] if only 3 exist.\n` +
     `5. "المصادر:" section at end ONLY if you cited.\n` +
     `6. If user asks "آخر"/"latest" and best match > 3 months → "لم أجد معلومات حديثة."\n` +
@@ -296,8 +404,8 @@ function buildSearchContext(
  *  BUILD MESSAGES
  * ============================================================ */
 
-const MAX_HISTORY_MESSAGES = 6; // Reduced from 20 to save tokens.
-const MAX_HISTORY_CHARS = 400; // Truncate long history messages.
+const MAX_HISTORY_MESSAGES = 6;
+const MAX_HISTORY_CHARS = 400;
 
 async function buildMessages(
   safeMessages: GrokMessage[],
@@ -344,7 +452,7 @@ async function buildMessages(
 
   if (shouldSearch) {
     try {
-      const timeSensitive = isTimeSensitive(lastUserMessage);
+      const timeSensitive = hasSearchSignal(lastUserMessage);
       const results = await searchTavily(lastUserMessage, 5, {
         timeSensitive,
         football: isFootball,
@@ -375,7 +483,6 @@ async function buildMessages(
     }
   }
 
-  // Trim history: last N messages, truncate long ones.
   const history = safeMessages.slice(-MAX_HISTORY_MESSAGES);
 
   for (const msg of history) {
