@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../core/Settings/app_settings.dart';
 import '../../core/Theme/weura_theme.dart';
 
 class WeuraComposer extends StatefulWidget {
@@ -34,11 +36,6 @@ class _WeuraComposerState extends State<WeuraComposer> {
   final TextEditingController _controller = TextEditingController();
   final FocusNode _focusNode = FocusNode();
 
-  bool get _canSend =>
-      widget.enabled &&
-      !widget.isLoading &&
-      _controller.text.trim().isNotEmpty;
-
   @override
   void initState() {
     super.initState();
@@ -59,6 +56,13 @@ class _WeuraComposerState extends State<WeuraComposer> {
     if (mounted) setState(() {});
   }
 
+  bool get _canSend =>
+      widget.enabled &&
+      !widget.isLoading &&
+      _controller.text.trim().isNotEmpty;
+
+  bool get _sendOnEnter => AppSettingsManager.instance.sendOnEnter;
+
   void _send() {
     final text = _controller.text.trim();
     if (!_canSend || text.isEmpty) return;
@@ -68,10 +72,31 @@ class _WeuraComposerState extends State<WeuraComposer> {
     _focusNode.requestFocus();
   }
 
+  /// Called when the user presses the keyboard "Send" button
+  /// (only active when sendOnEnter is true).
   void _handleSubmitted(String value) {
     if (value.trim().isNotEmpty) {
       _send();
     }
+  }
+
+  /// Manual key handler: on desktop/web, Enter sends when sendOnEnter.
+  /// On mobile, we rely on TextInputAction.
+  KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    if (event.logicalKey != LogicalKeyboardKey.enter) {
+      return KeyEventResult.ignored;
+    }
+
+    final shiftPressed = HardwareKeyboard.instance.isShiftPressed;
+    if (shiftPressed) return KeyEventResult.ignored;
+
+    if (_sendOnEnter && _canSend) {
+      _send();
+      return KeyEventResult.handled;
+    }
+
+    return KeyEventResult.ignored;
   }
 
   @override
@@ -104,32 +129,38 @@ class _WeuraComposerState extends State<WeuraComposer> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(
-                controller: _controller,
-                focusNode: _focusNode,
-                enabled: widget.enabled && !widget.isLoading,
-                minLines: 1,
-                maxLines: 7,
-                keyboardType: TextInputType.multiline,
-                textInputAction: TextInputAction.newline,
-                onSubmitted: _handleSubmitted,
-                style: TextStyle(
-                  color: colors.textPrimary,
-                  fontSize: 15.5,
-                  height: 1.45,
-                ),
-                cursorColor: colors.accent,
-                decoration: InputDecoration(
-                  hintText: widget.hintText,
-                  hintStyle: TextStyle(
-                    color: colors.textFaint,
-                    fontSize: 15,
+              Focus(
+                onKeyEvent: _handleKey,
+                child: TextField(
+                  controller: _controller,
+                  focusNode: _focusNode,
+                  enabled: widget.enabled && !widget.isLoading,
+                  minLines: 1,
+                  maxLines: 7,
+                  keyboardType: TextInputType.multiline,
+                  textInputAction: _sendOnEnter
+                      ? TextInputAction.send
+                      : TextInputAction.newline,
+                  onSubmitted: _sendOnEnter ? _handleSubmitted : null,
+                  textCapitalization: TextCapitalization.sentences,
+                  style: TextStyle(
+                    color: colors.textPrimary,
+                    fontSize: 15.5,
+                    height: 1.45,
                   ),
-                  border: InputBorder.none,
-                  isDense: true,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 8,
+                  cursorColor: colors.accent,
+                  decoration: InputDecoration(
+                    hintText: widget.hintText,
+                    hintStyle: TextStyle(
+                      color: colors.textFaint,
+                      fontSize: 15,
+                    ),
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
                   ),
                 ),
               ),
@@ -201,25 +232,29 @@ class _WeuraComposerState extends State<WeuraComposer> {
     return AnimatedScale(
       scale: _canSend ? 1 : 0.92,
       duration: const Duration(milliseconds: 140),
-      child: GestureDetector(
-        onTap: _canSend ? _send : null,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          width: 42,
-          height: 42,
-          decoration: BoxDecoration(
-            color: _canSend
-                ? colors.accent
-                : colors.surfaceAlt,
-            shape: BoxShape.circle,
-          ),
-          child: Center(
-            child: Opacity(
-              opacity: _canSend ? 1 : 0.3,
-              child: SvgPicture.asset(
-                'assets/icons/send.svg',
-                width: 23,
-                height: 23,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: _canSend ? _send : null,
+          borderRadius: BorderRadius.circular(21),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: _canSend
+                  ? colors.accent
+                  : colors.surfaceAlt,
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Opacity(
+                opacity: _canSend ? 1 : 0.3,
+                child: SvgPicture.asset(
+                  'assets/icons/send.svg',
+                  width: 23,
+                  height: 23,
+                ),
               ),
             ),
           ),
@@ -229,22 +264,31 @@ class _WeuraComposerState extends State<WeuraComposer> {
   }
 
   Widget _stopButton(WeuraColors colors) {
-    return GestureDetector(
-      onTap: widget.onStop,
-      child: Container(
-        width: 42,
-        height: 42,
-        decoration: BoxDecoration(
-          color: colors.accentSoft,
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: colors.accentGlow.withValues(alpha: 0.30),
+    return Tooltip(
+      message: 'Stop',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: widget.onStop,
+          borderRadius: BorderRadius.circular(21),
+          child: Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: colors.accentSoft,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: colors.accentGlow.withValues(alpha: 0.30),
+              ),
+            ),
+            child: Center(
+              child: SvgPicture.asset(
+                'assets/icons/stop.svg',
+                width: 23,
+                height: 23,
+              ),
+            ),
           ),
-        ),
-        child: SvgPicture.asset(
-          'assets/icons/stop.svg',
-          width: 23,
-          height: 23,
         ),
       ),
     );
