@@ -49,6 +49,19 @@ app.use(
   }),
 );
 
+/* ============================================================
+ *  TIMEOUTS (prevent Cloudflare 520 on long AI responses)
+ * ============================================================ */
+
+app.use((req, res, next) => {
+  // 5 minutes total for the request.
+  req.setTimeout(5 * 60 * 1000);
+  res.setTimeout(5 * 60 * 1000);
+  // Keep-alive for headers.
+  res.setHeader('Connection', 'keep-alive');
+  next();
+});
+
 app.use(
   express.json({
     limit: '15mb',
@@ -110,8 +123,7 @@ app.use('/api', rateLimit);
 
 // NOTE: chat.ts does its own validation + sanitization.
 // We intentionally do NOT add validateChatBody here to avoid
-// double-validation bugs (e.g. middleware setting mode=null,
-// then chat.ts rejecting it as "must be a string").
+// double-validation bugs.
 
 app.use('/api', chatRouter);
 app.use('/api', searchRouter);
@@ -161,6 +173,7 @@ app.use(
 
 const server = app.listen(PORT, HOST, () => {
   const groqReady = Boolean(process.env.GROQ_API_KEY?.trim());
+  const cerebrasReady = Boolean(process.env.CEREBRAS_API_KEY?.trim());
   const tavilyReady = Boolean(process.env.TAVILY_API_KEY?.trim());
   const cfReady = Boolean(
     process.env.CLOUDFLARE_ACCOUNT_ID?.trim() &&
@@ -174,7 +187,8 @@ const server = app.listen(PORT, HOST, () => {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log(`Bind:        ${HOST}:${PORT}`);
   console.log(`Health:      /health`);
-  console.log(`Groq:        ${groqReady ? 'READY' : 'MISSING'}`);
+  console.log(`Groq:        ${groqReady ? 'READY (primary)' : 'MISSING'}`);
+  console.log(`Cerebras:    ${cerebrasReady ? 'READY (fallback)' : 'MISSING'}`);
   console.log(`Tavily:      ${tavilyReady ? 'READY' : 'MISSING'}`);
   console.log(`Cloudflare:  ${cfReady ? 'READY' : 'MISSING'}`);
   console.log(`Vision:      ${groqReady ? 'READY' : 'MISSING'}`);
@@ -183,6 +197,14 @@ const server = app.listen(PORT, HOST, () => {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('');
 });
+
+/* ============================================================
+ *  SERVER TIMEOUTS (no more Cloudflare 520)
+ * ============================================================ */
+
+server.requestTimeout = 0;
+server.headersTimeout = 5 * 60 * 1000;
+server.keepAliveTimeout = 65 * 1000;
 
 server.on('error', (error) => {
   console.error('[WEURA] Server error:', error);
