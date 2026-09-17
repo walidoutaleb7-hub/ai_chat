@@ -6,42 +6,34 @@ import '../../services/Storage/storage_service.dart';
 // Types
 // ---------------------------------------------------------------------------
 
-enum MessageKind {
-  text,
-  image,
-  vision,
-  player,
-  file,
-}
-
 class ChatMessageData {
   const ChatMessageData({
     required this.text,
     required this.isUser,
     required this.timestamp,
-    this.kind = MessageKind.text,
-    this.metadata,
+    this.imageUrl,
+    this.imagePrompt,
+    this.playerData,
+    this.visionImagePath,
   });
 
   final String text;
   final bool isUser;
   final DateTime timestamp;
-  final MessageKind kind;
-
-  /// Extra data for non-text messages.
-  /// - image:  { 'imageUrl': '...', 'imagePrompt': '...' }
-  /// - vision: { 'imagePath': '...' }
-  /// - player: { 'playerName': '...' }
-  /// - file:   { 'fileName': '...', 'fileType': '...' }
-  final Map<String, dynamic>? metadata;
+  final String? imageUrl;
+  final String? imagePrompt;
+  final Map<String, dynamic>? playerData;
+  final String? visionImagePath;
 
   Map<String, dynamic> toJson() {
     return {
       'text': text,
       'isUser': isUser,
       'timestamp': timestamp.toIso8601String(),
-      'kind': kind.name,
-      if (metadata != null) 'metadata': metadata,
+      if (imageUrl != null) 'imageUrl': imageUrl,
+      if (imagePrompt != null) 'imagePrompt': imagePrompt,
+      if (playerData != null) 'playerData': playerData,
+      if (visionImagePath != null) 'visionImagePath': visionImagePath,
     };
   }
 
@@ -53,36 +45,32 @@ class ChatMessageData {
             json['timestamp']?.toString() ?? '',
           ) ??
           DateTime.now(),
-      kind: _parseKind(json['kind']?.toString()),
-      metadata: json['metadata'] is Map
-          ? Map<String, dynamic>.from(
-              json['metadata'] as Map,
-            )
+      imageUrl: json['imageUrl']?.toString(),
+      imagePrompt: json['imagePrompt']?.toString(),
+      playerData: json['playerData'] is Map
+          ? Map<String, dynamic>.from(json['playerData'] as Map)
           : null,
+      visionImagePath: json['visionImagePath']?.toString(),
     );
-  }
-
-  static MessageKind _parseKind(String? raw) {
-    if (raw == null) return MessageKind.text;
-    for (final k in MessageKind.values) {
-      if (k.name == raw) return k;
-    }
-    return MessageKind.text;
   }
 
   ChatMessageData copyWith({
     String? text,
     bool? isUser,
     DateTime? timestamp,
-    MessageKind? kind,
-    Map<String, dynamic>? metadata,
+    String? imageUrl,
+    String? imagePrompt,
+    Map<String, dynamic>? playerData,
+    String? visionImagePath,
   }) {
     return ChatMessageData(
       text: text ?? this.text,
       isUser: isUser ?? this.isUser,
       timestamp: timestamp ?? this.timestamp,
-      kind: kind ?? this.kind,
-      metadata: metadata ?? this.metadata,
+      imageUrl: imageUrl ?? this.imageUrl,
+      imagePrompt: imagePrompt ?? this.imagePrompt,
+      playerData: playerData ?? this.playerData,
+      visionImagePath: visionImagePath ?? this.visionImagePath,
     );
   }
 }
@@ -157,15 +145,10 @@ class HistoryManager {
   }) : _storage = storage ?? StorageService.instance;
 
   static const String _storageKey = 'weura_chat_history';
-
-  /// Maximum number of sessions kept at once.
   static const int _maxSessions = 200;
-
-  /// Maximum number of messages per session.
   static const int _maxMessagesPerSession = 500;
 
   final StorageService _storage;
-
   final List<ChatSession> _sessions = [];
 
   List<ChatSession> get sessions => List.unmodifiable(_sessions);
@@ -208,9 +191,7 @@ class HistoryManager {
   }
 
   void _sort() {
-    _sessions.sort(
-      (a, b) => b.updatedAt.compareTo(a.updatedAt),
-    );
+    _sessions.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
   }
 
   // ---------------------------------------------------------------------------
@@ -241,7 +222,6 @@ class HistoryManager {
   Future<void> save(ChatSession session) async {
     session.updatedAt = DateTime.now();
 
-    // Cap messages per session.
     if (session.messages.length > _maxMessagesPerSession) {
       session.messages.removeRange(
         0,
