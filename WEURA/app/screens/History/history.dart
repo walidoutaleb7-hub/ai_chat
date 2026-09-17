@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../core/History/chat_history.dart';
+import '../../core/Settings/app_settings.dart';
 import '../../core/Theme/weura_theme.dart';
 import '../Chat/chat.dart';
 
@@ -31,6 +32,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
     super.dispose();
   }
 
+  bool get _isArabic =>
+      AppSettingsManager.instance.language == 'Arabic';
+
+  String _t(String en, String ar) => _isArabic ? ar : en;
+
   Future<void> _load() async {
     await _manager.load();
     if (!mounted) return;
@@ -49,7 +55,41 @@ class _HistoryScreenState extends State<HistoryScreen> {
     await _load();
   }
 
-  Future<void> _deleteChat(ChatSession chat) async {
+  Future<void> _confirmDelete(ChatSession chat, WeuraColors colors) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: colors.surfaceAlt,
+          title: Text(
+            _t('Delete chat?', 'حذف المحادثة؟'),
+            style: TextStyle(color: colors.textPrimary),
+          ),
+          content: Text(
+            _t(
+              'This conversation will be removed from history.',
+              'سيتم إزالة هذه المحادثة من السجل.',
+            ),
+            style: TextStyle(color: colors.textSecondary),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: Text(_t('Cancel', 'إلغاء')),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: Text(
+                _t('Delete', 'حذف'),
+                style: TextStyle(color: colors.danger),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) return;
     await _manager.delete(chat.id);
     if (mounted) setState(() {});
   }
@@ -63,26 +103,34 @@ class _HistoryScreenState extends State<HistoryScreen> {
         return AlertDialog(
           backgroundColor: colors.surfaceAlt,
           title: Text(
-            'Rename chat',
+            _t('Rename chat', 'إعادة تسمية'),
             style: TextStyle(color: colors.textPrimary),
           ),
           content: TextField(
             controller: controller,
             autofocus: true,
+            maxLength: 60,
             style: TextStyle(color: colors.textPrimary),
             decoration: InputDecoration(
-              hintText: 'Chat name',
+              hintText: _t('Chat name', 'اسم المحادثة'),
               hintStyle: TextStyle(color: colors.textFaint),
+              filled: true,
+              fillColor: colors.surface,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide.none,
+              ),
             ),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
+              child: Text(_t('Cancel', 'إلغاء')),
             ),
             TextButton(
-              onPressed: () => Navigator.pop(dialogContext, controller.text),
-              child: const Text('Save'),
+              onPressed: () =>
+                  Navigator.pop(dialogContext, controller.text),
+              child: Text(_t('Save', 'حفظ')),
             ),
           ],
         );
@@ -106,22 +154,25 @@ class _HistoryScreenState extends State<HistoryScreen> {
         return AlertDialog(
           backgroundColor: colors.surfaceAlt,
           title: Text(
-            'Delete all chats?',
+            _t('Delete all chats?', 'حذف كل المحادثات؟'),
             style: TextStyle(color: colors.textPrimary),
           ),
           content: Text(
-            'This will remove all conversations from this history.',
+            _t(
+              'This will remove all conversations from this history.',
+              'سيتم إزالة كل المحادثات من السجل.',
+            ),
             style: TextStyle(color: colors.textSecondary),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Cancel'),
+              child: Text(_t('Cancel', 'إلغاء')),
             ),
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, true),
               child: Text(
-                'Delete all',
+                _t('Delete all', 'حذف الكل'),
                 style: TextStyle(color: colors.danger),
               ),
             ),
@@ -141,7 +192,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     if (date.year == now.year &&
         date.month == now.month &&
         date.day == now.day) {
-      return 'Today';
+      return _t('Today', 'اليوم');
     }
 
     final yesterday = now.subtract(const Duration(days: 1));
@@ -149,7 +200,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     if (date.year == yesterday.year &&
         date.month == yesterday.month &&
         date.day == yesterday.day) {
-      return 'Yesterday';
+      return _t('Yesterday', 'أمس');
     }
 
     return '${date.day}/${date.month}/${date.year}';
@@ -166,7 +217,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         backgroundColor: colors.background,
         elevation: 0,
         leading: IconButton(
-          tooltip: 'Back',
+          tooltip: _t('Back', 'رجوع'),
           onPressed: () => Navigator.pop(context),
           icon: SvgPicture.asset(
             'assets/icons/back.svg',
@@ -175,7 +226,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           ),
         ),
         title: Text(
-          'History',
+          _t('History', 'السجل'),
           style: TextStyle(
             color: colors.textPrimary,
             fontWeight: FontWeight.w700,
@@ -184,7 +235,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         actions: [
           if (_manager.sessions.isNotEmpty)
             IconButton(
-              tooltip: 'Delete all',
+              tooltip: _t('Delete all', 'حذف الكل'),
               onPressed: () => _deleteAll(colors),
               icon: SvgPicture.asset(
                 'assets/icons/close.svg',
@@ -216,7 +267,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     },
                     style: TextStyle(color: colors.textPrimary),
                     decoration: InputDecoration(
-                      hintText: 'Search conversations...',
+                      hintText: _t(
+                        'Search conversations...',
+                        'ابحث في المحادثات...',
+                      ),
                       hintStyle: TextStyle(color: colors.textFaint),
                       prefixIcon: Padding(
                         padding: const EdgeInsets.all(12),
@@ -272,6 +326,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   Widget _chatTile(WeuraColors colors, ChatSession chat) {
+    final count = chat.messageCount;
+    final dateLabel = _formatDate(chat.updatedAt);
+
     return Material(
       color: colors.surface,
       borderRadius: BorderRadius.circular(16),
@@ -292,7 +349,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 child: Padding(
                   padding: const EdgeInsets.all(11),
                   child: SvgPicture.asset(
-                    'assets/icons/mode.svg',
+                    'assets/icons/history.svg',
                   ),
                 ),
               ),
@@ -312,12 +369,32 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       ),
                     ),
                     const SizedBox(height: 5),
-                    Text(
-                      _formatDate(chat.updatedAt),
-                      style: TextStyle(
-                        color: colors.textMuted,
-                        fontSize: 12,
-                      ),
+                    Row(
+                      children: [
+                        Text(
+                          dateLabel,
+                          style: TextStyle(
+                            color: colors.textMuted,
+                            fontSize: 12,
+                          ),
+                        ),
+                        if (count > 0) ...[
+                          Text(
+                            ' • ',
+                            style: TextStyle(
+                              color: colors.textFaint,
+                              fontSize: 12,
+                            ),
+                          ),
+                          Text(
+                            _t('$count messages', '$count رسالة'),
+                            style: TextStyle(
+                              color: colors.textMuted,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ],
                 ),
@@ -332,21 +409,21 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   if (value == 'rename') {
                     _renameChat(chat, colors);
                   } else if (value == 'delete') {
-                    _deleteChat(chat);
+                    _confirmDelete(chat, colors);
                   }
                 },
                 itemBuilder: (_) => [
                   PopupMenuItem(
                     value: 'rename',
                     child: Text(
-                      'Rename',
+                      _t('Rename', 'إعادة تسمية'),
                       style: TextStyle(color: colors.textPrimary),
                     ),
                   ),
                   PopupMenuItem(
                     value: 'delete',
                     child: Text(
-                      'Delete',
+                      _t('Delete', 'حذف'),
                       style: TextStyle(color: colors.danger),
                     ),
                   ),
@@ -360,6 +437,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   Widget _emptyState(WeuraColors colors) {
+    final isSearching = _search.trim().isNotEmpty;
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(30),
@@ -376,7 +455,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
             ),
             const SizedBox(height: 18),
             Text(
-              'No conversations yet',
+              isSearching
+                  ? _t('No results found', 'لا توجد نتائج')
+                  : _t('No conversations yet', 'لا توجد محادثات بعد'),
               style: TextStyle(
                 color: colors.textPrimary,
                 fontSize: 19,
@@ -385,7 +466,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Your conversations will appear here.',
+              isSearching
+                  ? _t(
+                      'Try a different search term.',
+                      'جرب كلمة بحث أخرى.',
+                    )
+                  : _t(
+                      'Your conversations will appear here.',
+                      'ستظهر محادثاتك هنا.',
+                    ),
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: colors.textMuted,
