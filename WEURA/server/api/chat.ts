@@ -89,33 +89,25 @@ function isPersonalQuestion(message: string): boolean {
  *  CLASSIFICATION — CONVERSATIONAL / TECHNICAL / CREATIVE
  * ============================================================ */
 
-/// Conversational requests (topics, suggestions, opinions, chat).
-/// These NEVER need real-time info.
 function isConversationalRequest(message: string): boolean {
   const text = message.trim();
   const patterns = [
-    // Requests for topics / suggestions / advice
     /^(مدلي|عطيني|قوللي|اقترحلي|اقترح علي|نصحني|علمني|ساعدني في|ساعدني على|هدرلي|حكيلنا عن)\s+/i,
     /^(suggest|give me|tell me|recommend|help me with|talk to me about)\s+/i,
     /^(واش)\s+(نهدر|نتكلم|نحكي|ندير|نلعب)\s+/i,
     /^(what)\s+(should|can)\s+(i|we)\s+/i,
-    // Requests for opinions
     /^(واش رايك|شنو رايك|رايك في|شكون الأحسن|شكون الأفضل)/i,
     /^(what do you think|your opinion|which is better)/i,
-    // Casual topics
     /^(نهدر|نتكلم|نحكي)\s+(على|عن|في)\s+/i,
     /^(let'?s talk about|let'?s chat)/i,
-    // Personal feel
     /^(راني|انا)\s+(حزين|فرحان|تعبان|مليت|زهقت|مبسوط)/i,
     /^(i'?m|im)\s+(sad|happy|tired|bored|excited)/i,
-    // Just chatting
     /^(كيفاش|كيف|شلون)\s+(راك|حالك)/i,
     /^(how are you|how'?s it going)/i,
   ];
   return patterns.some((p) => p.test(text));
 }
 
-/// Technical / educational requests. Model knows this stuff.
 function isTechnicalRequest(message: string): boolean {
   const text = message.trim().toLowerCase();
   const patterns = [
@@ -130,7 +122,6 @@ function isTechnicalRequest(message: string): boolean {
   return patterns.some((p) => p.test(text));
 }
 
-/// Creative requests. Model generates from imagination.
 function isCreativeRequest(message: string): boolean {
   const text = message.trim();
   const patterns = [
@@ -149,7 +140,6 @@ function isCreativeRequest(message: string): boolean {
  *  SEARCH SIGNAL — CONSERVATIVE
  * ============================================================ */
 
-/// Returns TRUE only if there's a clear signal that real-time info is needed.
 function hasSearchSignal(message: string): boolean {
   const text = message.toLowerCase().trim();
 
@@ -173,6 +163,16 @@ function hasSearchSignal(message: string): boolean {
     return true;
   }
 
+  // 4b. Last match / game / result
+  if (/(آخر مباراة|آخر ماتش|آخر لقاء|آخر نتيجة|آخر ماتشات|مباراة أمس|ماتش أمس|شحال ربح|شحال خسر|شكون ربح|شكون خسر|last match|last game|last result|final score)/i.test(text)) {
+    return true;
+  }
+
+  // 4c. Any mention of "آخر" + football/result context
+  if (/(آخر)/i.test(text) && /(مباراة|ماتش|لقاء|نتيجة|هدف|هدفين|كورة|كرة القدم|دوري|سوسيداد|ريال|برشلونة|لاعب)/i.test(text)) {
+    return true;
+  }
+
   // 5. Current club/player info (transfers change)
   if (/(أين يلعب|اين يلعب|فين يلعب|يلعب حاليا|يلعب الآن|فريقه الحالي|ناديه الحالي|انتقل|current club|plays for|where does .* play)/i.test(text)) {
     return true;
@@ -193,7 +193,7 @@ function hasSearchSignal(message: string): boolean {
     return true;
   }
 
-  // 9. Explicit "what's the news on X" / "what happened with X"
+  // 9. "What happened with X"
   if (/(واش صرا في|واش صرا مع|ما حدث في|ما حدث مع|what happened (with|to|in))/i.test(text)) {
     return true;
   }
@@ -209,11 +209,11 @@ function hasSearchSignal(message: string): boolean {
 function needsSearch(message: string): boolean {
   const text = message.trim();
 
-  // ── 1. NEVER search for identity / personal questions
+  // 1. NEVER search for identity / personal questions
   if (isIdentityQuestion(text)) return false;
   if (isPersonalQuestion(text)) return false;
 
-  // ── 2. NEVER search for greetings / thanks / ok / bye
+  // 2. NEVER search for greetings / thanks / ok / bye
   const skipPatterns = [
     /^(hi|hey|hello|helo|hallo|yo|sup|hiya|howdy)[\s!.,?]*$/i,
     /^(good\s*(morning|evening|afternoon|night))[\s!.,?]*$/i,
@@ -228,20 +228,20 @@ function needsSearch(message: string): boolean {
   ];
   if (skipPatterns.some((p) => p.test(text))) return false;
 
-  // ── 3. NEVER search for very short messages or pure math
+  // 3. NEVER search for very short messages or pure math
   if (text.length < 3) return false;
   if (/^[\d\s+\-*/().%,]+$/.test(text)) return false;
 
-  // ── 4. NEVER search for conversational requests
+  // 4. NEVER search for conversational requests
   if (isConversationalRequest(text)) return false;
 
-  // ── 5. NEVER search for technical / educational requests
+  // 5. NEVER search for technical / educational requests
   if (isTechnicalRequest(text)) return false;
 
-  // ── 6. NEVER search for creative requests
+  // 6. NEVER search for creative requests
   if (isCreativeRequest(text)) return false;
 
-  // ── 7. Otherwise: SEARCH ONLY IF there's a clear signal
+  // 7. Otherwise: SEARCH ONLY IF there's a clear signal
   return hasSearchSignal(text);
 }
 
