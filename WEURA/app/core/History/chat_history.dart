@@ -1,21 +1,48 @@
+
+import 'dart:math' as math;
+
 import '../../services/Storage/storage_service.dart';
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+enum MessageKind {
+  text,
+  image,
+  vision,
+  player,
+  file,
+}
 
 class ChatMessageData {
   const ChatMessageData({
     required this.text,
     required this.isUser,
     required this.timestamp,
+    this.kind = MessageKind.text,
+    this.metadata,
   });
 
   final String text;
   final bool isUser;
   final DateTime timestamp;
+  final MessageKind kind;
+
+  /// Extra data for non-text messages.
+  /// - image:  { 'imageUrl': '...', 'imagePrompt': '...' }
+  /// - vision: { 'imagePath': '...' }
+  /// - player: { 'playerName': '...' }
+  /// - file:   { 'fileName': '...', 'fileType': '...' }
+  final Map<String, dynamic>? metadata;
 
   Map<String, dynamic> toJson() {
     return {
       'text': text,
       'isUser': isUser,
       'timestamp': timestamp.toIso8601String(),
+      'kind': kind.name,
+      if (metadata != null) 'metadata': metadata,
     };
   }
 
@@ -27,6 +54,36 @@ class ChatMessageData {
             json['timestamp']?.toString() ?? '',
           ) ??
           DateTime.now(),
+      kind: _parseKind(json['kind']?.toString()),
+      metadata: json['metadata'] is Map
+          ? Map<String, dynamic>.from(
+              json['metadata'] as Map,
+            )
+          : null,
+    );
+  }
+
+  static MessageKind _parseKind(String? raw) {
+    if (raw == null) return MessageKind.text;
+    for (final k in MessageKind.values) {
+      if (k.name == raw) return k;
+    }
+    return MessageKind.text;
+  }
+
+  ChatMessageData copyWith({
+    String? text,
+    bool? isUser,
+    DateTime? timestamp,
+    MessageKind? kind,
+    Map<String, dynamic>? metadata,
+  }) {
+    return ChatMessageData(
+      text: text ?? this.text,
+      isUser: isUser ?? this.isUser,
+      timestamp: timestamp ?? this.timestamp,
+      kind: kind ?? this.kind,
+      metadata: metadata ?? this.metadata,
     );
   }
 }
@@ -45,6 +102,8 @@ class ChatSession {
   final DateTime createdAt;
   DateTime updatedAt;
   final List<ChatMessageData> messages;
+
+  int get messageCount => messages.length;
 
   Map<String, dynamic> toJson() {
     return {
@@ -75,7 +134,7 @@ class ChatSession {
 
     return ChatSession(
       id: json['id']?.toString() ?? '',
-      title: json['title']?.toString() ?? 'New chat',
+      title: json['title']?.toString() ?? 'محادثة جديدة',
       createdAt: DateTime.tryParse(
             json['createdAt']?.toString() ?? '',
           ) ??
@@ -89,6 +148,10 @@ class ChatSession {
   }
 }
 
+// ---------------------------------------------------------------------------
+// HistoryManager
+// ---------------------------------------------------------------------------
+
 class HistoryManager {
   HistoryManager({
     StorageService? storage,
@@ -96,11 +159,25 @@ class HistoryManager {
 
   static const String _storageKey = 'weura_chat_history';
 
+  /// Maximum number of sessions kept at once.
+  static const int _maxSessions = 200;
+
+  /// Maximum number of messages per session.
+  static const int _maxMessagesPerSession = 500;
+
   final StorageService _storage;
 
   final List<ChatSession> _sessions = [];
 
   List<ChatSession> get sessions => List.unmodifiable(_sessions);
+
+  int get count => _sessions.length;
+
+  bool get isEmpty => _sessions.isEmpty;
+
+  // ---------------------------------------------------------------------------
+  // Persistence
+  // ---------------------------------------------------------------------------
 
   Future<void> load() async {
     final data = await _storage.read<List<dynamic>>(_storageKey);
@@ -121,16 +198,31 @@ class HistoryManager {
       }
     }
 
+    _sort();
+  }
+
+  Future<void> _save() async {
+    await _storage.write(
+      _storageKey,
+      _sessions.map((s) => s.toJson()).toList(),
+    );
+  }
+
+  void _sort() {
     _sessions.sort(
       (a, b) => b.updatedAt.compareTo(a.updatedAt),
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // CRUD
+  // ---------------------------------------------------------------------------
+
   Future<ChatSession> create({
-    String title = 'New chat',
+    String title = 'محادثة جديدة',
   }) async {
     final session = ChatSession(
-      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      id: _generateId(),
       title: title,
       createdAt: DateTime.now(),
       updatedAt: DateTime.now(),
@@ -138,17 +230,27 @@ class HistoryManager {
     );
 
     _sessions.insert(0, session);
-    await _save();
 
+    if (_sessions.length > _maxSessions) {
+      _sessions.removeRange(_maxSessions, _sessions.length);
+    }
+
+    await _save();
     return session;
   }
 
   Future<void> save(ChatSession session) async {
     session.updatedAt = DateTime.now();
 
-    final index = _sessions.indexWhere(
-      (item) => item.id == session.id,
-    );
+    // Cap messages per session.
+    if (session.messages.length > _maxMessagesPerSession) {
+      session.messages.removeRange(
+        0,
+        session.messages.length - _maxMessagesPerSession,
+      );
+    }
+
+    final index = _sessions.indexWhere((s) => s.id == session.id);
 
     if (index == -1) {
       _sessions.insert(0, session);
@@ -156,17 +258,13 @@ class HistoryManager {
       _sessions[index] = session;
     }
 
-    _sessions.sort(
-      (a, b) => b.updatedAt.compareTo(a.updatedAt),
-    );
-
+    _sort();
     await _save();
   }
 
   Future<bool> delete(String id) async {
     final before = _sessions.length;
-
-    _sessions.removeWhere((item) => item.id == id);
+    _sessions.removeWhere((s) => s.id == id);
 
     if (_sessions.length == before) return false;
 
@@ -175,18 +273,17 @@ class HistoryManager {
   }
 
   Future<bool> rename(String id, String title) async {
-    final index = _sessions.indexWhere(
-      (item) => item.id == id,
-    );
-
+    final index = _sessions.indexWhere((s) => s.id == id);
     if (index == -1) return false;
 
     final cleanTitle = title.trim();
     if (cleanTitle.isEmpty) return false;
 
     _sessions[index].title = cleanTitle;
-    await _save();
+    _sessions[index].updatedAt = DateTime.now();
 
+    _sort();
+    await _save();
     return true;
   }
 
@@ -194,6 +291,10 @@ class HistoryManager {
     _sessions.clear();
     await _storage.delete(_storageKey);
   }
+
+  // ---------------------------------------------------------------------------
+  // Query
+  // ---------------------------------------------------------------------------
 
   ChatSession? findById(String id) {
     for (final session in _sessions) {
@@ -222,10 +323,53 @@ class HistoryManager {
     }).toList();
   }
 
-  Future<void> _save() async {
-    await _storage.write(
-      _storageKey,
-      _sessions.map((s) => s.toJson()).toList(),
-    );
+  // ---------------------------------------------------------------------------
+  // Export / Import
+  // ---------------------------------------------------------------------------
+
+  List<Map<String, dynamic>> exportJson() {
+    return _sessions.map((s) => s.toJson()).toList();
+  }
+
+  Future<void> importJson(List<dynamic> data) async {
+    _sessions.clear();
+
+    for (final item in data) {
+      if (item is Map) {
+        final session = ChatSession.fromJson(
+          Map<String, dynamic>.from(item),
+        );
+        if (session.id.isNotEmpty) {
+          _sessions.add(session);
+        }
+      }
+    }
+
+    if (_sessions.length > _maxSessions) {
+      _sessions.removeRange(_maxSessions, _sessions.length);
+    }
+
+    _sort();
+    await _save();
+  }
+
+  // ---------------------------------------------------------------------------
+  // ID
+  // ---------------------------------------------------------------------------
+
+  String _generateId() {
+    final now = DateTime.now().microsecondsSinceEpoch;
+    final rand = _randomSuffix();
+    return '${now}_$rand';
+  }
+
+  String _randomSuffix() {
+    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    final buffer = StringBuffer();
+    final random = math.Random();
+    for (int i = 0; i < 6; i++) {
+      buffer.write(chars[random.nextInt(chars.length)]);
+    }
+    return buffer.toString();
   }
 }
