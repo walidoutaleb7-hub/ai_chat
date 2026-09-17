@@ -10,11 +10,7 @@ import visionRouter from './api/vision';
 import playerRouter from './api/player';
 import filesRouter from './api/files';
 
-import {
-  rateLimit,
-  requestId,
-  validateChatBody,
-} from './api/security_middleware';
+import { rateLimit, requestId } from './api/security_middleware';
 
 const app = express();
 
@@ -112,8 +108,10 @@ app.use(healthRouter);
 // Rate limit applies to all /api routes.
 app.use('/api', rateLimit);
 
-// Chat has strict validation.
-app.use('/api/chat', validateChatBody);
+// NOTE: chat.ts does its own validation + sanitization.
+// We intentionally do NOT add validateChatBody here to avoid
+// double-validation bugs (e.g. middleware setting mode=null,
+// then chat.ts rejecting it as "must be a string").
 
 app.use('/api', chatRouter);
 app.use('/api', searchRouter);
