@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../core/AI/ai_router.dart';
 import '../../core/Settings/app_settings.dart';
 import '../../core/Theme/weura_theme.dart';
 import '../../services/Storage/storage_service.dart';
@@ -22,47 +23,25 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final AppSettingsManager _settings = AppSettingsManager.instance;
 
-  bool _memoryEnabled = true;
-  bool _voiceInput = true;
-  bool _voiceOutput = false;
-  bool _autoSaveHistory = true;
-  bool _sendOnEnter = true;
-  bool _streamResponses = true;
-
-  static const String _memoryKey = 'weura_memory_enabled';
-  static const String _voiceInputKey = 'weura_voice_input';
-  static const String _voiceOutputKey = 'weura_voice_output';
-  static const String _autoSaveKey = 'weura_auto_save';
-  static const String _sendOnEnterKey = 'weura_send_on_enter';
-  static const String _streamKey = 'weura_stream';
-
   @override
   void initState() {
     super.initState();
-    _loadExtras();
+    _settings.addListener(_refresh);
   }
 
-  Future<void> _loadExtras() async {
-    final storage = StorageService.instance;
-
-    final mem = await storage.read<bool>(_memoryKey);
-    final vIn = await storage.read<bool>(_voiceInputKey);
-    final vOut = await storage.read<bool>(_voiceOutputKey);
-    final auto = await storage.read<bool>(_autoSaveKey);
-    final send = await storage.read<bool>(_sendOnEnterKey);
-    final strm = await storage.read<bool>(_streamKey);
-
-    if (!mounted) return;
-
-    setState(() {
-      if (mem != null) _memoryEnabled = mem;
-      if (vIn != null) _voiceInput = vIn;
-      if (vOut != null) _voiceOutput = vOut;
-      if (auto != null) _autoSaveHistory = auto;
-      if (send != null) _sendOnEnter = send;
-      if (strm != null) _streamResponses = strm;
-    });
+  @override
+  void dispose() {
+    _settings.removeListener(_refresh);
+    super.dispose();
   }
+
+  void _refresh() {
+    if (mounted) setState(() {});
+  }
+
+  // ---------------------------------------------------------------------------
+  // Names
+  // ---------------------------------------------------------------------------
 
   String get _themeName {
     switch (_settings.themeMode) {
@@ -88,10 +67,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  String _modeName(AIMode mode) {
+    switch (mode) {
+      case AIMode.auto:
+        return 'Auto';
+      case AIMode.smart:
+        return 'Smart';
+      case AIMode.fast:
+        return 'Fast';
+      case AIMode.research:
+        return 'Research';
+      case AIMode.code:
+        return 'Code';
+      case AIMode.creative:
+        return 'Creative';
+      case AIMode.vision:
+        return 'Vision';
+      case AIMode.files:
+        return 'Files';
+      case AIMode.translation:
+        return 'Translation';
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Pickers
+  // ---------------------------------------------------------------------------
+
   Future<void> _selectTheme(WeuraColors colors) async {
     final result = await showModalBottomSheet<ThemeMode>(
       context: context,
       backgroundColor: colors.surfaceAlt,
+      showDragHandle: true,
       builder: (_) {
         return _SelectionSheet<ThemeMode>(
           colors: colors,
@@ -105,16 +112,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
         );
       },
     );
-
     if (result == null) return;
     await _settings.setThemeMode(result);
-    if (mounted) setState(() {});
   }
 
   Future<void> _selectLanguage(WeuraColors colors) async {
     final result = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: colors.surfaceAlt,
+      showDragHandle: true,
       builder: (_) {
         return _SelectionSheet<String>(
           colors: colors,
@@ -128,16 +134,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
         );
       },
     );
-
     if (result == null) return;
     await _settings.setLanguage(result);
-    if (mounted) setState(() {});
   }
 
   Future<void> _selectDirection(WeuraColors colors) async {
     final result = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: colors.surfaceAlt,
+      showDragHandle: true,
       builder: (_) {
         return _SelectionSheet<String>(
           colors: colors,
@@ -151,16 +156,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
         );
       },
     );
-
     if (result == null) return;
     await _settings.setDirection(result);
-    if (mounted) setState(() {});
   }
 
   Future<void> _selectResponseDetail(WeuraColors colors) async {
     final result = await showModalBottomSheet<ResponseDetail>(
       context: context,
       backgroundColor: colors.surfaceAlt,
+      showDragHandle: true,
       builder: (_) {
         return _SelectionSheet<ResponseDetail>(
           colors: colors,
@@ -181,22 +185,90 @@ class _SettingsScreenState extends State<SettingsScreen> {
         );
       },
     );
-
     if (result == null) return;
     await _settings.setResponseDetail(result);
-    if (mounted) setState(() {});
   }
 
-  Future<void> _toggleExtra(
-    String key,
-    bool value,
-    ValueChanged<bool> setter,
-  ) async {
-    setter(value);
-    await StorageService.instance.write(key, value);
+  Future<void> _selectMode(WeuraColors colors) async {
+    final result = await showModalBottomSheet<AIMode>(
+      context: context,
+      backgroundColor: colors.surfaceAlt,
+      showDragHandle: true,
+      isScrollControlled: true,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.85,
+      ),
+      builder: (_) {
+        return _SelectionSheet<AIMode>(
+          colors: colors,
+          title: 'Default AI mode',
+          value: _settings.mode,
+          options: AIMode.values
+              .map((m) => _SelectionOption(value: m, title: _modeName(m)))
+              .toList(),
+        );
+      },
+    );
+    if (result == null) return;
+    await _settings.setMode(result);
   }
+
+  Future<void> _editUserName(WeuraColors colors) async {
+    final controller = TextEditingController(text: _settings.userName);
+
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: colors.surfaceAlt,
+          title: Text(
+            'Your name',
+            style: TextStyle(color: colors.textPrimary),
+          ),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            maxLength: 40,
+            style: TextStyle(color: colors.textPrimary),
+            decoration: InputDecoration(
+              hintText: 'e.g. Walid',
+              hintStyle: TextStyle(color: colors.textFaint),
+              filled: true,
+              fillColor: colors.surface,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide.none,
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () =>
+                  Navigator.pop(dialogContext, controller.text),
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (result == null) return;
+    await _settings.setUserName(result);
+    _showChanged(
+      result.trim().isEmpty ? 'Name cleared' : 'Name saved',
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Dialogs
+  // ---------------------------------------------------------------------------
 
   void _showChanged(String message) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
@@ -231,14 +303,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Navigator.pop(dialogContext);
                 await _settings.reset();
                 if (!mounted) return;
-                setState(() {
-                  _memoryEnabled = true;
-                  _voiceInput = true;
-                  _voiceOutput = false;
-                  _autoSaveHistory = true;
-                  _sendOnEnter = true;
-                  _streamResponses = true;
-                });
                 _showChanged('Settings reset');
               },
               child: Text(
@@ -273,11 +337,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             TextButton(
               onPressed: () async {
+                Navigator.pop(dialogContext);
                 await StorageService.instance.clear();
                 await _settings.reset();
-                widget.onClearLocalData?.call();
                 if (!mounted) return;
-                Navigator.pop(dialogContext);
+                widget.onClearLocalData?.call();
                 _showChanged('Local data cleared');
               },
               child: Text(
@@ -320,6 +384,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: colors.surfaceAlt,
+      showDragHandle: true,
       builder: (_) {
         return SafeArea(
           child: Padding(
@@ -337,10 +402,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                _infoRow(colors, 'AI Engine', 'Groq'),
+                _infoRow(colors, 'AI Engine', 'Groq (primary)'),
+                _infoRow(colors, 'Fallback', 'Cerebras'),
                 _infoRow(colors, 'Search', 'Tavily'),
+                _infoRow(colors, 'Images', 'Cloudflare FLUX'),
                 _infoRow(colors, 'API key', 'Server-side'),
-                _infoRow(colors, 'Security', 'Protected'),
                 const SizedBox(height: 10),
                 Text(
                   'Connection availability depends on the WEURA backend configuration.',
@@ -379,6 +445,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // Build
+  // ---------------------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
@@ -425,6 +495,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 10, 16, 40),
         children: [
+          // ─── Appearance ───────────────────────────────────────────────
           _sectionTitle(colors, 'Appearance'),
           _card(colors, [
             _settingTile(
@@ -450,8 +521,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ]),
           const SizedBox(height: 24),
 
+          // ─── AI ───────────────────────────────────────────────────────
           _sectionTitle(colors, 'AI'),
           _card(colors, [
+            _settingTile(
+              colors,
+              title: 'Your name',
+              subtitle: _settings.hasUserName
+                  ? _settings.userName
+                  : 'Not set',
+              onTap: () => _editUserName(colors),
+            ),
+            _divider(colors),
+            _settingTile(
+              colors,
+              title: 'Default AI mode',
+              subtitle: _modeName(_settings.mode),
+              onTap: () => _selectMode(colors),
+            ),
+            _divider(colors),
             _settingTile(
               colors,
               title: 'Response detail',
@@ -463,107 +551,67 @@ class _SettingsScreenState extends State<SettingsScreen> {
               colors,
               title: 'Memory',
               subtitle: 'Allow WEURA to use saved memories',
-              value: _memoryEnabled,
-              onChanged: (value) {
-                _toggleExtra(
-                  _memoryKey,
-                  value,
-                  (v) => setState(() => _memoryEnabled = v),
-                );
-              },
-            ),
-            _divider(colors),
-            _switchTile(
-              colors,
-              title: 'Stream responses',
-              subtitle: 'Show responses as they are generated',
-              value: _streamResponses,
-              onChanged: (value) {
-                _toggleExtra(
-                  _streamKey,
-                  value,
-                  (v) => setState(() => _streamResponses = v),
-                );
-              },
+              value: _settings.memoryEnabled,
+              onChanged: _settings.setMemoryEnabled,
             ),
           ]),
           const SizedBox(height: 24),
 
+          // ─── Voice ────────────────────────────────────────────────────
           _sectionTitle(colors, 'Voice'),
           _card(colors, [
             _switchTile(
               colors,
               title: 'Voice input',
               subtitle: 'Use your microphone for messages',
-              value: _voiceInput,
-              onChanged: (value) {
-                _toggleExtra(
-                  _voiceInputKey,
-                  value,
-                  (v) => setState(() => _voiceInput = v),
-                );
-              },
+              value: _settings.voiceInputEnabled,
+              onChanged: _settings.setVoiceInputEnabled,
             ),
             _divider(colors),
             _switchTile(
               colors,
               title: 'Voice output',
               subtitle: 'Read AI responses aloud',
-              value: _voiceOutput,
-              onChanged: (value) {
-                _toggleExtra(
-                  _voiceOutputKey,
-                  value,
-                  (v) => setState(() => _voiceOutput = v),
-                );
-              },
+              value: _settings.voiceOutputEnabled,
+              onChanged: _settings.setVoiceOutputEnabled,
             ),
           ]),
           const SizedBox(height: 24),
 
+          // ─── Chat ─────────────────────────────────────────────────────
           _sectionTitle(colors, 'Chat'),
           _card(colors, [
             _switchTile(
               colors,
               title: 'Auto-save history',
               subtitle: 'Automatically save conversations',
-              value: _autoSaveHistory,
-              onChanged: (value) {
-                _toggleExtra(
-                  _autoSaveKey,
-                  value,
-                  (v) => setState(() => _autoSaveHistory = v),
-                );
-              },
+              value: _settings.autoSaveHistory,
+              onChanged: _settings.setAutoSaveHistory,
             ),
             _divider(colors),
             _switchTile(
               colors,
               title: 'Send on Enter',
               subtitle: 'Press Enter to send a message',
-              value: _sendOnEnter,
-              onChanged: (value) {
-                _toggleExtra(
-                  _sendOnEnterKey,
-                  value,
-                  (v) => setState(() => _sendOnEnter = v),
-                );
-              },
+              value: _settings.sendOnEnter,
+              onChanged: _settings.setSendOnEnter,
             ),
           ]),
           const SizedBox(height: 24),
 
+          // ─── Connection ───────────────────────────────────────────────
           _sectionTitle(colors, 'Connection'),
           _card(colors, [
             _settingTile(
               colors,
               title: 'AI connection',
-              subtitle: 'Groq • Tavily • Server-side',
+              subtitle: 'Groq • Cerebras • Tavily',
               onTap: () => _showConnectionInfo(colors),
             ),
           ]),
           const SizedBox(height: 24),
 
+          // ─── Privacy ──────────────────────────────────────────────────
           _sectionTitle(colors, 'Privacy'),
           _card(colors, [
             _settingTile(
@@ -576,6 +624,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ]),
           const SizedBox(height: 24),
 
+          // ─── About ────────────────────────────────────────────────────
           _sectionTitle(colors, 'About'),
           _card(colors, [
             _settingTile(
@@ -589,6 +638,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // Widgets
+  // ---------------------------------------------------------------------------
 
   Widget _sectionTitle(WeuraColors colors, String title) {
     return Padding(
@@ -650,7 +703,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required String title,
     required String subtitle,
     required bool value,
-    required ValueChanged<bool> onChanged,
+    required Future<void> Function(bool) onChanged,
   }) {
     return ListTile(
       contentPadding:
@@ -666,7 +719,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
         subtitle,
         style: TextStyle(color: colors.textMuted, fontSize: 12),
       ),
-      trailing: Switch(value: value, onChanged: onChanged),
+      trailing: Switch(
+        value: value,
+        onChanged: (v) {
+          onChanged(v);
+        },
+      ),
     );
   }
 
@@ -674,10 +732,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Divider(
       height: 1,
       indent: 16,
+      endIndent: 16,
       color: colors.border,
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// Selection sheet
+// ---------------------------------------------------------------------------
 
 class _SelectionOption<T> {
   const _SelectionOption({
@@ -705,8 +768,8 @@ class _SelectionSheet<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
