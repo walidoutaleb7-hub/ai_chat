@@ -66,6 +66,10 @@ class MemoryManager {
 
   int get count => _memories.length;
 
+  // ---------------------------------------------------------------------------
+  // Stop words (used for scoring)
+  // ---------------------------------------------------------------------------
+
   static const Set<String> _stopWords = {
     // Arabic
     'من', 'ما', 'هل', 'في', 'على', 'عن', 'إلى', 'الى', 'هذا', 'هذه',
@@ -79,18 +83,41 @@ class MemoryManager {
     'what', 'who', 'when', 'where', 'why', 'how', 'this', 'that',
   };
 
-  /// Patterns to detect a name inside a memory.
-  /// Note: raw strings with DOUBLE quotes (r"...") so \' works safely.
+  // ---------------------------------------------------------------------------
+  // Name detection patterns
+  // ---------------------------------------------------------------------------
+
+  /// Only EXPLICIT name forms are matched here.
+  ///
+  /// "I am" / "i'm" / "أنا" are deliberately EXCLUDED because they cause
+  /// too many false positives:
+  ///   "I am learning Flutter" → would return "learning"
+  ///   "أنا هنا" → would return "هنا"
+  ///
+  /// We only trust explicit declarations:
+  ///   "my name is X"
+  ///   "call me X"
+  ///   "اسمي X"
+  ///   "نادني X"
   static final List<RegExp> _namePatterns = [
     RegExp(
-      r"(?:my name is|i am|i'm|call me)\s+([A-Za-z\u0600-\u06FF][A-Za-z\u0600-\u06FF\s\-]{1,40})",
+      r"(?:my name is|call me)\s+([A-Za-z\u0600-\u06FF][A-Za-z\u0600-\u06FF\s\-]{1,30})",
       caseSensitive: false,
     ),
     RegExp(
-      r"(?:اسمي|انا|أنا|إسمي|نادى علي|نادني)\s+([A-Za-z\u0600-\u06FF][A-Za-z\u0600-\u06FF\s\-]{1,40})",
+      r"(?:اسمي|إسمي|نادني|نادى علي|ناديني)\s+([A-Za-z\u0600-\u06FF][A-Za-z\u0600-\u06FF\s\-]{1,30})",
       caseSensitive: false,
     ),
   ];
+
+  /// Words that could be mistakenly extracted but are never names.
+  static const Set<String> _notNames = {
+    'tired', 'sad', 'happy', 'hungry', 'busy', 'here', 'there',
+    'good', 'fine', 'okay', 'ok', 'ready', 'sorry', 'learning',
+    'thinking', 'working', 'going', 'coming', 'waiting',
+    'هنا', 'هناك', 'بخير', 'لاباس', 'تعبان', 'فرحان', 'زعفان',
+    'جاهز', 'مشغول', 'رايح', 'جاي', 'نستنى',
+  };
 
   // ---------------------------------------------------------------------------
   // Persistence
@@ -263,9 +290,8 @@ class MemoryManager {
 
   bool _looksLikeNameMemory(String lowerContent) {
     return lowerContent.contains('اسمي') ||
+        lowerContent.contains('إسمي') ||
         lowerContent.contains('my name is') ||
-        lowerContent.contains('i am ') ||
-        lowerContent.contains("i'm ") ||
         lowerContent.contains('نادني') ||
         lowerContent.contains('call me');
   }
@@ -275,6 +301,8 @@ class MemoryManager {
   // ---------------------------------------------------------------------------
 
   /// Returns the user's name if it was saved in memory, otherwise null.
+  ///
+  /// Only explicit declarations are accepted (see [_namePatterns]).
   String? getUserName() {
     for (final memory in _memories) {
       final content = memory.content.trim();
@@ -293,8 +321,10 @@ class MemoryManager {
   }
 
   String _cleanName(String raw) {
+    // Cut at the first sentence-ending punctuation.
     var result = raw.split(RegExp(r'[.,!?؟\n]')).first.trim();
 
+    // Take only the first few tokens (before a stop word).
     final tokens = result.split(RegExp(r'\s+'));
     final kept = <String>[];
     for (final token in tokens) {
@@ -302,9 +332,22 @@ class MemoryManager {
         break;
       }
       kept.add(token);
+      if (kept.length >= 3) break; // Max 3 words.
     }
 
     result = kept.join(' ').trim();
+
+    // Reject known non-names (e.g. "tired", "hapa").
+    if (_notNames.contains(result.toLowerCase())) return '';
+
+    // Reject if it contains digits or symbols.
+    if (RegExp(r'[0-9@#$%^&*()_+=\[\]{}|\\/<>~`]').hasMatch(result)) {
+      return '';
+    }
+
+    // Reject if it's only one character.
+    if (result.length < 2) return '';
+
     return result;
   }
 
