@@ -9,16 +9,16 @@ const GROQ_API_URL =
  *  CONSTANTS
  * ============================================================ */
 
-/// Groq image limit is 4MB. Base64 inflates ~33%.
-/// 4MB image → ~5.4MB base64. We allow up to 8MB total to be safe.
-const MAX_IMAGE_DATA_URL_LENGTH = 8_000_000;
+/// Raised limit: 12MB base64 (~9MB raw image).
+/// Client-side compression keeps images under 2MB usually.
+const MAX_IMAGE_DATA_URL_LENGTH = 12_000_000;
 
 const MAX_QUESTION_LENGTH = 2000;
-const MODEL_TIMEOUT_MS = 90_000;
+const MODEL_TIMEOUT_MS = 60_000;
 
 const VISION_MODELS = [
-  'meta-llama/llama-4-maverick-17b-128e-instruct',
   'meta-llama/llama-4-scout-17b-16e-instruct',
+  'meta-llama/llama-4-maverick-17b-128e-instruct',
   'llama-3.2-90b-vision-preview',
   'llama-3.2-11b-vision-preview',
 ];
@@ -30,10 +30,6 @@ const ALLOWED_MIME_TYPES = new Set([
   'image/webp',
   'image/gif',
 ]);
-
-/* ============================================================
- *  SYSTEM PROMPT
- * ============================================================ */
 
 const SYSTEM_PROMPT = `You are WEURA Vision — an expert image analyst.
 
@@ -52,10 +48,6 @@ You receive an image and a user's question. Your job:
 
 Match the user's language (Arabic, English, French, dialect, etc.).
 Keep the response well-structured with Markdown when helpful.`;
-
-/* ============================================================
- *  TYPES
- * ============================================================ */
 
 type VisionRequest = {
   image?: unknown;
@@ -81,9 +73,7 @@ function validateImageData(raw: string): string | null {
   }
 
   const match = raw.match(/^data:([^;]+);base64,/);
-  if (!match) {
-    return 'Invalid image format.';
-  }
+  if (!match) return 'Invalid image format.';
 
   const mimeType = match[1].toLowerCase();
   if (!ALLOWED_MIME_TYPES.has(mimeType)) {
@@ -92,7 +82,7 @@ function validateImageData(raw: string): string | null {
 
   if (raw.length > MAX_IMAGE_DATA_URL_LENGTH) {
     const mb = (raw.length / (1024 * 1024)).toFixed(1);
-    return `Image is too large (${mb} MB). Maximum ~6 MB.`;
+    return `Image is too large (${mb} MB). Maximum ~9 MB.`;
   }
 
   return null;
