@@ -9,21 +9,21 @@ const MAX_QUESTION_LENGTH = 2000;
 const MODEL_TIMEOUT_MS = 45_000;
 
 /**
- * Vision models — ordered by availability on Groq free tier.
+ * Vision models currently supported on Groq (as of 2026).
  *
- * If a model returns "does not exist", we silently skip it.
- * The list is intentionally broad so at least one should work.
+ * The old llama-3.2-vision and llama-4 vision models have been
+ * decommissioned. Groq now recommends Qwen multimodal models.
+ *
+ * Source: https://console.groq.com/docs/vision
  */
 const VISION_MODELS = [
-  'meta-llama/llama-4-scout-17b-16e-instruct',
-  'meta-llama/llama-4-maverick-17b-128e-instruct',
-  'llama-3.2-90b-vision-preview',
-  'llama-3.2-11b-vision-preview',
+  'qwen/qwen3.6-27b',        // Primary — fast, 131K context
+  'qwen/qwen3.8-27b',        // Fallback — newer, higher quality
 ];
 
 /**
  * Optional override via environment variable:
- *   GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
+ *   GROQ_VISION_MODEL=qwen/qwen3.6-27b
  *
  * If set, it's tried FIRST before the fallback list.
  */
@@ -81,10 +81,6 @@ function sanitizeQuestion(raw: unknown): string {
   return clean || 'Describe this image in detail.';
 }
 
-/**
- * Returns true if the error means "this model is not available".
- * In that case we skip silently instead of reporting it as failure.
- */
 function isModelUnavailable(error: string): boolean {
   const e = error.toLowerCase();
   return (
@@ -183,7 +179,6 @@ router.get('/vision/models', async (_req, res) => {
     });
   }
 
-  // Tiny 1x1 transparent PNG for testing.
   const tinyPng =
     'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 
@@ -266,7 +261,6 @@ router.post('/vision', async (req, res) => {
 
       const errMsg = result.error ?? 'unknown error';
 
-      // If the model is just unavailable, skip silently.
       if (isModelUnavailable(errMsg)) {
         unavailableCount++;
         console.log(
@@ -278,19 +272,17 @@ router.post('/vision', async (req, res) => {
       errors.push(`${model}: ${errMsg}`);
     }
 
-    // All models are unavailable → tell the user clearly.
     if (unavailableCount === models.length) {
       return res.status(503).json({
         success: false,
         error:
           'No vision model is available on your Groq account. ' +
-          'Check https://console.groq.com/docs/models for available models, ' +
+          'Check https://console.groq.com/docs/vision for available models, ' +
           'or set GROQ_VISION_MODEL env var to a valid model.',
         available: false,
       });
     }
 
-    // Some models failed for real reasons → report all.
     return res.status(502).json({
       success: false,
       error: errors.join('\n'),
