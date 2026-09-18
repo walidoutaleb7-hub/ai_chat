@@ -293,7 +293,6 @@ async function tavilySearch(
  * ============================================================ */
 
 const CLUB_ALIASES: Record<string, string> = {
-  // Spain
   'real madrid': 'Real Madrid',
   'fc barcelona': 'FC Barcelona',
   barcelona: 'FC Barcelona',
@@ -308,8 +307,6 @@ const CLUB_ALIASES: Record<string, string> = {
   'celta vigo': 'Celta Vigo',
   'rayo vallecano': 'Rayo Vallecano',
   girona: 'Girona',
-
-  // England
   'manchester city': 'Manchester City',
   'manchester united': 'Manchester United',
   'man utd': 'Manchester United',
@@ -335,8 +332,6 @@ const CLUB_ALIASES: Record<string, string> = {
   leeds: 'Leeds United',
   southampton: 'Southampton',
   ipswich: 'Ipswich Town',
-
-  // Germany
   'bayern munich': 'Bayern Munich',
   bayern: 'Bayern Munich',
   'borussia dortmund': 'Borussia Dortmund',
@@ -352,8 +347,6 @@ const CLUB_ALIASES: Record<string, string> = {
   wolfsburg: 'VfL Wolfsburg',
   monchengladbach: 'Borussia Monchengladbach',
   'borussia monchengladbach': 'Borussia Monchengladbach',
-
-  // Italy
   juventus: 'Juventus',
   'inter milan': 'Inter Milan',
   inter: 'Inter Milan',
@@ -367,8 +360,6 @@ const CLUB_ALIASES: Record<string, string> = {
   fiorentina: 'Fiorentina',
   bologna: 'Bologna',
   torino: 'Torino',
-
-  // France
   'paris saint-germain': 'Paris Saint-Germain',
   'paris saint germain': 'Paris Saint-Germain',
   'paris sg': 'Paris Saint-Germain',
@@ -381,20 +372,14 @@ const CLUB_ALIASES: Record<string, string> = {
   nice: 'Nice',
   'stade rennais': 'Stade Rennais',
   rennes: 'Stade Rennais',
-
-  // Portugal
   benfica: 'Benfica',
   porto: 'FC Porto',
   'fc porto': 'FC Porto',
   sporting: 'Sporting CP',
   'sporting cp': 'Sporting CP',
-
-  // Netherlands
   ajax: 'Ajax',
   psv: 'PSV',
   feyenoord: 'Feyenoord',
-
-  // Saudi Arabia
   'al nassr': 'Al Nassr',
   'al-nassr': 'Al Nassr',
   alnassr: 'Al Nassr',
@@ -411,37 +396,27 @@ const CLUB_ALIASES: Record<string, string> = {
   'al ettifaq': 'Al-Ettifaq',
   'al-ettifaq': 'Al-Ettifaq',
   'al taawoun': 'Al-Taawoun',
-
-  // UAE
   'al ain': 'Al Ain',
   'al-ain': 'Al Ain',
   'al wasl': 'Al Wasl',
   'al-wasl': 'Al Wasl',
   'al jazira': 'Al Jazira',
   sharjah: 'Sharjah',
-
-  // Qatar
   'al sadd': 'Al Sadd',
   'al-sadd': 'Al Sadd',
   'al duhail': 'Al Duhail',
   'al-duhail': 'Al Duhail',
   'al rayyan': 'Al Rayyan',
-
-  // Egypt
   'al ahly': 'Al Ahly',
   'al-ahly': 'Al Ahly',
   'al ahly cairo': 'Al Ahly',
   zamalek: 'Zamalek',
   'pyramids fc': 'Pyramids FC',
   pyramids: 'Pyramids FC',
-
-  // Morocco
   'raja casablanca': 'Raja Casablanca',
   raja: 'Raja Casablanca',
   'wydad casablanca': 'Wydad Casablanca',
   wydad: 'Wydad Casablanca',
-
-  // Algeria / Tunisia
   'cr belouizdad': 'CR Belouizdad',
   belouizdad: 'CR Belouizdad',
   'js kabylie': 'JS Kabylie',
@@ -453,15 +428,11 @@ const CLUB_ALIASES: Record<string, string> = {
   'etoile du sahel': 'Etoile du Sahel',
   'cs sfaxien': 'CS Sfaxien',
   'club africain': 'Club Africain',
-
-  // USA
   'inter miami': 'Inter Miami',
   'la galaxy': 'LA Galaxy',
   lafc: 'LAFC',
   'atlanta united': 'Atlanta United',
   'seattle sounders': 'Seattle Sounders',
-
-  // Others
   celtic: 'Celtic',
   rangers: 'Rangers',
   besiktas: 'Besiktas',
@@ -603,7 +574,7 @@ function extractFallbackFromDescription(description: string): {
 }
 
 /* ============================================================
- *  GROQ EXTRACTOR (STRICT — recent search > outdated description)
+ *  GROQ EXTRACTOR (STRICT)
  * ============================================================ */
 
 const EXTRACTOR_SYSTEM_PROMPT = [
@@ -923,7 +894,6 @@ router.get('/player', async (req, res) => {
       return true;
     });
 
-    // Sort by date DESC (newest first).
     uniqueResults.sort((a, b) => {
       const da = a.date ?? '';
       const db = b.date ?? '';
@@ -943,7 +913,7 @@ router.get('/player', async (req, res) => {
       player?.strDescriptionEN ?? '',
     );
 
-    /* ---- 5. Search-based club detection (weighted) ---- */
+    /* ---- 5. Search-based club detection ---- */
     const searchDetection = detectClubFromSearchResults(
       uniqueResults.slice(0, 10),
     );
@@ -964,9 +934,6 @@ router.get('/player', async (req, res) => {
           searchDetection?.club || fallback.currentClub;
       }
 
-      // Verification: if the search detection strongly disagrees with the
-      // LLM output AND the LLM output matches the (stale) fallback →
-      // override with the search-detected club.
       const llmClub = freshData.currentClub.toLowerCase();
       const fallbackClub = fallback.currentClub.toLowerCase();
       const searchClub = (searchDetection?.club ?? '').toLowerCase();
