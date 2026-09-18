@@ -9,6 +9,7 @@ import imageRouter from './api/image';
 import visionRouter from './api/vision';
 import playerRouter from './api/player';
 import filesRouter from './api/files';
+import footballRouter from './api/football';   // ← جديد
 
 import { rateLimit, requestId } from './api/security_middleware';
 
@@ -17,26 +18,14 @@ const app = express();
 const PORT = Number(process.env.PORT) || 8080;
 const HOST = '0.0.0.0';
 
-/* ============================================================
- *  TRUST PROXY (for correct IP on Render)
- * ============================================================ */
-
 app.set('trust proxy', 1);
-
-/* ============================================================
- *  BASIC SETUP
- * ============================================================ */
-
 app.disable('x-powered-by');
 
 app.use((_req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'no-referrer');
-  res.setHeader(
-    'Permissions-Policy',
-    'camera=(), microphone=()',
-  );
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=()');
   next();
 });
 
@@ -49,54 +38,28 @@ app.use(
   }),
 );
 
-/* ============================================================
- *  TIMEOUTS (prevent Cloudflare 520 on long AI responses)
- * ============================================================ */
-
 app.use((req, res, next) => {
-  // 5 minutes total for the request.
   req.setTimeout(5 * 60 * 1000);
   res.setTimeout(5 * 60 * 1000);
-  // Keep-alive for headers.
   res.setHeader('Connection', 'keep-alive');
   next();
 });
 
-app.use(
-  express.json({
-    limit: '15mb',
-  }),
-);
-
-/* ============================================================
- *  REQUEST ID (all requests)
- * ============================================================ */
-
+app.use(express.json({ limit: '15mb' }));
 app.use(requestId);
-
-/* ============================================================
- *  LOGGING
- * ============================================================ */
 
 app.use((req, res, next) => {
   const startedAt = Date.now();
-
   res.on('finish', () => {
     const duration = Date.now() - startedAt;
     const id = (res.locals.requestId as string | undefined) ?? '-';
-
     console.log(
       `[WEURA][${id}] ${req.method} ${req.originalUrl} ` +
         `${res.statusCode} ${duration}ms`,
     );
   });
-
   next();
 });
-
-/* ============================================================
- *  ROOT
- * ============================================================ */
 
 app.get('/', (_req, res) => {
   res.json({
@@ -108,22 +71,8 @@ app.get('/', (_req, res) => {
   });
 });
 
-/* ============================================================
- *  HEALTH (no rate limit)
- * ============================================================ */
-
 app.use(healthRouter);
-
-/* ============================================================
- *  API ROUTES
- * ============================================================ */
-
-// Rate limit applies to all /api routes.
 app.use('/api', rateLimit);
-
-// NOTE: chat.ts does its own validation + sanitization.
-// We intentionally do NOT add validateChatBody here to avoid
-// double-validation bugs.
 
 app.use('/api', chatRouter);
 app.use('/api', searchRouter);
@@ -131,10 +80,7 @@ app.use('/api', imageRouter);
 app.use('/api', visionRouter);
 app.use('/api', playerRouter);
 app.use('/api', filesRouter);
-
-/* ============================================================
- *  404
- * ============================================================ */
+app.use('/api', footballRouter);   // ← جديد
 
 app.use((_req, res) => {
   res.status(404).json({
@@ -142,10 +88,6 @@ app.use((_req, res) => {
     error: 'Endpoint not found.',
   });
 });
-
-/* ============================================================
- *  GLOBAL ERROR HANDLER
- * ============================================================ */
 
 app.use(
   (
@@ -156,9 +98,7 @@ app.use(
   ) => {
     const id = (res.locals.requestId as string | undefined) ?? '-';
     console.error(`[WEURA][${id}] Unhandled error:`, error);
-
     if (res.headersSent) return;
-
     res.status(500).json({
       success: false,
       error: 'Internal server error.',
@@ -166,10 +106,6 @@ app.use(
     });
   },
 );
-
-/* ============================================================
- *  START SERVER
- * ============================================================ */
 
 const server = app.listen(PORT, HOST, () => {
   const groqReady = Boolean(process.env.GROQ_API_KEY?.trim());
@@ -179,6 +115,7 @@ const server = app.listen(PORT, HOST, () => {
     process.env.CLOUDFLARE_ACCOUNT_ID?.trim() &&
       process.env.CLOUDFLARE_API_TOKEN?.trim(),
   );
+  const sportReady = Boolean(process.env.SPORTAPI_KEY?.trim());
 
   console.log('');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -191,16 +128,14 @@ const server = app.listen(PORT, HOST, () => {
   console.log(`Cerebras:    ${cerebrasReady ? 'READY (fallback)' : 'MISSING'}`);
   console.log(`Tavily:      ${tavilyReady ? 'READY' : 'MISSING'}`);
   console.log(`Cloudflare:  ${cfReady ? 'READY' : 'MISSING'}`);
+  console.log(`SportAPI:    ${sportReady ? 'READY' : 'MISSING'}`);
   console.log(`Vision:      ${groqReady ? 'READY' : 'MISSING'}`);
   console.log(`Players:     READY`);
   console.log(`Files:       READY`);
+  console.log(`Football:    READY`);
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('');
 });
-
-/* ============================================================
- *  SERVER TIMEOUTS (no more Cloudflare 520)
- * ============================================================ */
 
 server.requestTimeout = 0;
 server.headersTimeout = 5 * 60 * 1000;
