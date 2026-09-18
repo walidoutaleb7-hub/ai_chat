@@ -83,7 +83,6 @@ class PlayerCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // ─── Header ──────────────────────────────────────────────────
             _buildHeader(
               colors: colors,
               photo: photo,
@@ -98,7 +97,6 @@ class PlayerCard extends StatelessWidget {
               foot: foot,
             ),
 
-            // ─── Body ────────────────────────────────────────────────────
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
               child: Column(
@@ -163,7 +161,9 @@ class PlayerCard extends StatelessWidget {
                   ],
 
                   // Latest News (English with EN label)
-                  if (latestNews.isNotEmpty) ...[
+                  // Only show if it's DIFFERENT from the description.
+                  if (latestNews.isNotEmpty &&
+                      !_isDuplicateOf(latestNews, description)) ...[
                     _englishSection(
                       colors,
                       title: 'آخر الأخبار',
@@ -184,7 +184,6 @@ class PlayerCard extends StatelessWidget {
 
                   const SizedBox(height: 4),
 
-                  // Footer: sources + share
                   _footer(colors, sources),
                 ],
               ),
@@ -472,7 +471,6 @@ class PlayerCard extends StatelessWidget {
   }
 
   String _trimBio(String raw) {
-    // Keep it short — max 350 chars, cut at a sentence boundary if possible.
     const maxLen = 350;
     if (raw.length <= maxLen) return raw;
 
@@ -482,6 +480,15 @@ class PlayerCard extends StatelessWidget {
       return sliced.substring(0, lastDot + 1).trim();
     }
     return '$sliced...';
+  }
+
+  bool _isDuplicateOf(String text, String other) {
+    if (text.isEmpty || other.isEmpty) return false;
+    final a = text.toLowerCase().trim();
+    final b = other.toLowerCase().trim();
+    final sampleLength = a.length > 60 ? 60 : a.length;
+    if (sampleLength < 20) return b.contains(a);
+    return b.contains(a.substring(0, sampleLength));
   }
 
   List<String> _trophiesList(dynamic raw) {
@@ -693,7 +700,6 @@ class PlayerCard extends StatelessWidget {
   String _formatTransfer(String raw) {
     if (raw.isEmpty) return '';
 
-    // Case 1: "FromClub to ToClub (Year)"
     final match = RegExp(
       r'^(.+?)\s+to\s+(.+?)(\s*\((\d{4})\))?$',
       caseSensitive: false,
@@ -710,7 +716,6 @@ class PlayerCard extends StatelessWidget {
       }
     }
 
-    // Case 2: "ClubName (Year)"
     final singleMatch = RegExp(
       r'^(.+?)(\s*\((\d{4})\))?$',
     ).firstMatch(raw);
@@ -737,7 +742,6 @@ class PlayerCard extends StatelessWidget {
 
     final clean = raw.trim().toLowerCase();
 
-    // "1.76 m"
     final metersMatch = RegExp(r'([\d.]+)\s*m\b').firstMatch(clean);
     if (metersMatch != null) {
       final v = double.tryParse(metersMatch.group(1)!);
@@ -746,7 +750,6 @@ class PlayerCard extends StatelessWidget {
       }
     }
 
-    // "176 cm"
     final cmMatch = RegExp(r'([\d.]+)\s*cm\b').firstMatch(clean);
     if (cmMatch != null) {
       final v = double.tryParse(cmMatch.group(1)!);
@@ -755,7 +758,6 @@ class PlayerCard extends StatelessWidget {
       }
     }
 
-    // Just a number "176"
     final numberMatch = RegExp(r'^(\d{3})$').firstMatch(clean);
     if (numberMatch != null) {
       final v = double.tryParse(numberMatch.group(1)!);
