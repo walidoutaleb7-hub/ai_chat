@@ -6,6 +6,10 @@ const BASE = 'https://www.thesportsdb.com/api/v1/json/3';
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const TAVILY_URL = 'https://api.tavily.com/search';
 
+/* ============================================================
+ *  CACHES
+ * ============================================================ */
+
 type TranslationCache = { english: string; expiresAt: number };
 const TRANSLATION_CACHE = new Map<string, TranslationCache>();
 const TRANSLATION_TTL = 24 * 60 * 60 * 1000;
@@ -13,7 +17,7 @@ const TRANSLATION_MAX = 500;
 
 type CardCache = { data: any; expiresAt: number };
 const CARD_CACHE = new Map<string, CardCache>();
-const CARD_TTL = 3 * 60 * 1000;
+const CARD_TTL = 5 * 60 * 1000;
 const CARD_MAX = 100;
 
 function pruneCache<K, V extends { expiresAt: number }>(
@@ -39,6 +43,10 @@ setInterval(() => {
   pruneCache(TRANSLATION_CACHE, TRANSLATION_MAX);
   pruneCache(CARD_CACHE, CARD_MAX);
 }, 10 * 60 * 1000).unref();
+
+/* ============================================================
+ *  FAST ALIASES (Arabic → English)
+ * ============================================================ */
 
 const FAST_ALIASES: Record<string, string> = {
   'مبابي': 'Kylian Mbappe',
@@ -75,6 +83,7 @@ const FAST_ALIASES: Record<string, string> = {
   'بيليه': 'Pele',
   'كورتوا': 'Thibaut Courtois',
   'موسيالا': 'Jamal Musiala',
+  'جمال موسيالا': 'Jamal Musiala',
   'أونانا': 'Andre Onana',
   'بونو': 'Yassine Bounou',
   'ماني': 'Sadio Mane',
@@ -112,6 +121,10 @@ const FAST_ALIASES: Record<string, string> = {
   'بن رحمة': 'Said Benrahma',
   'بن سبعيني': 'Ramy Bensebaini',
 };
+
+/* ============================================================
+ *  TRANSLATOR
+ * ============================================================ */
 
 const TRANSLATOR_SYSTEM_PROMPT = [
   'You are a football expert.',
@@ -193,6 +206,10 @@ async function translatePlayerName(raw: string): Promise<string> {
   }
 }
 
+/* ============================================================
+ *  TAVILY
+ * ============================================================ */
+
 const FOOTBALL_DOMAINS = [
   'espn.com', 'bbc.com', 'skysports.com', 'marca.com', 'as.com',
   'goal.com', 'fotmob.com', 'transfermarkt.com', 'sofascore.com',
@@ -203,7 +220,7 @@ const FOOTBALL_DOMAINS = [
   'alnassr.sa', 'alhilal.com', 'arsenal.com', 'tottenhamhotspur.com',
   'atleticodemadrid.com', 'sevillafc.es', 'valenciacf.com',
   'besoccer.com', 'onefootball.com', 'football-italia.net',
-  'intermiamicf.com',
+  'intermiamicf.com', 'fcbayern.com',
 ];
 
 async function tavilySearch(
@@ -267,24 +284,244 @@ async function tavilySearch(
   }
 }
 
+/* ============================================================
+ *  CLUB DETECTION (from description text)
+ * ============================================================ */
+
+const CLUB_ALIASES: Record<string, string> = {
+  'real madrid': 'Real Madrid',
+  'fc barcelona': 'FC Barcelona',
+  barcelona: 'FC Barcelona',
+  'atletico madrid': 'Atletico Madrid',
+  'atlético madrid': 'Atletico Madrid',
+  sevilla: 'Sevilla',
+  valencia: 'Valencia',
+  'real betis': 'Real Betis',
+  'real sociedad': 'Real Sociedad',
+  villarreal: 'Villarreal',
+  'athletic bilbao': 'Athletic Bilbao',
+  'manchester city': 'Manchester City',
+  'manchester united': 'Manchester United',
+  'man utd': 'Manchester United',
+  liverpool: 'Liverpool',
+  chelsea: 'Chelsea',
+  arsenal: 'Arsenal',
+  tottenham: 'Tottenham',
+  'tottenham hotspur': 'Tottenham',
+  newcastle: 'Newcastle United',
+  'newcastle united': 'Newcastle United',
+  'aston villa': 'Aston Villa',
+  'west ham': 'West Ham',
+  everton: 'Everton',
+  brighton: 'Brighton',
+  'crystal palace': 'Crystal Palace',
+  'nottingham forest': 'Nottingham Forest',
+  wolves: 'Wolves',
+  wolverhampton: 'Wolves',
+  fulham: 'Fulham',
+  brentford: 'Brentford',
+  bournemouth: 'Bournemouth',
+  'bayern munich': 'Bayern Munich',
+  'fc bayern': 'Bayern Munich',
+  bayern: 'Bayern Munich',
+  'borussia dortmund': 'Borussia Dortmund',
+  dortmund: 'Borussia Dortmund',
+  'rb leipzig': 'RB Leipzig',
+  leipzig: 'RB Leipzig',
+  'bayer leverkusen': 'Bayer Leverkusen',
+  leverkusen: 'Bayer Leverkusen',
+  frankfurt: 'Eintracht Frankfurt',
+  'eintracht frankfurt': 'Eintracht Frankfurt',
+  'vfb stuttgart': 'VfB Stuttgart',
+  stuttgart: 'VfB Stuttgart',
+  wolfsburg: 'VfL Wolfsburg',
+  monchengladbach: 'Borussia Monchengladbach',
+  juventus: 'Juventus',
+  'inter milan': 'Inter Milan',
+  inter: 'Inter Milan',
+  'ac milan': 'AC Milan',
+  milan: 'AC Milan',
+  napoli: 'Napoli',
+  roma: 'AS Roma',
+  'as roma': 'AS Roma',
+  lazio: 'Lazio',
+  atalanta: 'Atalanta',
+  fiorentina: 'Fiorentina',
+  bologna: 'Bologna',
+  'paris saint-germain': 'Paris Saint-Germain',
+  'paris saint germain': 'Paris Saint-Germain',
+  psg: 'Paris Saint-Germain',
+  monaco: 'AS Monaco',
+  marseille: 'Marseille',
+  lyon: 'Olympique Lyonnais',
+  lille: 'Lille',
+  nice: 'Nice',
+  benfica: 'Benfica',
+  porto: 'FC Porto',
+  'fc porto': 'FC Porto',
+  sporting: 'Sporting CP',
+  ajax: 'Ajax',
+  psv: 'PSV',
+  feyenoord: 'Feyenoord',
+  'al nassr': 'Al Nassr',
+  'al-nassr': 'Al Nassr',
+  alnassr: 'Al Nassr',
+  'al hilal': 'Al Hilal',
+  'al-hilal': 'Al Hilal',
+  alhilal: 'Al Hilal',
+  'al ittihad': 'Al-Ittihad',
+  'al-ittihad': 'Al-Ittihad',
+  'al ahli saudi': 'Al-Ahli Saudi',
+  'al ahly': 'Al Ahly',
+  'al-ahly': 'Al Ahly',
+  zamalek: 'Zamalek',
+  'raja casablanca': 'Raja Casablanca',
+  'wydad casablanca': 'Wydad Casablanca',
+  'cr belouizdad': 'CR Belouizdad',
+  'js kabylie': 'JS Kabylie',
+  'mc alger': 'MC Alger',
+  'usm alger': 'USM Alger',
+  'es setif': 'ES Setif',
+  esperance: 'Esperance de Tunis',
+  'inter miami': 'Inter Miami',
+  'la galaxy': 'LA Galaxy',
+  lafc: 'LAFC',
+  celtic: 'Celtic',
+  rangers: 'Rangers',
+  besiktas: 'Besiktas',
+  galatasaray: 'Galatasaray',
+  fenerbahce: 'Fenerbahce',
+  'shakhtar donetsk': 'Shakhtar Donetsk',
+  'dynamo kyiv': 'Dynamo Kyiv',
+  'red star belgrade': 'Red Star Belgrade',
+};
+
+const CLUB_ALIASES_SORTED = Object.keys(CLUB_ALIASES).sort(
+  (a, b) => b.length - a.length,
+);
+
+function detectClubFromText(text: string): string {
+  const lower = text.toLowerCase();
+  for (const alias of CLUB_ALIASES_SORTED) {
+    if (lower.includes(alias)) return CLUB_ALIASES[alias];
+  }
+  return '';
+}
+
+/* ============================================================
+ *  DESCRIPTION FALLBACK
+ * ============================================================ */
+
+function extractFallbackFromDescription(description: string): {
+  currentClub: string;
+  lastTransfer: string;
+  latestNews: string;
+} {
+  if (!description || description.length === 0) {
+    return { currentClub: '', lastTransfer: '', latestNews: '' };
+  }
+
+  const text = description.replace(/\s+/g, ' ').trim();
+
+  const currentClubPatterns = [
+    /plays as (?:a|an) [a-z- ]+ for (?:La Liga club |Premier League club |Serie A club |Bundesliga club |Ligue 1 club |Saudi Pro League club )?([A-Z][A-Za-z .\-']+?)(?:,|\.| and | \()/,
+    /currently plays for (?:La Liga club |Premier League club |Serie A club |Bundesliga club |Ligue 1 club |Saudi Pro League club )?([A-Z][A-Za-z .\-']+?)(?:,|\.| and | \()/,
+    /plays for (?:La Liga club |Premier League club |Serie A club |Bundesliga club |Ligue 1 club |Saudi Pro League club )?([A-Z][A-Za-z .\-']+?)(?:,|\.| and | \()/,
+  ];
+
+  let currentClub = '';
+  for (const pattern of currentClubPatterns) {
+    const m = text.match(pattern);
+    if (m && m[1]) {
+      const candidate = m[1].trim();
+      const known = detectClubFromText(candidate);
+      currentClub = known || candidate;
+      if (currentClub) break;
+    }
+  }
+  if (!currentClub) currentClub = detectClubFromText(text);
+
+  let lastTransfer = '';
+  const joinedPatterns = [
+    /In (\d{4})[^.]*?joined ([A-Z][A-Za-z .\-']+?)(?:\.|,| on| for| after)/,
+    /in (\d{4})[^.]*?joined ([A-Z][A-Za-z .\-']+?)(?:\.|,| on| for| after)/,
+    /in (\d{4})[^.]*?signed for ([A-Z][A-Za-z .\-']+?)(?:\.|,| on| for| after)/,
+  ];
+
+  for (const pattern of joinedPatterns) {
+    const m = text.match(pattern);
+    if (m && m[1] && m[2]) {
+      const year = m[1];
+      const candidate = m[2].trim();
+      const known = detectClubFromText(candidate);
+      const club = known || candidate;
+      lastTransfer = `${club} (${year})`;
+      break;
+    }
+  }
+
+  let latestNews = '';
+  const firstSentence = text.split(/(?<=[.!?])\s+/)[0];
+  if (firstSentence && firstSentence.length > 20) {
+    latestNews = firstSentence.slice(0, 200);
+  }
+
+  return { currentClub, lastTransfer, latestNews };
+}
+
+/* ============================================================
+ *  GROQ EXTRACTOR (VERY STRICT)
+ * ============================================================ */
+
 const EXTRACTOR_SYSTEM_PROMPT = [
   'You are a football data extractor. Return ONLY valid JSON.',
   '',
   'INPUT:',
   '1. Player name.',
-  '2. TheSportsDB description (may be OUTDATED).',
-  '3. Recent search results (DATED, newest first).',
+  '2. TheSportsDB description (may be old).',
+  '3. Recent web search results (newest first).',
   '',
-  'PRIORITY: search results > description.',
+  '═══ RULE 1 — currentClub IS SACRED ═══',
+  'currentClub = the club the player IS CURRENTLY PLAYING FOR,',
+  'confirmed by a source. This is the MOST IMPORTANT field.',
   '',
-  'CRITICAL:',
-  '- TheSportsDB description is often years old.',
-  '- If search results mention a different current club, TRUST THEM.',
-  '- NEVER mix two clubs. Pick ONE for currentClub.',
-  '- Example: Ronaldo → "Manchester United to Al Nassr (2023)".',
-  '  NOT "Juventus to Al Nassr".',
+  'You may ONLY set currentClub to a club if the source EXPLICITLY says:',
+  '  ✓ "plays for X"',
+  '  ✓ "is a X player"',
+  '  ✓ "current club is X"',
+  '  ✓ "signed for X" (with a date that is <= today and not future)',
+  '  ✓ "joined X" (same condition)',
   '',
-  'JSON schema:',
+  'You MUST IGNORE a club if the source says:',
+  '  ✗ "X is interested in him"',
+  '  ✗ "X wants to sign him"',
+  '  ✗ "X is linked with him"',
+  '  ✗ "X is monitoring him"',
+  '  ✗ "X is rumored to sign him"',
+  '  ✗ "transfer news: X"',
+  '  ✗ "could join X"',
+  '  ✗ "X target"',
+  '  ✗ "negotiating with X"',
+  '  ✗ Any RUMOR or SPECULATION',
+  '',
+  'If you only find rumors → set currentClub to "" and let the',
+  'backend use TheSportsDB description as fallback.',
+  '',
+  '═══ RULE 2 — lastTransfer ═══',
+  'Format: "FromClub to ToClub (Year)".',
+  'Only the transfer that brought him to the CURRENT club.',
+  'Do NOT combine transfers from different years.',
+  'If unsure, leave "".',
+  '',
+  '═══ RULE 3 — latestNews ═══',
+  'ONE short sentence in ENGLISH (max 200 chars).',
+  'Use the NEWEST search result. Not a rumor, not old news.',
+  '',
+  '═══ RULE 4 — trophies ═══',
+  'Array of STRINGS. Major trophies only.',
+  'Example: ["5x Champions League", "Euro 2016", "Nations League 2019"].',
+  '',
+  '═══ JSON SCHEMA ═══',
   '{',
   '  "currentClub": "",',
   '  "currentClubCountry": "",',
@@ -295,15 +532,7 @@ const EXTRACTOR_SYSTEM_PROMPT = [
   '  "latestNews": ""',
   '}',
   '',
-  'Rules:',
-  '- currentClub: club the player plays for RIGHT NOW.',
-  '- lastTransfer: "FromClub to ToClub (Year)" — only the transfer',
-  '  that brought him to the CURRENT club.',
-  '- trophies: array of STRINGS (Champions League, Ballon d\'Or count, etc).',
-  '- latestNews: ONE short sentence in ENGLISH (max 200 chars),',
-  '  from the NEWEST search result.',
-  '- Leave "" if not confirmed.',
-  '- Return ONLY JSON. No markdown.',
+  'Return ONLY JSON. No markdown. No explanation.',
 ].join('\n');
 
 async function extractPlayerData(
@@ -333,9 +562,11 @@ async function extractPlayerData(
     .join('\n\n');
 
   const userMessage =
-    `Today: ${today}\nPlayer: ${playerName}\nNationality: ${nationality}\n\n` +
-    `TheSportsDB description (MAY BE OUTDATED):\n${description.slice(0, 1500)}\n\n` +
-    `Recent search results (newest first — HIGH PRIORITY):\n\n${context}`;
+    `Today: ${today}\n` +
+    `Player: ${playerName}\n` +
+    `Nationality: ${nationality}\n\n` +
+    `TheSportsDB description (may be old):\n${description.slice(0, 1500)}\n\n` +
+    `Recent search results (newest first):\n\n${context}`;
 
   try {
     const response = await fetch(GROQ_API_URL, {
@@ -369,10 +600,10 @@ async function extractPlayerData(
     try {
       parsed = JSON.parse(content);
     } catch {
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) return null;
+      const match = content.match(/\{[\s\S]*\}/);
+      if (!match) return null;
       try {
-        parsed = JSON.parse(jsonMatch[0]);
+        parsed = JSON.parse(match[0]);
       } catch {
         return null;
       }
@@ -390,23 +621,27 @@ async function extractPlayerData(
       .filter((t: string) => t.length > 0);
 
     return {
-      currentClub: String(parsed.currentClub ?? ''),
-      currentClubCountry: String(parsed.currentClubCountry ?? ''),
-      lastTransfer: String(parsed.lastTransfer ?? ''),
-      marketValue: String(parsed.marketValue ?? ''),
+      currentClub: String(parsed.currentClub ?? '').trim(),
+      currentClubCountry: String(parsed.currentClubCountry ?? '').trim(),
+      lastTransfer: String(parsed.lastTransfer ?? '').trim(),
+      marketValue: String(parsed.marketValue ?? '').trim(),
       stats: {
-        goals: String(parsed?.stats?.goals ?? ''),
-        assists: String(parsed?.stats?.assists ?? ''),
-        appearances: String(parsed?.stats?.appearances ?? ''),
-        season: String(parsed?.stats?.season ?? ''),
+        goals: String(parsed?.stats?.goals ?? '').trim(),
+        assists: String(parsed?.stats?.assists ?? '').trim(),
+        appearances: String(parsed?.stats?.appearances ?? '').trim(),
+        season: String(parsed?.stats?.season ?? '').trim(),
       },
       trophies,
-      latestNews: String(parsed.latestNews ?? ''),
+      latestNews: String(parsed.latestNews ?? '').trim(),
     };
   } catch {
     return null;
   }
 }
+
+/* ============================================================
+ *  FLAG EMOJI
+ * ============================================================ */
 
 const FLAG_MAP: Record<string, string> = {
   france: '🇫🇷', argentina: '🇦🇷', portugal: '🇵🇹',
@@ -437,6 +672,10 @@ function flagEmoji(country: string | undefined): string {
   return FLAG_MAP[country.toLowerCase()] ?? '';
 }
 
+/* ============================================================
+ *  ROUTE
+ * ============================================================ */
+
 router.get('/player', async (req, res) => {
   const rawName = String(req.query.name ?? '').trim();
 
@@ -464,6 +703,7 @@ router.get('/player', async (req, res) => {
   }
 
   try {
+    /* ---- 1. TheSportsDB ---- */
     let player: any = null;
 
     try {
@@ -515,19 +755,20 @@ router.get('/player', async (req, res) => {
       });
     }
 
+    /* ---- 2. Tavily ---- */
     const currentYear = new Date().getFullYear();
     const prevYear = currentYear - 1;
     const currentMonth = new Date().toLocaleString('en-US', {
       month: 'long',
     });
 
+    // Specific queries that favor CONFIRMED facts over rumors.
     const searchQueries = [
+      `${englishName} plays for ${currentYear}`,
       `${englishName} current club ${currentYear}`,
-      `${englishName} transfer news ${currentYear}`,
-      `${englishName} signs for club`,
-      `${englishName} joins new club`,
-      `${englishName} ${currentMonth} ${currentYear} news`,
-      `${englishName} latest news ${currentYear} ${prevYear}`,
+      `${englishName} official transfer ${currentYear} ${prevYear}`,
+      `${englishName} latest news ${currentMonth} ${currentYear}`,
+      `${englishName} contract ${currentYear}`,
     ];
 
     const allResults: Array<{
@@ -549,12 +790,14 @@ router.get('/player', async (req, res) => {
       return true;
     });
 
+    // Newest first
     uniqueResults.sort((a, b) => {
       const da = a.date ?? '';
       const db = b.date ?? '';
       return db.localeCompare(da);
     });
 
+    /* ---- 3. Groq extractor (strict) ---- */
     const freshData = await extractPlayerData(
       englishName,
       player?.strNationality ?? '',
@@ -562,8 +805,13 @@ router.get('/player', async (req, res) => {
       uniqueResults.slice(0, 10),
     );
 
-    // Fallback if Groq failed.
-    let finalData = freshData ?? {
+    /* ---- 4. Fallback from description ---- */
+    const fallback = extractFallbackFromDescription(
+      player?.strDescriptionEN ?? '',
+    );
+
+    /* ---- 5. Final merge with STRICT rules ---- */
+    const finalData = freshData ?? {
       currentClub: '',
       currentClubCountry: '',
       lastTransfer: '',
@@ -573,6 +821,36 @@ router.get('/player', async (req, res) => {
       latestNews: '',
     };
 
+    // 🛡️ If LLM returned empty currentClub → use TheSportsDB description.
+    // We do NOT fallback to search results here, because those might
+    // be rumors. TheSportsDB is more reliable for the CORE club.
+    if (!finalData.currentClub && fallback.currentClub) {
+      finalData.currentClub = fallback.currentClub;
+    }
+
+    // 🛡️ If LLM returned a club that ALSO doesn't appear in TheSportsDB
+    // description AND is not in a "confirmed" context → prefer TheSportsDB.
+    // This catches cases where the LLM picked up a rumor.
+    if (
+      finalData.currentClub &&
+      fallback.currentClub &&
+      finalData.currentClub.toLowerCase() !==
+        fallback.currentClub.toLowerCase()
+    ) {
+      // The LLM chose a different club. We only accept the LLM's choice
+      // if TheSportsDB description is empty (i.e. no reliable fallback).
+      // Otherwise, prefer TheSportsDB — it's more conservative.
+      finalData.currentClub = fallback.currentClub;
+    }
+
+    if (!finalData.lastTransfer && fallback.lastTransfer) {
+      finalData.lastTransfer = fallback.lastTransfer;
+    }
+
+    if (!finalData.latestNews && fallback.latestNews) {
+      finalData.latestNews = fallback.latestNews;
+    }
+
     // 🛡️ Prevent latestNews from duplicating the description.
     if (
       finalData.latestNews &&
@@ -580,9 +858,10 @@ router.get('/player', async (req, res) => {
       finalData.latestNews.trim().slice(0, 60).toLowerCase() ===
         String(player.strDescriptionEN).trim().slice(0, 60).toLowerCase()
     ) {
-      finalData = { ...finalData, latestNews: '' };
+      finalData.latestNews = '';
     }
 
+    /* ---- 6. Merge ---- */
     const nationality = String(player?.strNationality ?? '');
     const flag = flagEmoji(nationality);
 
