@@ -6,28 +6,6 @@ const RAPIDAPI_HOST =
   process.env.SPORTAPI_HOST?.trim() || 'sportapi7.p.rapidapi.com';
 const RAPIDAPI_KEY = process.env.SPORTAPI_KEY?.trim();
 
-type CacheEntry = { data: any; expiresAt: number };
-const CACHE = new Map<string, CacheEntry>();
-const CACHE_TTL = 5 * 60 * 1000;
-const CACHE_MAX = 200;
-
-function pruneCache(): void {
-  const now = Date.now();
-  for (const [key, entry] of CACHE.entries()) {
-    if (entry.expiresAt <= now) CACHE.delete(key);
-  }
-  if (CACHE.size > CACHE_MAX) {
-    const overflow = CACHE.size - CACHE_MAX;
-    let removed = 0;
-    for (const key of CACHE.keys()) {
-      if (removed >= overflow) break;
-      CACHE.delete(key);
-      removed++;
-    }
-  }
-}
-setInterval(pruneCache, 5 * 60 * 1000).unref();
-
 async function rapidGet(
   path: string,
   query: Record<string, string | number> = {},
@@ -81,41 +59,36 @@ async function rapidGet(
 }
 
 /* ============================================================
- *  DEBUG — tries MANY search paths
+ *  DEBUG v2 — literal sidebar names
  * ============================================================ */
 
 router.get('/football/debug', async (req, res) => {
   const q = String(req.query.q ?? 'messi').trim();
-  const enc = encodeURIComponent(q);
 
-  // Wide variety of candidate paths.
+  // Literal names as they appear in the sidebar.
   const candidates: string[] = [
-    // Classic
-    `/api/v1/search/players`,
-    `/api/v1/search/player`,
-    `/api/v1/search`,
-    `/api/v1/players/search`,
-    `/api/v1/players`,
-    `/api/v1/player/search`,
-    // Without "api"
-    `/v1/search/players`,
-    `/v1/players/search`,
-    `/search/players`,
+    `/api_v1_search_players`,
+    `/api_v1_player_details`,
+    `/api_v1_player_careerstatistics`,
+    `/api_v1_player_seasonstatistics`,
+    // Maybe without leading "api_" or with different case
+    `/v1_search_players`,
     `/search_players`,
-    // Without "v1"
-    `/api/search/players`,
-    `/api/search_players`,
-    // Underscore style
-    `/api/v1/search_players`,
-    // Dashes
-    `/api/v1/search-players`,
-    `/api/search-players`,
-    // Capital
-    `/api/v1/Search/players`,
-    `/api/v1/Players/search`,
-    // Query param variation (some APIs use q=in-path)
-    `/api/v1/search/${enc}`,
-    `/api/v1/find/players`,
+    `/player_details`,
+    // Maybe with a dot?
+    `/api.v1.search.players`,
+    // Maybe as query?
+    `/?api_v1_search_players=${encodeURIComponent(q)}`,
+    // Maybe the URL uses "football" prefix
+    `/football/search/players`,
+    `/football/players/search`,
+    `/api/v1/football/players`,
+    // Maybe underscores only in action part
+    `/api/v1/player_search`,
+    `/api/v1/players_search`,
+    // Maybe "soccer" instead of "football"
+    `/api/v1/soccer/players`,
+    `/soccer/search/players`,
   ];
 
   const results: Array<{
@@ -133,7 +106,6 @@ router.get('/football/debug', async (req, res) => {
       term: q,
       name: q,
       query: q,
-      text: q,
     });
 
     results.push({
@@ -141,14 +113,13 @@ router.get('/football/debug', async (req, res) => {
       status: r.status,
       ok: r.ok,
       preview: r.ok ? summarize(r.data) : undefined,
-      error: r.ok ? undefined : (r.error ?? '').slice(0, 80),
+      error: r.ok ? undefined : (r.error ?? '').slice(0, 100),
     });
   }
 
   return res.json({
     query: q,
     host: RAPIDAPI_HOST,
-    keyConfigured: Boolean(RAPIDAPI_KEY),
     successCount: results.filter((r) => r.ok).length,
     results,
   });
@@ -156,73 +127,31 @@ router.get('/football/debug', async (req, res) => {
 
 function summarize(data: any): any {
   if (!data) return null;
-
   const list =
-    data?.results ??
-    data?.data ??
-    data?.players ??
-    data?.suggestions ??
-    data?.items ??
-    null;
-
+    data?.results ?? data?.data ?? data?.players ??
+    data?.suggestions ?? data?.items ?? null;
   if (Array.isArray(list)) {
-    return {
-      listLength: list.length,
-      firstItem: list[0] ?? null,
-    };
+    return { listLength: list.length, firstItem: list[0] ?? null };
   }
-
-  return {
-    topKeys: Object.keys(data).slice(0, 10),
-  };
+  return { topKeys: Object.keys(data).slice(0, 10) };
 }
 
 /* ============================================================
- *  HEALTH
+ *  PLAYER BY ID — this pattern is CONFIRMED to work
  * ============================================================ */
 
-router.get('/football/health', async (_req, res) => {
-  if (!RAPIDAPI_KEY) {
-    return res.json({ success: false, error: 'SPORTAPI_KEY missing' });
-  }
-  const r = await rapidGet('/api/v1/player/750');
-  return res.json({
-    success: r.ok,
-    host: RAPIDAPI_HOST,
-    status: r.status,
-    error: r.ok ? undefined : r.error,
-  });
-});
-
-/* ============================================================
- *  PLAYER DETAILS
- * ============================================================ */
-
-router.get('/football/player-details', async (req, res) => {
+router.get('/football/player', async (req, res) => {
   const id = String(req.query.id ?? '').trim();
   if (!id) {
     return res.status(400).json({ success: false, error: 'id is required' });
   }
-
-  const cacheKey = `player-details:${id}`;
-  const now = Date.now();
-  const cached = CACHE.get(cacheKey);
-  if (cached && cached.expiresAt > now) return res.json(cached.data);
-
   const r = await rapidGet(`/api/v1/player/${encodeURIComponent(id)}`);
-
-  const response = {
+  return res.json({
     success: r.ok,
     id,
     data: r.data,
     error: r.ok ? undefined : r.error,
-  };
-
-  if (r.ok) {
-    CACHE.set(cacheKey, { data: response, expiresAt: now + CACHE_TTL });
-  }
-
-  return res.json(response);
+  });
 });
 
 export default router;
