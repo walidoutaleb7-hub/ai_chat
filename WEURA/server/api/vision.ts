@@ -9,28 +9,18 @@ const MAX_QUESTION_LENGTH = 2000;
 const MODEL_TIMEOUT_MS = 45_000;
 
 /**
- * Vision models currently supported on Groq (as of 2026).
+ * Vision models supported on Groq (as of 2026).
+ * Source: https://console.groq.com/docs/vision
  *
- * Official docs: https://console.groq.com/docs/vision
- *
- * - qwen/qwen3.8-27b : Available on most accounts (verified working)
- * - qwen/qwen3.6-27b : Preview — may not be available on all accounts
- *
- * Removed (decommissioned or inaccessible):
- * - llama-4-scout-17b-16e-instruct  → retired 2026-06-17
- * - llama-4-maverick-17b-128e-instruct → not on free tier
- * - llama-3.2-90b-vision-preview    → decommissioned
- * - llama-3.2-11b-vision-preview    → decommissioned
+ * Order matters:
+ *   1. qwen/qwen3.8-27b  → verified working on user's account
+ *   2. qwen/qwen3.6-27b  → fallback (may be 404 on some accounts)
  */
 const VISION_MODELS = [
   'qwen/qwen3.8-27b',
   'qwen/qwen3.6-27b',
 ];
 
-/**
- * Optional override via environment variable:
- *   GROQ_VISION_MODEL=qwen/qwen3.8-27b
- */
 function getVisionModels(): string[] {
   const custom = process.env.GROQ_VISION_MODEL?.trim();
   if (custom) {
@@ -85,11 +75,6 @@ function sanitizeQuestion(raw: unknown): string {
   return clean || 'Describe this image in detail.';
 }
 
-/**
- * Returns true ONLY if the model itself is missing.
- * Image-related errors (e.g. "at least 32 pixels") are NOT
- * considered unavailable — they are real user-facing errors.
- */
 function isModelUnavailable(error: string): boolean {
   const e = error.toLowerCase();
   return (
@@ -180,14 +165,18 @@ async function callVisionModel(
  * ============================================================ */
 
 /**
- * A minimal 32x32 transparent PNG.
+ * A valid 32x32 transparent PNG.
  * Groq rejects images smaller than 32px in any dimension.
  */
 const TINY_PNG_32 =
   'data:image/png;base64,' +
-  'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAALUlEQVR42u3O' +
-  'MQEAAAgDoC251a3gLwqgOXFVVVVVVVVVVVVVVVVVVVVVVVVVVVVV1QcT' +
-  'qgABu0m1nQAAAABJRU5ErkJggg==';
+  'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAA' +
+  'vklEQVR4AcXBsW2FMBiF0Y8r3GQb6jeBxRauYRpo4yGQkM' +
+  'd4A7kg7Z/GUfSKe8703fKDkTATZsJsrr0RlZSJ9r4RLayMvLmJjnQ' +
+  'S1d6IhJkwE2bT13U/DBzp5BN73xgRZsJMmM1HOolqb/yWiWpvjJSU' +
+  'iRZWopIykTATZsJs5g+1N6KSMiO1N/5DmAkzYTa9Lh6MhJkwE2ZzS' +
+  'Zlo7xvRwson3txERzqJhJkwE2bT6+Lh/wcjYSbM5Jk6bwEAAAAA' +
+  'SUVORK5CYII=';
 
 router.get('/vision/models', async (_req, res) => {
   const apiKey = process.env.GROQ_API_KEY?.trim();
@@ -277,7 +266,6 @@ router.post('/vision', async (req, res) => {
 
       const errMsg = result.error ?? 'unknown error';
 
-      // Model itself missing → skip silently.
       if (isModelUnavailable(errMsg)) {
         unavailableCount++;
         console.log(
@@ -286,7 +274,6 @@ router.post('/vision', async (req, res) => {
         continue;
       }
 
-      // Real error (bad image, timeout, etc.) → record and try next.
       errors.push(`${model}: ${errMsg}`);
     }
 
@@ -295,13 +282,11 @@ router.post('/vision', async (req, res) => {
         success: false,
         error:
           'No vision model is available on your Groq account. ' +
-          'Check https://console.groq.com/docs/vision for available models, ' +
-          'or set GROQ_VISION_MODEL env var to a valid model.',
+          'Check https://console.groq.com/docs/vision for available models.',
         available: false,
       });
     }
 
-    // All available models failed for real reasons.
     return res.status(502).json({
       success: false,
       error: errors.join('\n'),
