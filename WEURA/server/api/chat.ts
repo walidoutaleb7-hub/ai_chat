@@ -11,43 +11,28 @@ import {
 
 const router = express.Router();
 
-/* ============================================================
- *  HELPERS — TIME
- * ============================================================ */
-
 function currentTimeContext(): string {
   const now = new Date();
-  return (
-    `Server time: ${now.toISOString()} (${now.toUTCString()}). ` +
-    `Use this if asked.`
-  );
+  return `Server time: ${now.toISOString()} (${now.toUTCString()}). Use this if asked.`;
 }
 
 function todayISO(): string {
   return new Date().toISOString().split('T')[0];
 }
 
-/* ============================================================
- *  CLASSIFICATION — FOOTBALL / TECH
- * ============================================================ */
-
 function looksLikeFootball(message: string): boolean {
   const text = message.toLowerCase();
   const triggers = [
-    'مباراة', 'مباريات', 'ماتش', 'ماتشات',
-    'كورة', 'كرة القدم',
-    'ترتيب الدوري', 'هداف', 'هدافين',
-    'ريال مدريد', 'برشلونة', 'ليفربول', 'تشيلسي', 'مانشستر',
-    'بايرن', 'باريس سان جيرمان', 'يوفنتوس', 'إنتر', 'ميلان',
-    'الليغا', 'البريميرليغ', 'الكالتشيو', 'البوندسليغا',
-    'كأس العالم', 'دوري أبطال',
-    'مبابي', 'ميسي', 'رونالدو', 'بنزيمة', 'صلاح', 'هالاند',
-    'فينيسيوس', 'بيلينغهام',
+    'مباراة', 'مباريات', 'ماتش', 'ماتشات', 'كورة', 'كرة القدم',
+    'ترتيب الدوري', 'هداف', 'هدافين', 'ريال مدريد', 'برشلونة',
+    'ليفربول', 'تشيلسي', 'مانشستر', 'بايرن', 'باريس سان جيرمان',
+    'يوفنتوس', 'إنتر', 'ميلان', 'الليغا', 'البريميرليغ', 'الكالتشيو',
+    'البوندسليغا', 'كأس العالم', 'دوري أبطال', 'مبابي', 'ميسي',
+    'رونالدو', 'بنزيمة', 'صلاح', 'هالاند', 'فينيسيوس', 'بيلينغهام',
     'football', 'soccer', 'premier league', 'la liga',
-    'champions league', 'world cup',
-    'real madrid', 'barcelona', 'liverpool', 'chelsea',
-    'mbappe', 'messi', 'ronaldo', 'benzema', 'salah',
-    'haaland', 'vinicius', 'bellingham',
+    'champions league', 'world cup', 'real madrid', 'barcelona',
+    'liverpool', 'chelsea', 'mbappe', 'messi', 'ronaldo', 'benzema',
+    'salah', 'haaland', 'vinicius', 'bellingham',
   ];
   return triggers.some((t) => text.includes(t));
 }
@@ -56,15 +41,10 @@ function looksLikeTech(message: string): boolean {
   const text = message.toLowerCase();
   const triggers = [
     'flutter', 'dart', 'python', 'javascript', 'typescript',
-    'react', 'node', 'api', 'github', 'npm', 'pub.dev',
-    'كود', 'برمجة',
+    'react', 'node', 'api', 'github', 'npm', 'pub.dev', 'كود', 'برمجة',
   ];
   return triggers.some((t) => text.includes(t));
 }
-
-/* ============================================================
- *  CLASSIFICATION — IDENTITY / PERSONAL
- * ============================================================ */
 
 function isIdentityQuestion(message: string): boolean {
   const text = message.trim().toLowerCase();
@@ -84,10 +64,6 @@ function isPersonalQuestion(message: string): boolean {
   ];
   return patterns.some((p) => p.test(text));
 }
-
-/* ============================================================
- *  CLASSIFICATION — CONVERSATIONAL / TECHNICAL / CREATIVE
- * ============================================================ */
 
 function isConversationalRequest(message: string): boolean {
   const text = message.trim();
@@ -136,84 +112,30 @@ function isCreativeRequest(message: string): boolean {
   return patterns.some((p) => p.test(text));
 }
 
-/* ============================================================
- *  SEARCH SIGNAL — CONSERVATIVE
- * ============================================================ */
-
 function hasSearchSignal(message: string): boolean {
   const text = message.toLowerCase().trim();
 
-  // 1. Explicit search requests
-  if (/(ابحث|بحث|ابحثلي|ابحث لي|دور على|لوكيت|search|google|look up|find me)/i.test(text)) {
-    return true;
-  }
+  if (/(ابحث|بحث|ابحثلي|ابحث لي|دور على|لوكيت|search|google|look up|find me)/i.test(text)) return true;
+  if (/(آخر أخبار|أحدث|اليوم|الآن|حاليا|حاليًا|أمس|البارح|هذا الأسبوع|هذا الشهر|هذه السنة|this week|this month|this year|today|yesterday|tonight|latest|recent|currently|breaking|عاجل)/i.test(text)) return true;
+  if (/(\bأخبار\b|\bخبر\b|\bnews\b|آخر الأخبار|breaking news)/i.test(text)) return true;
+  if (/(نتيجة|نتائج|ترتيب الدوري|جدول المباريات|نتيجة مباراة|result|score|standings|match result)/i.test(text)) return true;
+  if (/(آخر مباراة|آخر ماتش|آخر لقاء|آخر نتيجة|آخر ماتشات|مباراة أمس|ماتش أمس|شحال ربح|شحال خسر|شكون ربح|شكون خسر|last match|last game|last result|final score)/i.test(text)) return true;
+  if (/(آخر)/i.test(text) && /(مباراة|ماتش|لقاء|نتيجة|هدف|هدفين|كورة|كرة القدم|دوري|سوسيداد|ريال|برشلونة|لاعب)/i.test(text)) return true;
+  if (/(أين يلعب|اين يلعب|فين يلعب|يلعب حاليا|يلعب الآن|فريقه الحالي|ناديه الحالي|انتقل|current club|plays for|where does .* play)/i.test(text)) return true;
+  if (/(سعر|بكم|كم سعر|أسعار|price|how much does|stock price|market cap)/i.test(text)) return true;
+  if (/(الطقس|طقس|الجو اليوم|weather|temperature today)/i.test(text)) return true;
+  if (/(متى يفتح|متى ينزل|متى يخرج|when (is|does|will)|release date|منتظر)/i.test(text)) return true;
+  if (/(واش صرا في|واش صرا مع|ما حدث في|ما حدث مع|what happened (with|to|in))/i.test(text)) return true;
 
-  // 2. Time-sensitive signals
-  if (/(آخر أخبار|أحدث|اليوم|الآن|حاليا|حاليًا|أمس|البارح|هذا الأسبوع|هذا الشهر|هذه السنة|this week|this month|this year|today|yesterday|tonight|latest|recent|currently|breaking|عاجل)/i.test(text)) {
-    return true;
-  }
-
-  // 3. News
-  if (/(\bأخبار\b|\bخبر\b|\bnews\b|آخر الأخبار|breaking news)/i.test(text)) {
-    return true;
-  }
-
-  // 4. Live sports results/standings
-  if (/(نتيجة|نتائج|ترتيب الدوري|جدول المباريات|نتيجة مباراة|result|score|standings|match result)/i.test(text)) {
-    return true;
-  }
-
-  // 4b. Last match / game / result
-  if (/(آخر مباراة|آخر ماتش|آخر لقاء|آخر نتيجة|آخر ماتشات|مباراة أمس|ماتش أمس|شحال ربح|شحال خسر|شكون ربح|شكون خسر|last match|last game|last result|final score)/i.test(text)) {
-    return true;
-  }
-
-  // 4c. Any mention of "آخر" + football/result context
-  if (/(آخر)/i.test(text) && /(مباراة|ماتش|لقاء|نتيجة|هدف|هدفين|كورة|كرة القدم|دوري|سوسيداد|ريال|برشلونة|لاعب)/i.test(text)) {
-    return true;
-  }
-
-  // 5. Current club/player info (transfers change)
-  if (/(أين يلعب|اين يلعب|فين يلعب|يلعب حاليا|يلعب الآن|فريقه الحالي|ناديه الحالي|انتقل|current club|plays for|where does .* play)/i.test(text)) {
-    return true;
-  }
-
-  // 6. Prices / market
-  if (/(سعر|بكم|كم سعر|أسعار|price|how much does|stock price|market cap)/i.test(text)) {
-    return true;
-  }
-
-  // 7. Weather
-  if (/(الطقس|طقس|الجو اليوم|weather|temperature today)/i.test(text)) {
-    return true;
-  }
-
-  // 8. Events / releases
-  if (/(متى يفتح|متى ينزل|متى يخرج|when (is|does|will)|release date|منتظر)/i.test(text)) {
-    return true;
-  }
-
-  // 9. "What happened with X"
-  if (/(واش صرا في|واش صرا مع|ما حدث في|ما حدث مع|what happened (with|to|in))/i.test(text)) {
-    return true;
-  }
-
-  // Default: NO SEARCH.
   return false;
 }
-
-/* ============================================================
- *  SEARCH DECISION — FINAL
- * ============================================================ */
 
 function needsSearch(message: string): boolean {
   const text = message.trim();
 
-  // 1. NEVER search for identity / personal questions
   if (isIdentityQuestion(text)) return false;
   if (isPersonalQuestion(text)) return false;
 
-  // 2. NEVER search for greetings / thanks / ok / bye
   const skipPatterns = [
     /^(hi|hey|hello|helo|hallo|yo|sup|hiya|howdy)[\s!.,?]*$/i,
     /^(good\s*(morning|evening|afternoon|night))[\s!.,?]*$/i,
@@ -228,26 +150,15 @@ function needsSearch(message: string): boolean {
   ];
   if (skipPatterns.some((p) => p.test(text))) return false;
 
-  // 3. NEVER search for very short messages or pure math
   if (text.length < 3) return false;
   if (/^[\d\s+\-*/().%,]+$/.test(text)) return false;
 
-  // 4. NEVER search for conversational requests
   if (isConversationalRequest(text)) return false;
-
-  // 5. NEVER search for technical / educational requests
   if (isTechnicalRequest(text)) return false;
-
-  // 6. NEVER search for creative requests
   if (isCreativeRequest(text)) return false;
 
-  // 7. Otherwise: SEARCH ONLY IF there's a clear signal
   return hasSearchSignal(text);
 }
-
-/* ============================================================
- *  HELPERS — MESSAGE UTILITIES
- * ============================================================ */
 
 function getLastUserMessage(messages: GrokMessage[]): string {
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -259,10 +170,6 @@ function getLastUserMessage(messages: GrokMessage[]): string {
 function cleanSnippet(raw: string, maxLen = 400): string {
   return raw.replace(/\s+/g, ' ').trim().slice(0, maxLen);
 }
-
-/* ============================================================
- *  SYSTEM BLOCKS — COMPACT
- * ============================================================ */
 
 function buildIdentityBlock(): string {
   return (
@@ -310,11 +217,15 @@ function buildSoulBlock(): string {
     `- ✗ NEVER: "Let me know if..." / "هل تحتاج أي مساعدة أخرى؟" / "أتمنى أن يكون هذا مفيداً" / "بالتوفيق".\n\n` +
 
     `DIALECT — MIRROR EXACTLY:\n` +
-    `- فصحى → فصحى. دارجة جزائرية (واش راك، كيفاش، بصح، خويا) → دارجة حقيقية. مصري/مغربي/خليجي → نفس.\n` +
+    `MSA vs DARIJA — you MUST distinguish them:\n` +
+    `- "مرحبا" / "كيف حالك" / "شكراً" / "أهلاً" / "من أنت" → MSA → reply in فصحى.\n` +
+    `- "واش راك" / "كيفاش" / "بصح" / "خويا" / "وشراك" / "كيداير" → Darija → reply in Darija.\n` +
+    `- "إزيك" / "عامل إيه" → Egyptian.\n` +
+    `- "كيداير" / "بزاف" → Moroccan.\n` +
     `- English → English. Français → Français. Mixed → mix back.\n` +
-    `- Shift mid-conversation when they shift.\n` +
-    `- NEVER respond in فصحى to a Darija message.\n` +
-    `  Ex: "واش راك؟" → "لاباس. واش راك نتا؟" (NOT "أنا بخير، شكراً.")\n\n` +
+    `CRITICAL: If user writes "مرحبا" (MSA), reply in فصحى — NOT Darija.\n` +
+    `If user writes "واش راك" (Darija), reply in Darija — NOT فصحى.\n` +
+    `Mirror their exact formality level. Shift mid-conversation when they shift.\n\n` +
 
     `NEVER:\n` +
     `- Filler: "Great question!", "Sure!", "Interesting!"\n` +
@@ -406,10 +317,6 @@ function buildSearchContext(
   );
 }
 
-/* ============================================================
- *  BUILD MESSAGES
- * ============================================================ */
-
 const MAX_HISTORY_MESSAGES = 6;
 const MAX_HISTORY_CHARS = 400;
 
@@ -430,9 +337,7 @@ async function buildMessages(
   const tavilyConfigured = Boolean(process.env.TAVILY_API_KEY?.trim());
 
   const memoryUsed = memory.length > 0;
-
-  const isFootball =
-    Boolean(lastUserMessage) && looksLikeFootball(lastUserMessage);
+  const isFootball = Boolean(lastUserMessage) && looksLikeFootball(lastUserMessage);
   const isTech = Boolean(lastUserMessage) && looksLikeTech(lastUserMessage);
 
   const shouldSearch =
@@ -445,9 +350,7 @@ async function buildMessages(
     { role: 'system', content: buildSoulBlock() },
     {
       role: 'system',
-      content: memory.length > 0
-        ? buildMemoryBlock(memory)
-        : buildEmptyMemoryBlock(),
+      content: memory.length > 0 ? buildMemoryBlock(memory) : buildEmptyMemoryBlock(),
     },
     { role: 'system', content: buildModeBlock(mode) },
     { role: 'system', content: currentTimeContext() },
@@ -496,10 +399,7 @@ async function buildMessages(
       ? msg.content.slice(0, MAX_HISTORY_CHARS) + '...'
       : msg.content;
 
-    out.push({
-      role: msg.role,
-      content,
-    });
+    out.push({ role: msg.role, content });
   }
 
   return {
@@ -512,10 +412,6 @@ async function buildMessages(
   };
 }
 
-/* ============================================================
- *  ROUTE
- * ============================================================ */
-
 router.post('/chat', async (req, res) => {
   const requestId = createRequestId();
   res.setHeader('X-WEURA-Request-ID', requestId);
@@ -523,26 +419,14 @@ router.post('/chat', async (req, res) => {
   try {
     const validation = validateChatRequest(req.body);
     if (!validation.valid) {
-      return res.status(400).json({
-        success: false,
-        error: validation.error,
-        requestId,
-      });
+      return res.status(400).json({ success: false, error: validation.error, requestId });
     }
 
-    const body = req.body as {
-      messages: GrokMessage[];
-      memory?: unknown;
-      mode?: unknown;
-    };
-
+    const body = req.body as { messages: GrokMessage[]; memory?: unknown; mode?: unknown };
     const safeMessages = sanitizeMessages(body.messages);
+
     if (safeMessages.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'No valid messages were provided.',
-        requestId,
-      });
+      return res.status(400).json({ success: false, error: 'No valid messages were provided.', requestId });
     }
 
     const memory = sanitizeMemory(body.memory);
@@ -550,17 +434,8 @@ router.post('/chat', async (req, res) => {
 
     const built = await buildMessages(safeMessages, memory, mode, requestId);
 
-    // Smart max_tokens:
-    //   - Code / research / files / creative → allow long responses (4096).
-    //   - Normal chat → keep efficient (2048).
-    // This prevents long code / stories from being cut off mid-way,
-    // while saving tokens on short conversations.
     const isLongFormMode =
-      mode === 'code' ||
-      mode === 'research' ||
-      mode === 'files' ||
-      mode === 'creative';
-
+      mode === 'code' || mode === 'research' || mode === 'files' || mode === 'creative';
     const maxTokens = isLongFormMode ? 4096 : 2048;
 
     const result = await askGrok(built.messages, {
