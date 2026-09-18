@@ -12,6 +12,66 @@ import {
 const router = express.Router();
 
 /* ============================================================
+ *  SMART RESPONSE CACHE
+ * ============================================================ */
+
+type CacheEntry = {
+  content: string;
+  model: string;
+  provider: string;
+  searchUsed: boolean;
+  resultCount: number;
+  reflection: {
+    need_search: boolean;
+    reason: string;
+    search_query: string;
+    angle: string;
+  };
+  expiresAt: number;
+};
+
+const RESPONSE_CACHE = new Map<string, CacheEntry>();
+
+const CACHE_TTL_NEWS_MS = 15 * 60 * 1000; // 15 min
+const CACHE_TTL_FACT_MS = 6 * 60 * 60 * 1000; // 6 hours
+const CACHE_MAX = 500;
+
+function pruneResponseCache(): void {
+  const now = Date.now();
+  for (const [key, entry] of RESPONSE_CACHE.entries()) {
+    if (entry.expiresAt <= now) RESPONSE_CACHE.delete(key);
+  }
+  if (RESPONSE_CACHE.size > CACHE_MAX) {
+    const overflow = RESPONSE_CACHE.size - CACHE_MAX;
+    let removed = 0;
+    for (const key of RESPONSE_CACHE.keys()) {
+      if (removed >= overflow) break;
+      RESPONSE_CACHE.delete(key);
+      removed++;
+    }
+  }
+}
+
+setInterval(pruneResponseCache, 5 * 60 * 1000).unref();
+
+function buildCacheKey(userMessage: string): string {
+  return userMessage.trim().toLowerCase().slice(0, 200);
+}
+
+function pickTTL(userMessage: string, searchUsed: boolean): number {
+  const lower = userMessage.toLowerCase();
+  if (
+    /(آخر|أحدث|اليوم|الآن|حاليا|عاجل|breaking|latest|today|now|recent)/i.test(
+      lower,
+    )
+  ) {
+    return CACHE_TTL_NEWS_MS;
+  }
+  if (searchUsed) return CACHE_TTL_NEWS_MS;
+  return CACHE_TTL_FACT_MS;
+}
+
+/* ============================================================
  *  HELPERS — TIME
  * ============================================================ */
 
@@ -28,7 +88,7 @@ function todayISO(): string {
 }
 
 /* ============================================================
- *  REFLECTION LAYER — the AI decides if it needs search
+ *  REFLECTION LAYER
  * ============================================================ */
 
 const REFLECTION_SYSTEM_PROMPT = `You are WEURA's inner reasoning layer.
@@ -66,17 +126,7 @@ Return ONLY valid JSON (no markdown, no explanation):
   "reason": "short reason (max 80 chars)",
   "search_query": "optimized query for web search (empty if need_search=false)",
   "angle": "how to approach the answer (max 100 chars, in user's language)"
-}
-
-For search_query: use the user's language, make it specific and web-friendly.
-  - Arabic user → Arabic query (but keep proper nouns in Latin)
-  - English user → English query
-  - Remove filler words, focus on the core fact needed.
-
-For angle: a short note about HOW to reply (tone, what to emphasize).
-  - "التركيز على المعلومة الحديثة + مصدر موثوق"
-  - "إجابة قصيرة مباشرة بدون preamble"
-  - "اشرح كصديق، بلا فذلكة"`;
+}`;
 
 type ReflectionResult = {
   needSearch: boolean;
@@ -92,12 +142,11 @@ async function reflectOnQuery(
 ): Promise<ReflectionResult> {
   const apiKey = process.env.GROQ_API_KEY?.trim();
 
-  // Fallback if no key: safe default = don't search (fail silently).
   if (!apiKey) {
     return {
-      needSearch: false,
-      reason: 'No API key',
-      searchQuery: '',
+      needSearch: fallbackNeedsSearch(userMessage),
+      reason: 'no-key-fallback',
+      searchQuery: userMessage,
       angle: '',
     };
   }
@@ -145,9 +194,7 @@ async function reflectOnQuery(
       data?.choices?.[0]?.message?.content ?? '',
     ).trim();
 
-    if (!content) {
-      throw new Error('Empty reflection');
-    }
+    if (!content) throw new Error('Empty reflection');
 
     let parsed: any;
     try {
@@ -175,7 +222,6 @@ async function reflectOnQuery(
       angle,
     };
   } catch (error) {
-    // On any reflection failure, fall back to trigger-based logic.
     console.warn(
       `[WEURA][${requestId}] Reflection failed: ${
         error instanceof Error ? error.message : error
@@ -192,7 +238,7 @@ async function reflectOnQuery(
 }
 
 /* ============================================================
- *  FALLBACK — trigger-based (used only if reflection fails)
+ *  FALLBACK — trigger-based
  * ============================================================ */
 
 function fallbackNeedsSearch(message: string): boolean {
@@ -211,7 +257,7 @@ function fallbackNeedsSearch(message: string): boolean {
 }
 
 /* ============================================================
- *  MESSAGE UTILITIES
+ *  HELPERS — MESSAGE UTILITIES
  * ============================================================ */
 
 function getLastUserMessage(messages: GrokMessage[]): string {
@@ -223,6 +269,41 @@ function getLastUserMessage(messages: GrokMessage[]): string {
 
 function cleanSnippet(raw: string, maxLen = 400): string {
   return raw.replace(/\s+/g, ' ').trim().slice(0, maxLen);
+}
+
+/* ============================================================
+ *  CLASSIFICATION (lightweight, for cache decision)
+ * ============================================================ */
+
+function isIdentityQuestion(message: string): boolean {
+  const text = message.trim().toLowerCase();
+  const patterns = [
+    /^(who are you|who made you|who created you|what is your name)[\s!.,?]*$/i,
+    /^(من أنت|من انت|من صنعك|من صممك|من طورك|ما اسمك|شسمك)[\s!.,?،؟]*$/i,
+  ];
+  return patterns.some((p) => p.test(text));
+}
+
+function isPersonalQuestion(message: string): boolean {
+  const text = message.trim().toLowerCase();
+  const patterns = [
+    /^(do you know me|do you remember me|who am i)[\s!.,?]*$/i,
+    /^(تعرفني|تتذكرني|تفتكرني|شكون انا|من انا)[\s!.,?،؟]*$/i,
+  ];
+  return patterns.some((p) => p.test(text));
+}
+
+function isCasualMessage(message: string): boolean {
+  const text = message.trim();
+  const skip = [
+    /^(hi|hey|hello|yo|سلام|مرحبا|صباح الخير|مساء الخير|salut|bonjour)[\s!.,?،؟]*$/i,
+    /^(thanks|thank you|شكرا|مشكور)[\s!.,?،؟]*$/i,
+    /^(ok|okay|yes|no|نعم|لا|حسنا|طيب|ماشي)[\s!.,?،؟]*$/i,
+    /^(bye|goodbye|بسلامة)[\s!.,?،؟]*$/i,
+    /^(كيف حالك|كيفك|واش راك|كي راك|لاباس)[\s!.,?،؟]*$/i,
+    /^(زيد|وضّح|كمل|go on|continue)[\s!.,?،؟]*$/i,
+  ];
+  return skip.some((p) => p.test(text));
 }
 
 /* ============================================================
@@ -246,14 +327,12 @@ function buildSoulBlock(): string {
   return (
     `=== SOUL — HOW YOU SPEAK ===\n\n` +
     `You are a companion, not a chatbot. A presence, not a service.\n\n` +
-
     `VOICE:\n` +
     `- Warm, sharp, curious, playful when it fits.\n` +
     `- Vary sentence length. Short. Then one longer. Then short.\n` +
     `- A one-word answer is sometimes perfect ("تمام." / "صح.").\n` +
     `- You have opinions held lightly: "في نظري..." / "I think...".\n` +
     `- You have taste — in language, timing, restraint.\n\n` +
-
     `READING PEOPLE:\n` +
     `- Short msg → answer short. Long msg → match depth.\n` +
     `- Frustrated → skip fluff, solve.\n` +
@@ -261,13 +340,11 @@ function buildSoulBlock(): string {
     `- Playful → play back.\n` +
     `- Just chatting → chat back. No agenda.\n` +
     `- Dry reply from user → stay dry back.\n\n` +
-
     `CONTEXT & FOLLOW-UPS:\n` +
     `- You have the previous messages. Use them.\n` +
     `- If user said "X is Y" earlier, and now asks "is X really Y?", answer based on what THEY said.\n` +
     `- Pronouns (هذا/ذلك/هو/it/that) → last topic. NEVER ask "what do you mean?".\n` +
     `- Short follow-ups (زيد / وضّح / go on) → continue. Never ask what they meant.\n\n` +
-
     `FACTS & AWARDS (CRITICAL):\n` +
     `- For ANY question about AWARDS, MANAGERS, current club/player status, news,\n` +
     `  prices, or current events → rely ONLY on the search results when they are provided.\n` +
@@ -275,19 +352,16 @@ function buildSoulBlock(): string {
     `- If search results are absent AND the question is about a recent fact → reply:\n` +
     `  "ما عنديش معلومة مؤكدة."\n` +
     `- Do NOT invent dates, names, or winners.\n\n` +
-
     `OPENING (optional):\n` +
     `- MAY add ONE short, natural follow-up if it adds value.\n` +
     `- ✓ "راك حاب نزيد نفصّل؟" / "واش رايك؟" / "نجيو نطبقوها؟"\n` +
     `- ✗ NEVER: "Let me know if..." / "هل تحتاج أي مساعدة أخرى؟" / "بالتوفيق".\n\n` +
-
     `DIALECT — MIRROR EXACTLY:\n` +
     `- "مرحبا" / "كيف حالك" / "شكراً" → MSA → reply in فصحى.\n` +
     `- "واش راك" / "كيفاش" / "بصح" / "خويا" → Darija → reply in Darija.\n` +
     `- English → English. Français → Français. Mixed → mix back.\n` +
     `- CRITICAL: If user writes "مرحبا" (MSA), reply in فصحى — NOT Darija.\n` +
     `- If user writes "واش راك" (Darija), reply in Darija — NOT فصحى.\n\n` +
-
     `NEVER:\n` +
     `- Filler: "Great question!", "Sure!", "Interesting!"\n` +
     `- "As an AI..." / "بصفتي ذكاء اصطناعي..."\n` +
@@ -298,12 +372,10 @@ function buildSoulBlock(): string {
     `- Bullet list when one sentence would do.\n` +
     `- Bracketed citations like [1], [2] UNLESS a SEARCH RESULTS block is present.\n` +
     `- Fake enthusiasm ("Wow!", "Amazing!").\n\n` +
-
     `CODE OUTPUT RULES:\n` +
     `- When the user asks for code → output ONLY the code + a brief explanation.\n` +
     `- Do NOT simulate running the code.\n` +
     `- Do NOT show "expected output" unless the user explicitly asks.\n\n` +
-
     `SUCCESS: The user closes the app thinking: "كأنني نهدر مع صاحبي."`
   );
 }
@@ -374,7 +446,13 @@ function buildSearchContext(
     `6. If user asks "آخر"/"latest" and best match > 3 months → "لم أجد معلومات حديثة."\n` +
     `7. Match user's language. Start with answer. Use Markdown.\n` +
     `8. For AWARDS (Ballon d'Or, FIFA Best, etc.) → answer EXACTLY what the newest source says.\n` +
-    `9. If sources disagree, use the NEWEST one.\n`
+    `9. If sources disagree, use the NEWEST one.\n` +
+    `10. DATE FILTER (CRITICAL): Look at each source's "Published" date.\n` +
+    `    - If a source has NO date OR an OLD date (> 1 year old), and another source has a RECENT date, USE THE RECENT ONE.\n` +
+    `    - For "current X" questions, ANY source older than 12 months is AUTOMATICALLY WRONG.\n` +
+    `    - Example: "Real Madrid current coach" → use only sources from the last 12 months.\n` +
+    `11. If ALL sources are older than 1 year → reply: "لم أجد معلومات حديثة في المصادر المتاحة."\n` +
+    `12. NEVER mix information from different time periods.\n`
   );
 }
 
@@ -401,9 +479,7 @@ async function buildMessages(
   const tavilyConfigured = Boolean(process.env.TAVILY_API_KEY?.trim());
   const memoryUsed = memory.length > 0;
 
-  // ═══════════════════════════════════════════════════════
-  // STEP 1 — REFLECTION (AI decides if search is needed)
-  // ═══════════════════════════════════════════════════════
+  // Step 1: Reflection
   const reflection = await reflectOnQuery(
     lastUserMessage,
     memory,
@@ -426,17 +502,15 @@ async function buildMessages(
   let searchUsed = false;
   let resultCount = 0;
 
-  // ═══════════════════════════════════════════════════════
-  // STEP 2 — SEARCH (only if reflection says so)
-  // ═══════════════════════════════════════════════════════
+  // Step 2: Search if needed
   if (reflection.needSearch && tavilyConfigured && lastUserMessage) {
     try {
       const results = await searchTavily(
         reflection.searchQuery,
-        6,
+        8,
         {
           timeSensitive: true,
-          football: false,
+          football: true,
           tech: false,
         },
       );
@@ -445,6 +519,13 @@ async function buildMessages(
         searchUsed = true;
         resultCount = results.length;
         const today = todayISO();
+
+        // Sort newest first
+        results.sort((a, b) => {
+          const da = a.publishedDate ?? '';
+          const db = b.publishedDate ?? '';
+          return db.localeCompare(da);
+        });
 
         const sources = results
           .map(
@@ -458,18 +539,11 @@ async function buildMessages(
 
         out.push({
           role: 'system',
-          content: buildSearchContext(
-            sources,
-            today,
-            reflection.angle,
-          ),
+          content: buildSearchContext(sources, today, reflection.angle),
         });
       }
     } catch (error) {
-      console.error(
-        `[WEURA][${requestId}] Search failed:`,
-        error,
-      );
+      console.error(`[WEURA][${requestId}] Search failed:`, error);
     }
   }
 
@@ -527,6 +601,44 @@ router.post('/chat', async (req, res) => {
     const memory = sanitizeMemory(body.memory);
     const mode = sanitizeMode(body.mode);
 
+    // ═══ Cache lookup ═══
+    const lastUserMessage = getLastUserMessage(safeMessages);
+    const isIdentity = isIdentityQuestion(lastUserMessage);
+    const isPersonal = isPersonalQuestion(lastUserMessage);
+    const isCasual = isCasualMessage(lastUserMessage);
+
+    const useCache =
+      !isIdentity &&
+      !isPersonal &&
+      !isCasual &&
+      lastUserMessage.trim().length >= 5;
+
+    const cacheKey = buildCacheKey(lastUserMessage);
+
+    if (useCache) {
+      const cached = RESPONSE_CACHE.get(cacheKey);
+      if (cached && cached.expiresAt > Date.now()) {
+        console.log(
+          `[WEURA][${requestId}] ✅ Cache HIT: "${lastUserMessage.slice(0, 60)}"`,
+        );
+        return res.json({
+          success: true,
+          content: cached.content,
+          model: cached.model,
+          provider: cached.provider,
+          usage: null,
+          requestId,
+          searchUsed: cached.searchUsed,
+          memoryUsed: memory.length > 0,
+          resultCount: cached.resultCount,
+          mode: mode ?? 'auto',
+          reflection: cached.reflection,
+          cached: true,
+        });
+      }
+    }
+
+    // ═══ Build & call AI ═══
     const built = await buildMessages(
       safeMessages,
       memory,
@@ -547,6 +659,29 @@ router.post('/chat', async (req, res) => {
       maxTokens,
     });
 
+    // ═══ Save to cache ═══
+    if (useCache) {
+      const ttl = pickTTL(lastUserMessage, built.searchUsed);
+      RESPONSE_CACHE.set(cacheKey, {
+        content: result.content,
+        model: result.model,
+        provider: result.provider,
+        searchUsed: built.searchUsed,
+        resultCount: built.resultCount,
+        reflection: {
+          need_search: built.reflection.needSearch,
+          reason: built.reflection.reason,
+          search_query: built.reflection.searchQuery,
+          angle: built.reflection.angle,
+        },
+        expiresAt: Date.now() + ttl,
+      });
+
+      if (RESPONSE_CACHE.size > CACHE_MAX) {
+        pruneResponseCache();
+      }
+    }
+
     return res.json({
       success: true,
       content: result.content,
@@ -564,15 +699,14 @@ router.post('/chat', async (req, res) => {
         search_query: built.reflection.searchQuery,
         angle: built.reflection.angle,
       },
+      cached: false,
     });
   } catch (error) {
     console.error(`[WEURA][${requestId}] Chat error:`, error);
     return res.status(500).json({
       success: false,
       error:
-        error instanceof Error
-          ? error.message
-          : 'Unexpected error.',
+        error instanceof Error ? error.message : 'Unexpected error.',
       requestId,
     });
   }
