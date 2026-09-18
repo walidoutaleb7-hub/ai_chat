@@ -9,16 +9,21 @@ const MAX_QUESTION_LENGTH = 2000;
 const MODEL_TIMEOUT_MS = 45_000;
 
 /**
- * Vision models supported on Groq (as of 2026).
- * Source: https://console.groq.com/docs/vision
+ * Keep max_tokens LOW.
  *
- * Order matters:
- *   1. qwen/qwen3.8-27b  → verified working on user's account
- *   2. qwen/qwen3.6-27b  → fallback (may be 404 on some accounts)
+ * Groq free tier: 1000 OTPM (output tokens per minute) for qwen3.8.
+ * A vision request with max_tokens 1500 would fail with 429.
+ * 500 tokens is enough for a detailed image description and stays
+ * well under the limit.
+ */
+const MAX_OUTPUT_TOKENS = 500;
+
+/**
+ * Only qwen3.8-27b is available on this Groq account.
+ * (llama-4-*, llama-3.2-vision, qwen3.6-27b → all unavailable)
  */
 const VISION_MODELS = [
   'qwen/qwen3.8-27b',
-  'qwen/qwen3.6-27b',
 ];
 
 function getVisionModels(): string[] {
@@ -37,13 +42,15 @@ const SYSTEM_PROMPT = `You are WEURA Vision — an expert image analyst.
 
 Match the user's language. Describe only what you actually see.
 Never invent details. Extract text accurately (OCR) if present.
-Keep the response structured with Markdown when helpful.`;
+Keep the response structured with Markdown when helpful.
+Be concise — aim for under 400 words unless the user asks for more.`;
 
 type CallResult = {
   ok: boolean;
   content?: string;
   status: number;
   error?: string;
+  retryAfterMs?: number;
 };
 
 function validateImageData(raw: string): string | null {
@@ -88,6 +95,29 @@ function isModelUnavailable(error: string): boolean {
   );
 }
 
+function isRateLimit(error: string): boolean {
+  const e = error.toLowerCase();
+  return (
+    e.includes('rate limit') ||
+    e.includes('429') ||
+    e.includes('too many requests')
+  );
+}
+
+/**
+ * Extracts "try again in X.XXs" from a Groq 429 message.
+ */
+function extractRetryAfterMs(error: string): number {
+  const match = error.match(/try again in ([\d.]+)s/i);
+  if (match) {
+    const sec = parseFloat(match[1]);
+    if (!isNaN(sec) && sec > 0) {
+      return Math.ceil(sec * 1000) + 1000; // +1s buffer
+    }
+  }
+  return 15_000; // default 15s
+}
+
 async function callVisionModel(
   model: string,
   apiKey: string,
@@ -114,7 +144,7 @@ async function callVisionModel(
           },
         ],
         temperature: 0.3,
-        max_tokens: 1500,
+        max_tokens: MAX_OUTPUT_TOKENS,
       }),
       signal: AbortSignal.timeout(MODEL_TIMEOUT_MS),
     });
@@ -138,6 +168,9 @@ async function callVisionModel(
         ok: false,
         status: response.status,
         error: String(providerError),
+        retryAfterMs: isRateLimit(String(providerError))
+          ? extractRetryAfterMs(String(providerError))
+          : undefined,
       };
     }
 
@@ -164,10 +197,6 @@ async function callVisionModel(
  *  DEBUG — list which vision models are available
  * ============================================================ */
 
-/**
- * A valid 32x32 transparent PNG.
- * Groq rejects images smaller than 32px in any dimension.
- */
 const TINY_PNG_32 =
   'data:image/png;base64,' +
   'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAA' +
@@ -246,50 +275,56 @@ router.post('/vision', async (req, res) => {
 
     const models = getVisionModels();
     const errors: string[] = [];
-    let unavailableCount = 0;
 
     for (const model of models) {
-      const result = await callVisionModel(
-        model,
-        apiKey,
-        imageData,
-        question,
-      );
-
-      if (result.ok && result.content) {
-        return res.json({
-          success: true,
-          content: result.content,
+      // Try up to 2 times per model (second try only on rate limit).
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        const result = await callVisionModel(
           model,
-        });
-      }
-
-      const errMsg = result.error ?? 'unknown error';
-
-      if (isModelUnavailable(errMsg)) {
-        unavailableCount++;
-        console.log(
-          `[WEURA] Vision model "${model}" unavailable, skipping.`,
+          apiKey,
+          imageData,
+          question,
         );
-        continue;
+
+        if (result.ok && result.content) {
+          return res.json({
+            success: true,
+            content: result.content,
+            model,
+          });
+        }
+
+        const errMsg = result.error ?? 'unknown error';
+
+        // Model missing → skip silently.
+        if (isModelUnavailable(errMsg)) {
+          console.log(
+            `[WEURA] Vision model "${model}" unavailable, skipping.`,
+          );
+          break; // move to next model
+        }
+
+        // Rate limit → wait and retry once.
+        if (isRateLimit(errMsg) && attempt === 1) {
+          const waitMs = result.retryAfterMs ?? 15_000;
+          console.log(
+            `[WEURA] Vision "${model}" rate-limited. Waiting ${waitMs}ms then retry.`,
+          );
+          await new Promise((r) => setTimeout(r, waitMs));
+          continue;
+        }
+
+        // Real error → record and move to next model.
+        errors.push(`${model}: ${errMsg}`);
+        break;
       }
-
-      errors.push(`${model}: ${errMsg}`);
-    }
-
-    if (unavailableCount === models.length) {
-      return res.status(503).json({
-        success: false,
-        error:
-          'No vision model is available on your Groq account. ' +
-          'Check https://console.groq.com/docs/vision for available models.',
-        available: false,
-      });
     }
 
     return res.status(502).json({
       success: false,
-      error: errors.join('\n'),
+      error: errors.length
+        ? errors.join('\n')
+        : 'Vision model unavailable.',
     });
   } catch (error) {
     return res.status(500).json({
