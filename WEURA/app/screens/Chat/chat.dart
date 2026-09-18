@@ -19,6 +19,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../components/Composer/comppser.dart';
 import '../../components/Player/player_card.dart';
+import '../../components/UI/weura_background.dart';
 import '../../components/Voice/voice_input_sheet.dart';
 import '../../core/AI/ai_router.dart';
 import '../../core/History/chat_history.dart';
@@ -905,10 +906,6 @@ class _ChatScreenState extends State<ChatScreen>
     }
   }
 
-  // ═════════════════════════════════════════════════════════════
-  //  VISION — PICKED IMAGE
-  // ═════════════════════════════════════════════════════════════
-
   Future<void> _pickImage(ImageSource source) async {
     if (_isLoading) {
       _showMessage('Wait for the current request to finish.');
@@ -920,7 +917,6 @@ class _ChatScreenState extends State<ChatScreen>
     }
 
     try {
-      // Strong compression — keeps payload under 1MB.
       final XFile? picked = await _imagePicker.pickImage(
         source: source,
         maxWidth: 1024,
@@ -977,7 +973,6 @@ class _ChatScreenState extends State<ChatScreen>
     try {
       final bytes = await image.readAsBytes();
 
-      // Force JPEG MIME (image_picker already converts to JPEG).
       final base64Data = base64Encode(bytes);
       final dataUrl = 'data:image/jpeg;base64,$base64Data';
 
@@ -1019,7 +1014,6 @@ class _ChatScreenState extends State<ChatScreen>
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
         final msg = data['error']?.toString();
-        // Show the REAL error, not a generic one.
         throw GrokException(
           msg != null && msg.isNotEmpty
               ? msg
@@ -1778,7 +1772,7 @@ class _ChatScreenState extends State<ChatScreen>
 
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: colors.background,
+      backgroundColor: Colors.transparent,
       drawer: _buildDrawer(colors),
       appBar: AppBar(
         backgroundColor: colors.background,
@@ -1814,45 +1808,51 @@ class _ChatScreenState extends State<ChatScreen>
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: _messages.isEmpty
-                ? _emptyState(colors)
-                : ListView.builder(
-                    controller: _scrollController,
-                    keyboardDismissBehavior:
-                        ScrollViewKeyboardDismissBehavior.onDrag,
-                    padding: const EdgeInsets.fromLTRB(18, 22, 18, 24),
-                    itemCount: _messages.length + (_isLoading ? 1 : 0),
-                    itemBuilder: (context, index) {
-                      if (_isLoading && index == _messages.length) {
-                        return _WeuraThinking(colors: colors);
-                      }
-                      final message = _messages[index];
-                      final isLastAssistant = !message.isUser &&
-                          index == _messages.length - 1;
-                      return _messageBubble(
-                        colors,
-                        message,
-                        index,
-                        isLastAssistant,
-                      );
-                    },
-                  ),
-          ),
-          if (_attachedFile != null)
-            _attachedFileChip(colors, _attachedFile!),
-          WeuraComposer(
-            enabled: true,
-            isLoading: _isLoading,
-            onSend: _sendMessage,
-            onAttach: () => _showAttachmentSheet(colors),
-            onMode: () => _showModePicker(colors),
-            onVoice: () => _handleVoice(colors),
-            onStop: _cancelRequest,
-          ),
-        ],
+      body: WeuraBackground(
+        intensity: 1.0,
+        child: Column(
+          children: [
+            Expanded(
+              child: _messages.isEmpty
+                  ? _emptyState(colors)
+                  : ListView.builder(
+                      controller: _scrollController,
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
+                      padding:
+                          const EdgeInsets.fromLTRB(18, 22, 18, 24),
+                      itemCount:
+                          _messages.length + (_isLoading ? 1 : 0),
+                      itemBuilder: (context, index) {
+                        if (_isLoading &&
+                            index == _messages.length) {
+                          return _WeuraThinking(colors: colors);
+                        }
+                        final message = _messages[index];
+                        final isLastAssistant = !message.isUser &&
+                            index == _messages.length - 1;
+                        return _messageBubble(
+                          colors,
+                          message,
+                          index,
+                          isLastAssistant,
+                        );
+                      },
+                    ),
+            ),
+            if (_attachedFile != null)
+              _attachedFileChip(colors, _attachedFile!),
+            WeuraComposer(
+              enabled: true,
+              isLoading: _isLoading,
+              onSend: _sendMessage,
+              onAttach: () => _showAttachmentSheet(colors),
+              onMode: () => _showModePicker(colors),
+              onVoice: () => _handleVoice(colors),
+              onStop: _cancelRequest,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -2806,7 +2806,7 @@ class _ChatScreenState extends State<ChatScreen>
 }
 
 // ---------------------------------------------------------------------------
-// Typing markdown
+// Typing markdown — inline cursor
 // ---------------------------------------------------------------------------
 
 class _TypedMarkdown extends StatefulWidget {
