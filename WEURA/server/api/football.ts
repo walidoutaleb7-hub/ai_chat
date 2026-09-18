@@ -34,199 +34,191 @@ function pruneCache(): void {
 setInterval(pruneCache, 5 * 60 * 1000).unref();
 
 /* ============================================================
- *  HTTP HELPER — with automatic URL pattern fallback
+ *  RAW HTTP
  * ============================================================ */
 
-/**
- * Tries multiple path patterns for the same logical endpoint.
- * e.g. "api_v1_player_details" → tries:
- *   /api/v1/player/details
- *   /api/v1/player_details
- *   /api/v1/playerdetails
- *   /player/details
- */
-async function rapidTry(
-  endpointId: string,
+async function rapidGet(
+  path: string,
   query: Record<string, string | number> = {},
-): Promise<{ ok: boolean; status: number; data: any; path?: string; error?: string }> {
+): Promise<{ ok: boolean; status: number; data: any; error?: string }> {
   if (!RAPIDAPI_KEY) {
-    return { ok: false, status: 503, data: null, error: 'SportAPI key is not configured.' };
+    return { ok: false, status: 503, data: null, error: 'SportAPI key missing' };
   }
-
-  // Strip leading "api_v1_" if present.
-  let base = endpointId.toLowerCase().trim();
-  if (base.startsWith('api_v1_')) base = base.slice('api_v1_'.length);
-  if (base.startsWith('api_')) base = base.slice('api_'.length);
-
-  // Generate candidate paths.
-  const candidates = new Set<string>();
-
-  // 1. Convert underscores → slashes: "player_details" → "player/details"
-  const withSlashes = base.replace(/_/g, '/');
-  candidates.add(`/api/v1/${withSlashes}`);
-  candidates.add(`/${withSlashes}`);
-
-  // 2. Keep underscores: "player_details" → "player_details"
-  candidates.add(`/api/v1/${base}`);
-  candidates.add(`/${base}`);
-
-  // 3. Remove underscores entirely: "playerdetails"
-  const noUnderscores = base.replace(/_/g, '');
-  candidates.add(`/api/v1/${noUnderscores}`);
-  candidates.add(`/${noUnderscores}`);
 
   const qs = new URLSearchParams();
-  for (const [k, v] of Object.entries(query)) {
-    qs.set(k, String(v));
-  }
-  const qsStr = qs.toString();
+  for (const [k, v] of Object.entries(query)) qs.set(k, String(v));
 
-  let lastError = '';
+  const url = `https://${RAPIDAPI_HOST}${path}${qs.toString() ? '?' + qs.toString() : ''}`;
 
-  for (const path of candidates) {
-    const url = `https://${RAPIDAPI_HOST}${path}${qsStr ? '?' + qsStr : ''}`;
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'x-rapidapi-key': RAPIDAPI_KEY,
+        'x-rapidapi-host': RAPIDAPI_HOST,
+        Accept: 'application/json',
+      },
+      signal: AbortSignal.timeout(12000),
+    });
 
+    const raw = await res.text();
+    let data: any = null;
     try {
-      const res = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'x-rapidapi-key': RAPIDAPI_KEY,
-          'x-rapidapi-host': RAPIDAPI_HOST,
-          Accept: 'application/json',
-        },
-        signal: AbortSignal.timeout(12000),
-      });
-
-      const raw = await res.text();
-      let data: any = null;
-      try {
-        data = JSON.parse(raw);
-      } catch {
-        data = { raw: raw.slice(0, 500) };
-      }
-
-      if (res.ok) {
-        console.log(`[WEURA] SportAPI OK: ${path}`);
-        return { ok: true, status: res.status, data, path };
-      }
-
-      lastError = data?.message ?? `HTTP ${res.status} at ${path}`;
-    } catch (e) {
-      lastError = e instanceof Error ? e.message : 'Unknown';
+      data = JSON.parse(raw);
+    } catch {
+      data = { raw: raw.slice(0, 300) };
     }
-  }
 
-  return { ok: false, status: 0, data: null, error: lastError || 'All paths failed' };
+    if (!res.ok) {
+      return {
+        ok: false,
+        status: res.status,
+        data,
+        error: data?.message ?? `HTTP ${res.status}`,
+      };
+    }
+
+    return { ok: true, status: res.status, data };
+  } catch (error) {
+    return {
+      ok: false,
+      status: 0,
+      data: null,
+      error: error instanceof Error ? error.message : 'Unknown',
+    };
+  }
 }
 
 /* ============================================================
- *  ENDPOINT — /api/football/player-stats?name=X
+ *  DEBUG — tries many search paths and reports which works
  * ============================================================ */
 
-router.get('/football/player-stats', async (req, res) => {
-  const name = String(req.query.name ?? '').trim();
-  if (!name) {
-    return res.status(400).json({ success: false, error: 'name is required.' });
+router.get('/football/debug', async (req, res) => {
+  const q = String(req.query.q ?? 'messi').trim();
+
+  const candidates = [
+    `/api/v1/search/players`,
+    `/api/v1/search/player`,
+    `/api/v1/search`,
+    `/api/v1/players/search`,
+    `/api/v1/players`,
+    `/api/v1/player/search`,
+    `/api/v1/search/players?q=${encodeURIComponent(q)}`,
+  ];
+
+  const results: Array<{
+    path: string;
+    status: number;
+    ok: boolean;
+    preview?: any;
+    error?: string;
+  }> = [];
+
+  for (const path of candidates) {
+    const basePath = path.split('?')[0];
+
+    const r = await rapidGet(basePath, {
+      q,
+      search: q,
+      term: q,
+      name: q,
+      query: q,
+    });
+
+    results.push({
+      path: basePath,
+      status: r.status,
+      ok: r.ok,
+      preview: r.ok
+        ? summarize(r.data)
+        : undefined,
+      error: r.ok ? undefined : r.error,
+    });
   }
 
-  const cacheKey = `player-stats:${name.toLowerCase()}`;
-  const now = Date.now();
-  const cached = CACHE.get(cacheKey);
-  if (cached && cached.expiresAt > now) {
-    return res.json(cached.data);
-  }
-
-  // Step 1: search player by name.
-  const searchResult = await rapidTry('search_players', {
-    search: name,
-    term: name,
-    q: name,
+  return res.json({
+    query: q,
+    host: RAPIDAPI_HOST,
+    keyConfigured: Boolean(RAPIDAPI_KEY),
+    results,
   });
-
-  let playerId: string | number | null = null;
-  let playerName = name;
-
-  if (searchResult.ok && searchResult.data) {
-    const list =
-      searchResult.data?.results ??
-      searchResult.data?.data ??
-      searchResult.data?.players ??
-      searchResult.data?.suggestions ??
-      searchResult.data?.items ??
-      [];
-
-    if (Array.isArray(list) && list.length > 0) {
-      const first = list[0];
-      playerId =
-        first?.id ??
-        first?.player_id ??
-        first?.playerId ??
-        first?.key ??
-        first?.entity?.id ??
-        null;
-      playerName =
-        first?.name ??
-        first?.player_name ??
-        first?.displayName ??
-        first?.entity?.name ??
-        name;
-    }
-  }
-
-  if (!playerId) {
-    const response = {
-      success: false,
-      error: searchResult.error || 'Player not found in SportAPI.',
-      searchedFor: name,
-      tried: 'search_players',
-    };
-    CACHE.set(cacheKey, { data: response, expiresAt: now + CACHE_TTL });
-    return res.status(404).json(response);
-  }
-
-  // Step 2: player details + career stats.
-  const [detailsRes, careerRes, seasonRes] = await Promise.all([
-    rapidTry('player_details', { id: String(playerId) }),
-    rapidTry('player_careerstatistics', { id: String(playerId) }),
-    rapidTry('player_seasonstatistics', { id: String(playerId) }),
-  ]);
-
-  const response = {
-    success: true,
-    playerId,
-    playerName,
-    details: detailsRes.ok ? detailsRes.data : null,
-    careerStats: careerRes.ok ? careerRes.data : null,
-    seasonStats: seasonRes.ok ? seasonRes.data : null,
-    _endpoints: {
-      details: detailsRes.path ?? 'failed',
-      careerStats: careerRes.path ?? 'failed',
-      seasonStats: seasonRes.path ?? 'failed',
-    },
-  };
-
-  CACHE.set(cacheKey, { data: response, expiresAt: now + CACHE_TTL });
-  return res.json(response);
 });
 
+function summarize(data: any): any {
+  if (!data) return null;
+
+  const list =
+    data?.results ??
+    data?.data ??
+    data?.players ??
+    data?.suggestions ??
+    data?.items ??
+    null;
+
+  if (Array.isArray(list)) {
+    return {
+      listLength: list.length,
+      firstItemPreview: list[0]
+        ? Object.keys(list[0]).slice(0, 10)
+        : null,
+      firstItem: list[0] ?? null,
+    };
+  }
+
+  return {
+    topKeys: Object.keys(data).slice(0, 10),
+  };
+}
+
 /* ============================================================
- *  ENDPOINT — /api/football/health
+ *  HEALTH
  * ============================================================ */
 
 router.get('/football/health', async (_req, res) => {
   if (!RAPIDAPI_KEY) {
-    return res.json({ success: false, error: 'SPORTAPI_KEY is not configured.' });
+    return res.json({ success: false, error: 'SPORTAPI_KEY missing' });
   }
 
-  const r = await rapidTry('search_players', { search: 'Messi', term: 'Messi' });
+  const r = await rapidGet('/api/v1/player/750');
 
   return res.json({
     success: r.ok,
     host: RAPIDAPI_HOST,
     status: r.status,
-    pathUsed: r.path ?? null,
     error: r.ok ? undefined : r.error,
+    note: 'Player/750 = Messi-like test ID',
   });
+});
+
+/* ============================================================
+ *  PLAYER DETAILS
+ * ============================================================ */
+
+router.get('/football/player-details', async (req, res) => {
+  const id = String(req.query.id ?? '').trim();
+  if (!id) {
+    return res.status(400).json({ success: false, error: 'id is required' });
+  }
+
+  const cacheKey = `player-details:${id}`;
+  const now = Date.now();
+  const cached = CACHE.get(cacheKey);
+  if (cached && cached.expiresAt > now) return res.json(cached.data);
+
+  const r = await rapidGet(`/api/v1/player/${encodeURIComponent(id)}`);
+
+  const response = {
+    success: r.ok,
+    id,
+    data: r.data,
+    error: r.ok ? undefined : r.error,
+  };
+
+  if (r.ok) {
+    CACHE.set(cacheKey, { data: response, expiresAt: now + CACHE_TTL });
+  }
+
+  return res.json(response);
 });
 
 export default router;
