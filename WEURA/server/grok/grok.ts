@@ -22,11 +22,7 @@ export type AskOptions = {
  *  PROVIDER COOLDOWN (skip dead providers for 10 min)
  * ============================================================ */
 
-type CooldownEntry = {
-  until: number;
-  reason: string;
-};
-
+type CooldownEntry = { until: number; reason: string };
 const COOLDOWN_MS = 10 * 60 * 1000;
 const COOLDOWNS = new Map<string, CooldownEntry>();
 
@@ -41,22 +37,17 @@ function isOnCooldown(name: string): boolean {
 }
 
 function setCooldown(name: string, reason: string): void {
-  COOLDOWNS.set(name, {
-    until: Date.now() + COOLDOWN_MS,
-    reason,
-  });
+  COOLDOWNS.set(name, { until: Date.now() + COOLDOWN_MS, reason });
 }
 
 /* ============================================================
- *  PROVIDER REGISTRY
+ *  PROVIDER REGISTRY — 3 providers
  * ============================================================ */
 
-/// Groq is PRIMARY (fast + reliable).
-/// Cerebras is FALLBACK (kicks in when Groq hits its daily limit).
 function getProviders(): Provider[] {
   const providers: Provider[] = [];
 
-  // 1. Groq — primary
+  // 1. Groq — primary (fastest)
   const groqKey = process.env.GROQ_API_KEY?.trim();
   if (groqKey) {
     providers.push({
@@ -67,7 +58,7 @@ function getProviders(): Provider[] {
     });
   }
 
-  // 2. Cerebras — fallback
+  // 2. Cerebras — fallback 1
   const cerebrasKey = process.env.CEREBRAS_API_KEY?.trim();
   if (cerebrasKey) {
     providers.push({
@@ -78,9 +69,23 @@ function getProviders(): Provider[] {
     });
   }
 
+  // 3. Mistral — fallback 2 (500K tokens/month free)
+  const mistralKey = process.env.MISTRAL_API_KEY?.trim();
+  if (mistralKey) {
+    providers.push({
+      name: 'mistral',
+      url: 'https://api.mistral.ai/v1/chat/completions',
+      apiKey: mistralKey,
+      model:
+        process.env.MISTRAL_MODEL?.trim() ||
+        'mistral-small-latest',
+    });
+  }
+
   if (providers.length === 0) {
     throw new Error(
-      'No AI provider is configured. Set GROQ_API_KEY (primary) or CEREBRAS_API_KEY (fallback).',
+      'No AI provider is configured. Set at least one of: ' +
+        'GROQ_API_KEY, CEREBRAS_API_KEY, MISTRAL_API_KEY.',
     );
   }
 
@@ -143,9 +148,6 @@ async function callProvider(
         temperature,
         max_tokens: maxTokens,
         stream: false,
-        // Disable function/tool calling.
-        // Some Groq models (gpt-oss-120b) hallucinate tool calls
-        // and return HTTP 400 "tool choice is none, but model called a tool".
         tools: [],
         tool_choice: 'none',
       }),
@@ -203,12 +205,11 @@ async function callProvider(
 }
 
 /* ============================================================
- *  RETRYABLE / FATAL CLASSIFICATION
+ *  ERROR CLASSIFICATION
  * ============================================================ */
 
 function isRetryableError(error: unknown): boolean {
   if (!(error instanceof Error)) return true;
-
   const msg = error.message.toLowerCase();
 
   return (
@@ -250,7 +251,6 @@ function isRetryableError(error: unknown): boolean {
 
 function isProviderDeadError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
-
   const msg = error.message.toLowerCase();
 
   return (
