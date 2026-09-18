@@ -39,77 +39,54 @@ async function rapidGet(
     }
 
     if (!res.ok) {
-      return {
-        ok: false,
-        status: res.status,
-        data,
-        error: data?.message ?? `HTTP ${res.status}`,
-      };
+      return { ok: false, status: res.status, data, error: data?.message ?? `HTTP ${res.status}` };
     }
-
     return { ok: true, status: res.status, data };
   } catch (error) {
-    return {
-      ok: false,
-      status: 0,
-      data: null,
-      error: error instanceof Error ? error.message : 'Unknown',
-    };
+    return { ok: false, status: 0, data: null, error: error instanceof Error ? error.message : 'Unknown' };
   }
 }
 
 /* ============================================================
- *  DEBUG v2 — literal sidebar names
+ *  DEBUG — try player-prefix search patterns
  * ============================================================ */
 
 router.get('/football/debug', async (req, res) => {
   const q = String(req.query.q ?? 'messi').trim();
 
-  // Literal names as they appear in the sidebar.
-  const candidates: string[] = [
-    `/api_v1_search_players`,
-    `/api_v1_player_details`,
-    `/api_v1_player_careerstatistics`,
-    `/api_v1_player_seasonstatistics`,
-    // Maybe without leading "api_" or with different case
-    `/v1_search_players`,
-    `/search_players`,
-    `/player_details`,
-    // Maybe with a dot?
-    `/api.v1.search.players`,
-    // Maybe as query?
-    `/?api_v1_search_players=${encodeURIComponent(q)}`,
-    // Maybe the URL uses "football" prefix
-    `/football/search/players`,
-    `/football/players/search`,
-    `/api/v1/football/players`,
-    // Maybe underscores only in action part
-    `/api/v1/player_search`,
-    `/api/v1/players_search`,
-    // Maybe "soccer" instead of "football"
-    `/api/v1/soccer/players`,
-    `/soccer/search/players`,
+  // All candidate search paths — the /api/v1/player/ prefix is confirmed.
+  const candidates: Array<{ path: string; query: Record<string, string> }> = [
+    { path: `/api/v1/player/search`, query: { q } },
+    { path: `/api/v1/player/search`, query: { name: q } },
+    { path: `/api/v1/player/search`, query: { search: q } },
+    { path: `/api/v1/player/find`, query: { q } },
+    { path: `/api/v1/player/by-name`, query: { name: q } },
+    { path: `/api/v1/player/lookup`, query: { name: q } },
+    // Maybe player endpoint accepts a name as query (no /search)
+    { path: `/api/v1/player`, query: { search: q } },
+    { path: `/api/v1/player`, query: { name: q } },
+    { path: `/api/v1/player`, query: { q } },
+    // Maybe with trailing slash
+    { path: `/api/v1/player/`, query: { search: q } },
+    // Maybe under another prefix
+    { path: `/api/v1/players/search`, query: { q } },
+    { path: `/api/v1/player/all`, query: { search: q } },
   ];
 
   const results: Array<{
     path: string;
+    query: Record<string, string>;
     status: number;
     ok: boolean;
     preview?: any;
     error?: string;
   }> = [];
 
-  for (const path of candidates) {
-    const r = await rapidGet(path, {
-      q,
-      search: q,
-      term: q,
-      name: q,
-      query: q,
-    });
-
+  for (const c of candidates) {
+    const r = await rapidGet(c.path, c.query);
     results.push({
-      path,
+      path: c.path,
+      query: c.query,
       status: r.status,
       ok: r.ok,
       preview: r.ok ? summarize(r.data) : undefined,
@@ -137,7 +114,7 @@ function summarize(data: any): any {
 }
 
 /* ============================================================
- *  PLAYER BY ID — this pattern is CONFIRMED to work
+ *  PLAYER BY ID — confirmed working
  * ============================================================ */
 
 router.get('/football/player', async (req, res) => {
@@ -146,6 +123,24 @@ router.get('/football/player', async (req, res) => {
     return res.status(400).json({ success: false, error: 'id is required' });
   }
   const r = await rapidGet(`/api/v1/player/${encodeURIComponent(id)}`);
+  return res.json({
+    success: r.ok,
+    id,
+    data: r.data,
+    error: r.ok ? undefined : r.error,
+  });
+});
+
+/* ============================================================
+ *  PLAYER NEAR EVENTS — confirmed working
+ * ============================================================ */
+
+router.get('/football/player-near-events', async (req, res) => {
+  const id = String(req.query.id ?? '').trim();
+  if (!id) {
+    return res.status(400).json({ success: false, error: 'id is required' });
+  }
+  const r = await rapidGet(`/api/v1/player/${encodeURIComponent(id)}/near-events`);
   return res.json({
     success: r.ok,
     id,
