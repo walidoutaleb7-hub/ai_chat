@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -12,6 +13,7 @@ import 'package:gal/gal.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:markdown/markdown.dart' as md;
+import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -56,6 +58,7 @@ class _ChatMessage {
     this.imagePrompt,
     this.visionImagePath,
     this.playerData,
+    this.imageLocalPath,
   });
 
   final String text;
@@ -65,6 +68,7 @@ class _ChatMessage {
   final String? imagePrompt;
   final String? visionImagePath;
   final Map<String, dynamic>? playerData;
+  final String? imageLocalPath;
 }
 
 class _ChatScreenState extends State<ChatScreen>
@@ -140,6 +144,7 @@ class _ChatScreenState extends State<ChatScreen>
               imagePrompt: msg.imagePrompt,
               playerData: msg.playerData,
               visionImagePath: msg.visionImagePath,
+              imageLocalPath: msg.imageLocalPath,
             ),
           );
         }
@@ -203,7 +208,10 @@ class _ChatScreenState extends State<ChatScreen>
       );
   }
 
-  Future<void> _saveImageToGallery(String imageUrl) async {
+  Future<void> _saveImageToGallery(
+    String imageUrl, {
+    String? localPath,
+  }) async {
     try {
       final hasAccess = await Gal.hasAccess();
       if (!hasAccess) {
@@ -215,18 +223,36 @@ class _ChatScreenState extends State<ChatScreen>
         }
       }
 
-      final response = await http
-          .get(Uri.parse(imageUrl))
-          .timeout(const Duration(seconds: 60));
+      Uint8List bytes;
 
-      if (response.statusCode != 200) {
-        throw Exception('Download failed: HTTP ${response.statusCode}');
+      if (localPath != null) {
+        final file = File(localPath);
+        if (await file.exists()) {
+          bytes = await file.readAsBytes();
+        } else {
+          final response = await http
+              .get(Uri.parse(imageUrl))
+              .timeout(const Duration(seconds: 60));
+          if (response.statusCode != 200) {
+            throw Exception(
+              'Download failed: HTTP ${response.statusCode}',
+            );
+          }
+          bytes = response.bodyBytes;
+        }
+      } else {
+        final response = await http
+            .get(Uri.parse(imageUrl))
+            .timeout(const Duration(seconds: 60));
+        if (response.statusCode != 200) {
+          throw Exception(
+            'Download failed: HTTP ${response.statusCode}',
+          );
+        }
+        bytes = response.bodyBytes;
       }
 
-      await Gal.putImageBytes(
-        response.bodyBytes,
-        album: 'WEURA',
-      );
+      await Gal.putImageBytes(bytes, album: 'WEURA');
 
       if (!mounted) return;
       ScaffoldMessenger.of(context)
@@ -292,6 +318,7 @@ class _ChatScreenState extends State<ChatScreen>
           imagePrompt: msg.imagePrompt,
           playerData: msg.playerData,
           visionImagePath: msg.visionImagePath,
+          imageLocalPath: msg.imageLocalPath,
         ),
       );
     }
@@ -329,7 +356,7 @@ class _ChatScreenState extends State<ChatScreen>
     if (!_scrollController.hasClients) return;
     final pos = _scrollController.position;
     final distanceFromBottom = pos.maxScrollExtent - pos.pixels;
-    if (distanceFromBottom < 120) {
+    if (distanceFromBottom < 140) {
       _scrollController.jumpTo(pos.maxScrollExtent);
     }
   }
@@ -803,6 +830,52 @@ class _ChatScreenState extends State<ChatScreen>
 
     await _persistMessages();
     _scrollToBottom();
+
+    final idx = _messages.length - 1;
+    final localPath = await _downloadImageLocally(imageUrl);
+    if (localPath != null && mounted) {
+      setState(() {
+        _messages[idx] = _ChatMessage(
+          text: '',
+          isUser: false,
+          imageUrl: imageUrl,
+          imagePrompt: prompt,
+          imageLocalPath: localPath,
+        );
+      });
+      await _persistMessages();
+    }
+  }
+
+  Future<String?> _downloadImageLocally(String url) async {
+    try {
+      final response = await http
+          .get(Uri.parse(url))
+          .timeout(const Duration(seconds: 90));
+
+      if (response.statusCode != 200) {
+        debugPrint(
+          '[WEURA] image download HTTP ${response.statusCode}',
+        );
+        return null;
+      }
+
+      final dir = await getApplicationDocumentsDirectory();
+      final weuraDir = Directory('${dir.path}/weura_images');
+      if (!await weuraDir.exists()) {
+        await weuraDir.create(recursive: true);
+      }
+
+      final fileName =
+          'img_${DateTime.now().microsecondsSinceEpoch}.jpg';
+      final file = File('${weuraDir.path}/$fileName');
+      await file.writeAsBytes(response.bodyBytes);
+
+      return file.path;
+    } catch (e) {
+      debugPrint('[WEURA] download image error: $e');
+      return null;
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -936,9 +1009,7 @@ class _ChatScreenState extends State<ChatScreen>
       }
 
       setState(() {
-        _messages.add(
-          _ChatMessage(text: content, isUser: false),
-        );
+        _messages.add(_ChatMessage(text: content, isUser: false));
         _typingIndices.add(_messages.length - 1);
       });
 
@@ -1041,7 +1112,6 @@ class _ChatScreenState extends State<ChatScreen>
           .where((m) => m.text.trim().isNotEmpty)
           .toList();
 
-      // Send only last 6 messages to save tokens.
       final trimmed = recent.length > 6
           ? recent.sublist(recent.length - 6)
           : recent;
@@ -1193,7 +1263,7 @@ class _ChatScreenState extends State<ChatScreen>
       if (!_scrollController.hasClients) return;
       _scrollController.animateTo(
         _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 200),
+        duration: const Duration(milliseconds: 250),
         curve: Curves.easeOutCubic,
       );
     });
@@ -1239,10 +1309,6 @@ class _ChatScreenState extends State<ChatScreen>
       MaterialPageRoute(builder: (_) => const SettingsScreen()),
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // Image Zoom
-  // ---------------------------------------------------------------------------
 
   void _openImageZoom(String imageUrl) {
     Navigator.of(context).push(
@@ -1737,7 +1803,7 @@ class _ChatScreenState extends State<ChatScreen>
                     controller: _scrollController,
                     keyboardDismissBehavior:
                         ScrollViewKeyboardDismissBehavior.onDrag,
-                    padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
+                    padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
                     itemCount: _messages.length + (_isLoading ? 1 : 0),
                     itemBuilder: (context, index) {
                       if (_isLoading && index == _messages.length) {
@@ -1960,7 +2026,7 @@ class _ChatScreenState extends State<ChatScreen>
       return Align(
         alignment: Alignment.centerLeft,
         child: Padding(
-          padding: const EdgeInsets.only(bottom: 18, right: 16),
+          padding: const EdgeInsets.only(bottom: 22, right: 12),
           child: PlayerCard(
             data: message.playerData!,
             onShare: () {
@@ -1974,15 +2040,19 @@ class _ChatScreenState extends State<ChatScreen>
     }
 
     if (message.isUser) {
-      return _userBubble(colors, message);
+      return _userBubble(colors, message, index);
     }
 
     return _assistantMessage(colors, message, index, isLastAssistant);
   }
 
-  Widget _userBubble(WeuraColors colors, _ChatMessage message) {
+  Widget _userBubble(
+    WeuraColors colors,
+    _ChatMessage message,
+    int index,
+  ) {
     final bubbleDirection = _detectDirection(message.text);
-    final msgIndex = _messages.indexOf(message);
+    final msgIndex = index;
 
     return Align(
       alignment: Alignment.centerRight,
@@ -1990,71 +2060,89 @@ class _ChatScreenState extends State<ChatScreen>
         onLongPress: msgIndex == -1
             ? null
             : () => _editUserMessage(msgIndex, colors),
-        child: Container(
-          constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(context).size.width * 0.78,
-          ),
-          margin: const EdgeInsets.only(
-            bottom: 18,
+        child: Padding(
+          padding: const EdgeInsets.only(
+            bottom: 22,
             left: 40,
+            top: 4,
           ),
-          padding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 12,
-          ),
-          decoration: BoxDecoration(
-            color: colors.userBubble,
-            borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(20),
-              topRight: Radius.circular(20),
-              bottomLeft: Radius.circular(20),
-              bottomRight: Radius.circular(6),
+          child: Container(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width * 0.80,
             ),
-          ),
-          child: Directionality(
-            textDirection: bubbleDirection,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (message.visionImagePath != null) ...[
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.file(
-                      File(message.visionImagePath!),
-                      width: 240,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
-                        width: 240,
-                        height: 120,
-                        decoration: BoxDecoration(
-                          color: colors.surface,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Center(
-                          child: Text(
-                            '🖼️ Image',
-                            style: TextStyle(
-                              color: colors.textMuted,
-                              fontSize: 12,
+            padding: const EdgeInsets.symmetric(
+              horizontal: 18,
+              vertical: 14,
+            ),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  colors.userBubble,
+                  colors.userBubble.withValues(alpha: 0.88),
+                ],
+              ),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(22),
+                topRight: Radius.circular(22),
+                bottomLeft: Radius.circular(22),
+                bottomRight: Radius.circular(6),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: colors.userBubble.withValues(alpha: 0.22),
+                  blurRadius: 20,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: Directionality(
+              textDirection: bubbleDirection,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (message.visionImagePath != null) ...[
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(14),
+                      child: Image.file(
+                        File(message.visionImagePath!),
+                        width: 260,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(
+                          width: 260,
+                          height: 140,
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Center(
+                            child: Text(
+                              '🖼️ Image',
+                              style: TextStyle(
+                                color: colors.userBubbleText,
+                                fontSize: 13,
+                              ),
                             ),
                           ),
                         ),
                       ),
                     ),
-                  ),
+                    if (message.text.trim().isNotEmpty)
+                      const SizedBox(height: 10),
+                  ],
                   if (message.text.trim().isNotEmpty)
-                    const SizedBox(height: 8),
-                ],
-                if (message.text.trim().isNotEmpty)
-                  SelectableText(
-                    message.text,
-                    style: TextStyle(
-                      color: colors.userBubbleText,
-                      fontSize: 15.5,
-                      height: 1.5,
+                    SelectableText(
+                      message.text,
+                      style: TextStyle(
+                        color: colors.userBubbleText,
+                        fontSize: 16,
+                        height: 1.55,
+                        letterSpacing: 0.1,
+                      ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -2078,7 +2166,7 @@ class _ChatScreenState extends State<ChatScreen>
     final isTyping = _typingIndices.contains(index);
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 24, right: 16),
+      margin: const EdgeInsets.only(bottom: 28, right: 8, top: 4),
       child: Directionality(
         textDirection: bubbleDirection,
         child: Column(
@@ -2112,13 +2200,13 @@ class _ChatScreenState extends State<ChatScreen>
 
             if (sources.isNotEmpty && !isTyping)
               Padding(
-                padding: const EdgeInsets.only(top: 14),
+                padding: const EdgeInsets.only(top: 16),
                 child: _sourcesSection(colors, sources),
               ),
 
             if (!message.isError && !isTyping)
               Padding(
-                padding: const EdgeInsets.only(top: 8),
+                padding: const EdgeInsets.only(top: 12),
                 child: _actionBar(
                   colors,
                   message,
@@ -2129,7 +2217,7 @@ class _ChatScreenState extends State<ChatScreen>
 
             if (message.isError)
               Padding(
-                padding: const EdgeInsets.only(top: 12),
+                padding: const EdgeInsets.only(top: 14),
                 child: GestureDetector(
                   onTap: _retryLastMessage,
                   child: Row(
@@ -2145,7 +2233,7 @@ class _ChatScreenState extends State<ChatScreen>
                         'Retry',
                         style: TextStyle(
                           color: colors.accentGlow,
-                          fontSize: 13,
+                          fontSize: 13.5,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -2160,28 +2248,63 @@ class _ChatScreenState extends State<ChatScreen>
   }
 
   Widget _errorMessage(WeuraColors colors, String text) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(top: 3, right: 10),
-          child: Icon(
-            Icons.warning_amber_rounded,
-            size: 18,
-            color: colors.danger,
-          ),
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colors.danger.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: colors.danger.withValues(alpha: 0.25),
         ),
-        Expanded(
-          child: Text(
-            text,
-            style: TextStyle(
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 2, right: 10),
+            child: Icon(
+              Icons.warning_amber_rounded,
+              size: 20,
               color: colors.danger,
-              fontSize: 14.5,
-              height: 1.55,
             ),
           ),
-        ),
-      ],
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                color: colors.danger,
+                fontSize: 15,
+                height: 1.6,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildImageWidget(_ChatMessage message, WeuraColors colors) {
+    final localPath = message.imageLocalPath;
+
+    if (localPath != null) {
+      final file = File(localPath);
+      if (file.existsSync()) {
+        return Image.file(
+          file,
+          width: 320,
+          height: 320,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => _NetworkImageWithLoader(
+            url: message.imageUrl!,
+            colors: colors,
+          ),
+        );
+      }
+    }
+
+    return _NetworkImageWithLoader(
+      url: message.imageUrl!,
+      colors: colors,
     );
   }
 
@@ -2194,14 +2317,14 @@ class _ChatScreenState extends State<ChatScreen>
       alignment: Alignment.centerLeft,
       child: Container(
         constraints: const BoxConstraints(maxWidth: 650),
-        margin: const EdgeInsets.only(bottom: 20, right: 16),
+        margin: const EdgeInsets.only(bottom: 22, right: 12, top: 4),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (message.imagePrompt != null &&
                 message.imagePrompt!.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.only(left: 2, bottom: 10),
+                padding: const EdgeInsets.only(left: 2, bottom: 12),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -2224,7 +2347,7 @@ class _ChatScreenState extends State<ChatScreen>
                         message.imagePrompt!,
                         style: TextStyle(
                           color: colors.textSecondary,
-                          fontSize: 13,
+                          fontSize: 13.5,
                         ),
                       ),
                     ),
@@ -2234,24 +2357,28 @@ class _ChatScreenState extends State<ChatScreen>
             GestureDetector(
               onTap: () => _openImageZoom(message.imageUrl!),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(18),
                 child: Container(
                   width: 320,
                   height: 320,
                   decoration: BoxDecoration(
                     color: colors.surface,
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(18),
                     border: Border.all(color: colors.border),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.06),
+                        blurRadius: 24,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
                   ),
-                  child: _NetworkImageWithLoader(
-                    url: message.imageUrl!,
-                    colors: colors,
-                  ),
+                  child: _buildImageWidget(message, colors),
                 ),
               ),
             ),
             Padding(
-              padding: const EdgeInsets.only(top: 6),
+              padding: const EdgeInsets.only(top: 10),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -2259,8 +2386,10 @@ class _ChatScreenState extends State<ChatScreen>
                     colors: colors,
                     icon: Icons.save_alt_rounded,
                     tooltip: 'Save to gallery',
-                    onPressed: () =>
-                        _saveImageToGallery(message.imageUrl ?? ''),
+                    onPressed: () => _saveImageToGallery(
+                      message.imageUrl ?? '',
+                      localPath: message.imageLocalPath,
+                    ),
                   ),
                   _actionIcon(
                     colors: colors,
@@ -2312,12 +2441,12 @@ class _ChatScreenState extends State<ChatScreen>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.only(left: 2, bottom: 8),
+          padding: const EdgeInsets.only(left: 2, bottom: 10),
           child: Text(
             'المصادر',
             style: TextStyle(
               color: colors.textMuted,
-              fontSize: 11,
+              fontSize: 11.5,
               fontWeight: FontWeight.w700,
               letterSpacing: 1.2,
             ),
@@ -2325,7 +2454,7 @@ class _ChatScreenState extends State<ChatScreen>
         ),
         ...urls.asMap().entries.map((entry) {
           return Padding(
-            padding: const EdgeInsets.only(bottom: 6),
+            padding: const EdgeInsets.only(bottom: 8),
             child: _sourceCard(colors, entry.key + 1, entry.value),
           );
         }),
@@ -2541,8 +2670,8 @@ class _ChatScreenState extends State<ChatScreen>
           child: Tooltip(
             message: tooltip,
             child: Padding(
-              padding: const EdgeInsets.all(6),
-              child: Icon(icon, size: 17, color: color),
+              padding: const EdgeInsets.all(7),
+              child: Icon(icon, size: 18, color: color),
             ),
           ),
         ),
@@ -2554,24 +2683,25 @@ class _ChatScreenState extends State<ChatScreen>
     return MarkdownStyleSheet(
       p: TextStyle(
         color: colors.textPrimary,
-        fontSize: 15.5,
-        height: 1.6,
+        fontSize: 16,
+        height: 1.75,
+        letterSpacing: 0.1,
       ),
       h1: TextStyle(
         color: colors.textPrimary,
-        fontSize: 24,
+        fontSize: 26,
         fontWeight: FontWeight.w700,
         height: 1.4,
       ),
       h2: TextStyle(
         color: colors.textPrimary,
-        fontSize: 20,
+        fontSize: 22,
         fontWeight: FontWeight.w700,
         height: 1.4,
       ),
       h3: TextStyle(
         color: colors.textPrimary,
-        fontSize: 17,
+        fontSize: 18,
         fontWeight: FontWeight.w700,
         height: 1.4,
       ),
@@ -2591,15 +2721,15 @@ class _ChatScreenState extends State<ChatScreen>
         color: colors.accentGlow,
         backgroundColor: colors.surface,
         fontFamily: 'monospace',
-        fontSize: 14,
+        fontSize: 14.5,
       ),
-      codeblockDecoration:
-          const BoxDecoration(color: Colors.transparent),
+      codeblockDecoration: const BoxDecoration(color: Colors.transparent),
       codeblockPadding: EdgeInsets.zero,
       blockquote: TextStyle(
         color: colors.textSecondary,
-        fontSize: 15,
+        fontSize: 15.5,
         fontStyle: FontStyle.italic,
+        height: 1.7,
       ),
       blockquoteDecoration: BoxDecoration(
         color: colors.accentSoft,
@@ -2607,13 +2737,13 @@ class _ChatScreenState extends State<ChatScreen>
           left: BorderSide(color: colors.accentGlow, width: 3),
         ),
       ),
-      blockquotePadding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+      blockquotePadding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       listBullet: TextStyle(
         color: colors.textPrimary,
-        fontSize: 15.5,
-        height: 1.6,
+        fontSize: 16,
+        height: 1.75,
       ),
-      listIndent: 22,
+      listIndent: 24,
       horizontalRuleDecoration: BoxDecoration(
         border: Border(
           top: BorderSide(color: colors.borderStrong),
@@ -2625,16 +2755,16 @@ class _ChatScreenState extends State<ChatScreen>
       ),
       tableBody: TextStyle(
         color: colors.textSecondary,
-        fontSize: 14,
+        fontSize: 14.5,
       ),
       tableBorder: TableBorder.all(color: colors.borderStrong),
-      tableCellsPadding: const EdgeInsets.all(8),
+      tableCellsPadding: const EdgeInsets.all(10),
     );
   }
 }
 
 // ---------------------------------------------------------------------------
-// Typing markdown widget — reveals text progressively
+// Typing markdown widget — progressive reveal with elegant cursor
 // ---------------------------------------------------------------------------
 
 class _TypedMarkdown extends StatefulWidget {
@@ -2657,14 +2787,21 @@ class _TypedMarkdown extends StatefulWidget {
 }
 
 class _TypedMarkdownState extends State<_TypedMarkdown>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final AnimationController _controller;
+  late final AnimationController _cursorController;
   late String _visibleText;
   bool _done = false;
 
   @override
   void initState() {
     super.initState();
+
+    // Cursor pulse — runs continuously while typing.
+    _cursorController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
 
     final len = widget.fullText.length;
 
@@ -2675,10 +2812,12 @@ class _TypedMarkdownState extends State<_TypedMarkdown>
       WidgetsBinding.instance.addPostFrameCallback((_) {
         widget.onComplete?.call();
       });
+      _cursorController.stop();
       return;
     }
 
-    final durationMs = (len * 15).clamp(400, 6000);
+    // Duration: 14ms per char, clamped between 500ms and 5500ms.
+    final durationMs = (len * 14).clamp(500, 5500);
 
     _controller = AnimationController(
       vsync: this,
@@ -2691,6 +2830,7 @@ class _TypedMarkdownState extends State<_TypedMarkdown>
     _controller.forward().whenComplete(() {
       if (!mounted) return;
       _done = true;
+      _cursorController.stop();
       widget.onComplete?.call();
     });
   }
@@ -2711,18 +2851,67 @@ class _TypedMarkdownState extends State<_TypedMarkdown>
   void dispose() {
     _controller.removeListener(_onTick);
     _controller.dispose();
+    _cursorController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final display = _done ? _visibleText : '$_visibleText ▌';
+    if (_done) {
+      return MarkdownBody(
+        data: _visibleText,
+        selectable: true,
+        styleSheet: widget.styleSheet,
+        builders: widget.builders,
+      );
+    }
 
-    return MarkdownBody(
-      data: display,
-      selectable: _done,
-      styleSheet: widget.styleSheet,
-      builders: widget.builders,
+    // While typing: show text + a glowing pulsing cursor.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        MarkdownBody(
+          data: _visibleText,
+          selectable: false,
+          styleSheet: widget.styleSheet,
+          builders: widget.builders,
+        ),
+        Padding(
+          padding: const EdgeInsets.only(top: 4, left: 2),
+          child: AnimatedBuilder(
+            animation: _cursorController,
+            builder: (context, _) {
+              final t = _cursorController.value;
+              return Opacity(
+                opacity: 0.35 + (t * 0.65),
+                child: Container(
+                  width: 10,
+                  height: 18,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(3),
+                    gradient: const LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Color(0xFF3B82F6),
+                        Color(0xFF60A5FA),
+                      ],
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF3B82F6)
+                            .withValues(alpha: 0.55 * t),
+                        blurRadius: 12,
+                        spreadRadius: 1,
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }
@@ -2747,10 +2936,13 @@ class _CodeBlockBuilder extends MarkdownElementBuilder {
     final language = cls.substring('language-'.length).trim();
     final code = element.textContent.trimRight();
 
-    return _CodeBlock(
-      code: code,
-      language: language,
-      colors: colors,
+    return Directionality(
+      textDirection: TextDirection.ltr,
+      child: _CodeBlock(
+        code: code,
+        language: language,
+        colors: colors,
+      ),
     );
   }
 }
@@ -2812,22 +3004,29 @@ class _CodeBlockState extends State<_CodeBlock> {
         widget.language.isEmpty ? 'code' : widget.language;
 
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 10),
+      margin: const EdgeInsets.symmetric(vertical: 12),
       decoration: BoxDecoration(
         color: const Color(0xFF0A0B12),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: colors.border),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.15),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
-            padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
+            padding: const EdgeInsets.fromLTRB(16, 10, 10, 10),
             decoration: BoxDecoration(
               color: const Color(0xFF0F1119),
               borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(12),
-                topRight: Radius.circular(12),
+                topLeft: Radius.circular(14),
+                topRight: Radius.circular(14),
               ),
               border: Border(
                 bottom: BorderSide(color: colors.border),
@@ -2836,19 +3035,27 @@ class _CodeBlockState extends State<_CodeBlock> {
             child: Row(
               children: [
                 Container(
-                  width: 8,
-                  height: 8,
+                  width: 9,
+                  height: 9,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: colors.accentGlow,
+                    boxShadow: [
+                      BoxShadow(
+                        color: colors.accentGlow
+                            .withValues(alpha: 0.55),
+                        blurRadius: 8,
+                        spreadRadius: 1,
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 10),
                 Text(
                   displayLang,
                   style: TextStyle(
                     color: colors.textMuted,
-                    fontSize: 12,
+                    fontSize: 12.5,
                     fontWeight: FontWeight.w600,
                     letterSpacing: 0.4,
                   ),
@@ -2856,11 +3063,11 @@ class _CodeBlockState extends State<_CodeBlock> {
                 const Spacer(),
                 InkWell(
                   onTap: _copy,
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(8),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 5,
+                      horizontal: 10,
+                      vertical: 6,
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -2869,19 +3076,19 @@ class _CodeBlockState extends State<_CodeBlock> {
                           _copied
                               ? Icons.check_rounded
                               : Icons.copy_rounded,
-                          size: 14,
+                          size: 15,
                           color: _copied
                               ? colors.accentGlow
                               : colors.textMuted,
                         ),
-                        const SizedBox(width: 5),
+                        const SizedBox(width: 6),
                         Text(
                           _copied ? 'Copied' : 'Copy',
                           style: TextStyle(
                             color: _copied
                                 ? colors.accentGlow
                                 : colors.textMuted,
-                            fontSize: 11.5,
+                            fontSize: 12,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -2893,7 +3100,7 @@ class _CodeBlockState extends State<_CodeBlock> {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(14),
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: HighlightView(
@@ -2903,8 +3110,8 @@ class _CodeBlockState extends State<_CodeBlock> {
                 padding: EdgeInsets.zero,
                 textStyle: const TextStyle(
                   fontFamily: 'monospace',
-                  fontSize: 13,
-                  height: 1.55,
+                  fontSize: 13.5,
+                  height: 1.6,
                 ),
               ),
             ),
@@ -2982,7 +3189,7 @@ class _NetworkImageWithLoader extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Fullscreen Image Zoom Viewer (browser-like)
+// Fullscreen Image Zoom Viewer
 // ---------------------------------------------------------------------------
 
 class _ImageZoomViewer extends StatefulWidget {
@@ -3269,11 +3476,7 @@ class _ImageZoomViewerState extends State<_ImageZoomViewer>
           message: tooltip,
           child: Padding(
             padding: const EdgeInsets.all(10),
-            child: Icon(
-              icon,
-              size: 24,
-              color: Colors.white,
-            ),
+            child: Icon(icon, size: 24, color: Colors.white),
           ),
         ),
       ),
@@ -3485,8 +3688,7 @@ class _ImageLoadingPainter extends CustomPainter {
       );
     canvas.drawCircle(center, pulseRadius, haloPaint);
 
-    final corePaint = Paint()
-      ..color = accent.withValues(alpha: 1.0);
+    final corePaint = Paint()..color = accent.withValues(alpha: 1.0);
     canvas.drawCircle(center, baseRadius * 0.40, corePaint);
 
     final highlightPaint = Paint()
@@ -3649,7 +3851,7 @@ class _WeuraThinkingState extends State<_WeuraThinking>
       child: Container(
         width: 66,
         height: 44,
-        margin: const EdgeInsets.only(bottom: 12),
+        margin: const EdgeInsets.only(bottom: 14, left: 4),
         decoration: BoxDecoration(
           color: widget.colors.surface,
           borderRadius: BorderRadius.circular(18),
