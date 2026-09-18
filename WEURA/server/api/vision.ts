@@ -2,24 +2,41 @@ import express from 'express';
 
 const router = express.Router();
 
-const GROQ_API_URL =
-  'https://api.groq.com/openai/v1/chat/completions';
+const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
-const MAX_IMAGE_DATA_URL_LENGTH = 6_000_000; // ~4.5MB image
+const MAX_IMAGE_DATA_URL_LENGTH = 6_000_000;
 const MAX_QUESTION_LENGTH = 2000;
 const MODEL_TIMEOUT_MS = 45_000;
 
+/**
+ * Vision models — ordered by availability on Groq free tier.
+ *
+ * If a model returns "does not exist", we silently skip it.
+ * The list is intentionally broad so at least one should work.
+ */
 const VISION_MODELS = [
   'meta-llama/llama-4-scout-17b-16e-instruct',
   'meta-llama/llama-4-maverick-17b-128e-instruct',
+  'llama-3.2-90b-vision-preview',
   'llama-3.2-11b-vision-preview',
 ];
 
+/**
+ * Optional override via environment variable:
+ *   GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
+ *
+ * If set, it's tried FIRST before the fallback list.
+ */
+function getVisionModels(): string[] {
+  const custom = process.env.GROQ_VISION_MODEL?.trim();
+  if (custom) {
+    return [custom, ...VISION_MODELS.filter((m) => m !== custom)];
+  }
+  return VISION_MODELS;
+}
+
 const ALLOWED_MIME_TYPES = new Set([
-  'image/jpeg',
-  'image/jpg',
-  'image/png',
-  'image/webp',
+  'image/jpeg', 'image/jpg', 'image/png', 'image/webp',
 ]);
 
 const SYSTEM_PROMPT = `You are WEURA Vision — an expert image analyst.
@@ -64,6 +81,23 @@ function sanitizeQuestion(raw: unknown): string {
   return clean || 'Describe this image in detail.';
 }
 
+/**
+ * Returns true if the error means "this model is not available".
+ * In that case we skip silently instead of reporting it as failure.
+ */
+function isModelUnavailable(error: string): boolean {
+  const e = error.toLowerCase();
+  return (
+    e.includes('does not exist') ||
+    e.includes('not have access') ||
+    e.includes('model_not_found') ||
+    e.includes('model not found') ||
+    e.includes('not available') ||
+    e.includes('decommissioned') ||
+    e.includes('deprecated')
+  );
+}
+
 async function callVisionModel(
   model: string,
   apiKey: string,
@@ -96,7 +130,6 @@ async function callVisionModel(
     });
 
     const raw = await response.text();
-
     let data: any;
     try {
       data = JSON.parse(raw);
@@ -104,7 +137,7 @@ async function callVisionModel(
       return {
         ok: false,
         status: response.status,
-        error: `Provider returned invalid JSON (HTTP ${response.status}).`,
+        error: `Invalid JSON (HTTP ${response.status}).`,
       };
     }
 
@@ -119,7 +152,6 @@ async function callVisionModel(
     }
 
     const content = data?.choices?.[0]?.message?.content;
-
     if (typeof content !== 'string' || content.trim().length === 0) {
       return {
         ok: false,
@@ -130,10 +162,66 @@ async function callVisionModel(
 
     return { ok: true, content: content.trim(), status: response.status };
   } catch (error) {
-    const msg = error instanceof Error ? error.message : 'Unknown';
-    return { ok: false, status: 0, error: msg };
+    return {
+      ok: false,
+      status: 0,
+      error: error instanceof Error ? error.message : 'Unknown',
+    };
   }
 }
+
+/* ============================================================
+ *  DEBUG — list which vision models are available
+ * ============================================================ */
+
+router.get('/vision/models', async (_req, res) => {
+  const apiKey = process.env.GROQ_API_KEY?.trim();
+  if (!apiKey) {
+    return res.status(503).json({
+      success: false,
+      error: 'GROQ_API_KEY is not configured.',
+    });
+  }
+
+  // Tiny 1x1 transparent PNG for testing.
+  const tinyPng =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+  const models = getVisionModels();
+  const results: Array<{
+    model: string;
+    ok: boolean;
+    status: number;
+    error?: string;
+  }> = [];
+
+  for (const model of models) {
+    const result = await callVisionModel(
+      model,
+      apiKey,
+      tinyPng,
+      'Describe this image.',
+    );
+
+    results.push({
+      model,
+      ok: result.ok,
+      status: result.status,
+      error: result.ok ? undefined : result.error,
+    });
+  }
+
+  return res.json({
+    success: true,
+    total: models.length,
+    working: results.filter((r) => r.ok).length,
+    results,
+  });
+});
+
+/* ============================================================
+ *  MAIN VISION ROUTE
+ * ============================================================ */
 
 router.post('/vision', async (req, res) => {
   try {
@@ -145,11 +233,7 @@ router.post('/vision', async (req, res) => {
 
     const imageError = validateImageData(imageData);
     if (imageError) {
-      console.error(`[WEURA] Vision validation error: ${imageError}`);
-      return res.status(400).json({
-        success: false,
-        error: imageError,
-      });
+      return res.status(400).json({ success: false, error: imageError });
     }
 
     const apiKey = process.env.GROQ_API_KEY?.trim();
@@ -160,17 +244,19 @@ router.post('/vision', async (req, res) => {
       });
     }
 
-    const sizeKB = (imageData.length / 1024).toFixed(0);
-    console.log(`[WEURA] Vision request: ${sizeKB} KB, Q: "${question.slice(0, 50)}"`);
-
+    const models = getVisionModels();
     const errors: string[] = [];
+    let unavailableCount = 0;
 
-    for (const model of VISION_MODELS) {
-      console.log(`[WEURA] Vision trying: ${model}`);
-      const result = await callVisionModel(model, apiKey, imageData, question);
+    for (const model of models) {
+      const result = await callVisionModel(
+        model,
+        apiKey,
+        imageData,
+        question,
+      );
 
       if (result.ok && result.content) {
-        console.log(`[WEURA] Vision OK with: ${model}`);
         return res.json({
           success: true,
           content: result.content,
@@ -178,23 +264,41 @@ router.post('/vision', async (req, res) => {
         });
       }
 
-      errors.push(`${model}: ${result.error}`);
-      console.warn(`[WEURA] Vision failed with ${model}: ${result.error}`);
+      const errMsg = result.error ?? 'unknown error';
+
+      // If the model is just unavailable, skip silently.
+      if (isModelUnavailable(errMsg)) {
+        unavailableCount++;
+        console.log(
+          `[WEURA] Vision model "${model}" unavailable, skipping.`,
+        );
+        continue;
+      }
+
+      errors.push(`${model}: ${errMsg}`);
     }
 
-    console.error('[WEURA] All vision models failed:', errors);
+    // All models are unavailable → tell the user clearly.
+    if (unavailableCount === models.length) {
+      return res.status(503).json({
+        success: false,
+        error:
+          'No vision model is available on your Groq account. ' +
+          'Check https://console.groq.com/docs/models for available models, ' +
+          'or set GROQ_VISION_MODEL env var to a valid model.',
+        available: false,
+      });
+    }
 
-    // Return the FIRST error to help debugging
+    // Some models failed for real reasons → report all.
     return res.status(502).json({
       success: false,
-      error: errors[0] ?? 'Vision failed.',
+      error: errors.join('\n'),
     });
   } catch (error) {
-    console.error('[WEURA] Vision handler error:', error);
     return res.status(500).json({
       success: false,
-      error:
-        error instanceof Error ? error.message : 'Unexpected vision error.',
+      error: error instanceof Error ? error.message : 'Vision error.',
     });
   }
 });
