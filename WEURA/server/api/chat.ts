@@ -60,6 +60,12 @@ function buildCacheKey(userMessage: string): string {
 
 function pickTTL(userMessage: string, searchUsed: boolean): number {
   const lower = userMessage.toLowerCase();
+
+  // Time-specific questions → NEVER cache (they change constantly).
+  if (/\b(time|الساعة|الوقت|دقيقة|ساعة|كم الساعة|شحال الساعة)\b/i.test(lower)) {
+    return 0;
+  }
+
   if (
     /(آخر|أحدث|اليوم|الآن|حاليا|عاجل|breaking|latest|today|now|recent)/i.test(
       lower,
@@ -115,8 +121,23 @@ NO SEARCH (need_search = false):
 - Identity questions about WEURA
 - Math, science, programming concepts, definitions
 - Writing, coding, translations, creativity
-- Opinions, advice, philosophy
 - Stable historical facts (before 2020)
+- **Comparison questions** (X vs Y, "قارن بين", "الفرق بين",
+  "which is better", "difference between")
+- **Opinion / advice questions** ("شنو رايك", "شنو تنصحني",
+  "what do you think", "should I")
+- **Analysis / explanation questions** ("اشرح", "حلل", "علاش",
+  "how does X work", "explain", "why does")
+- **How-to / tutorial questions** ("كيفاش نكتب", "علمني",
+  "how to", "teach me")
+- **Career / study / skill advice** ("توظيف", "مستقبل",
+  "career", "job market", "learning path")
+- **Language / translation help**
+- **Coding questions** of any kind
+
+CRITICAL: If the question asks for OPINION, COMPARISON, ANALYSIS,
+ADVICE, EXPLANATION, or HOW-TO → need_search = false.
+Even if it mentions a country, a technology, or a topic.
 
 ═══ OUTPUT ═══
 Return ONLY valid JSON (no markdown, no explanation):
@@ -151,9 +172,16 @@ async function reflectOnQuery(
     };
   }
 
-  const memorySnippet = memory.trim().length > 0
-    ? `\nUser memory (short):\n${memory.slice(0, 300)}`
-    : '';
+  // Use up to 800 chars of memory — first 400 + last 400 if too long.
+  let memorySnippet = '';
+  const trimmedMemory = memory.trim();
+  if (trimmedMemory.length > 0) {
+    const snippet =
+      trimmedMemory.length > 800
+        ? `${trimmedMemory.slice(0, 400)}\n...\n${trimmedMemory.slice(-400)}`
+        : trimmedMemory;
+    memorySnippet = `\nUser memory (short):\n${snippet}`;
+  }
 
   const userPrompt =
     `User message:\n"${userMessage}"${memorySnippet}\n\n` +
@@ -253,6 +281,16 @@ function fallbackNeedsSearch(message: string): boolean {
     /^(bye|goodbye|بسلامة|الى اللقاء)[\s!.,?،؟]*$/i,
   ];
   if (skip.some((p) => p.test(text))) return false;
+
+  // Comparison / opinion / analysis / how-to → NEVER search.
+  const neverSearch = [
+    /\b(قارن|الفرق بين|شنو رايك|شو رايك|رايك|تنصحني|علاش|كيفاش|كيف)\b/i,
+    /\b(compare|comparison|vs\.?|versus|difference between|which is better)\b/i,
+    /\b(what do you think|should i|opinion|advice|how to|how do i|explain)\b/i,
+    /\b(اشرح|حلل|علمني|وضحلي|فسرلي)\b/i,
+  ];
+  if (neverSearch.some((p) => p.test(text))) return false;
+
   return true;
 }
 
@@ -289,6 +327,8 @@ function isPersonalQuestion(message: string): boolean {
   const patterns = [
     /^(do you know me|do you remember me|who am i)[\s!.,?]*$/i,
     /^(تعرفني|تتذكرني|تفتكرني|شكون انا|من انا)[\s!.,?،؟]*$/i,
+    /\b(واش تعرفني|واش تتذكرني|تعرفني ولا لا|تتذكرني ولا لا)\b/i,
+    /\b(do you know me|remember me|who am i to you)\b/i,
   ];
   return patterns.some((p) => p.test(text));
 }
@@ -352,6 +392,19 @@ function buildSoulBlock(): string {
     `- If search results are absent AND the question is about a recent fact → reply:\n` +
     `  "ما عنديش معلومة مؤكدة."\n` +
     `- Do NOT invent dates, names, or winners.\n\n` +
+    `COMPARISON, OPINION, ANALYSIS, HOW-TO (IMPORTANT):\n` +
+    `- These are NEVER "current facts". Answer from your own knowledge.\n` +
+    `- NEVER reply "هذه المعلومة غير موجودة في المصادر المتاحة" for:\n` +
+    `    • Comparisons (X vs Y, قارن بين، الفرق بين)\n` +
+    `    • Opinions / advice (شنو رايك، تنصحني، should I)\n` +
+    `    • Explanations / analysis (اشرح، حلل، علاش، كيفاش)\n` +
+    `    • How-to / tutorials (علمني، كيفاش نكتب)\n` +
+    `    • Career / study / job market questions\n` +
+    `    • Coding / technical questions\n` +
+    `- You DO know these things. Give a real, structured answer.\n` +
+    `- If part of the question needs current data (e.g. "job market in Algeria 2025"),\n` +
+    `  use search results IF provided. Otherwise use your best general knowledge\n` +
+    `  and say "حسب معرفتي..." if uncertain.\n\n` +
     `OPENING (optional):\n` +
     `- MAY add ONE short, natural follow-up if it adds value.\n` +
     `- ✓ "راك حاب نزيد نفصّل؟" / "واش رايك؟" / "نجيو نطبقوها؟"\n` +
@@ -439,8 +492,24 @@ function buildSearchContext(
     `\nRULES:\n` +
     `1. Base facts ONLY on results above. No training data for facts.\n` +
     `2. NEVER invent names, scores, dates, transfers, quotes.\n` +
-    `3. If not in results AND question is factual → "هذه المعلومة غير موجودة في المصادر المتاحة."\n` +
-    `   EXCEPTION: identity/user/conversation questions are NOT covered by this rule.\n` +
+    `3. If not in results AND question is a CURRENT FACT (news, transfer,\n` +
+    `   current role, price, match result) → "هذه المعلومة غير موجودة في\n` +
+    `   المصادر المتاحة."\n` +
+    `   \n` +
+    `   DO NOT use this fallback for:\n` +
+    `   - Identity questions (WEURA, creator)\n` +
+    `   - User / memory questions\n` +
+    `   - Conversation / follow-up questions\n` +
+    `   - COMPARISON questions ("قارن بين", "الفرق بين", X vs Y)\n` +
+    `   - OPINION / ADVICE questions ("شنو رايك", "تنصحني", should I)\n` +
+    `   - ANALYSIS / EXPLANATION ("اشرح", "حلل", "علاش", "كيفاش")\n` +
+    `   - HOW-TO / TUTORIAL / LEARNING questions\n` +
+    `   - CAREER / STUDY / JOB MARKET questions\n` +
+    `   - CODING / TECHNICAL questions\n` +
+    `   \n` +
+    `   For ALL of the above → answer from your own knowledge. You DO know them.\n` +
+    `   If a current fact would strengthen the answer and it's NOT in the\n` +
+    `   results, answer anyway and add "حسب معرفتي..." if you're unsure.\n` +
     `4. Cite ONLY numbers that exist ([1], [2]...). Never [4] if only 3 exist.\n` +
     `5. "المصادر:" section at end ONLY if you cited.\n` +
     `6. If user asks "آخر"/"latest" and best match > 3 months → "لم أجد معلومات حديثة."\n` +
@@ -662,23 +731,26 @@ router.post('/chat', async (req, res) => {
     // ═══ Save to cache ═══
     if (useCache) {
       const ttl = pickTTL(lastUserMessage, built.searchUsed);
-      RESPONSE_CACHE.set(cacheKey, {
-        content: result.content,
-        model: result.model,
-        provider: result.provider,
-        searchUsed: built.searchUsed,
-        resultCount: built.resultCount,
-        reflection: {
-          need_search: built.reflection.needSearch,
-          reason: built.reflection.reason,
-          search_query: built.reflection.searchQuery,
-          angle: built.reflection.angle,
-        },
-        expiresAt: Date.now() + ttl,
-      });
+      // ttl === 0 means "never cache" (e.g. time questions).
+      if (ttl > 0) {
+        RESPONSE_CACHE.set(cacheKey, {
+          content: result.content,
+          model: result.model,
+          provider: result.provider,
+          searchUsed: built.searchUsed,
+          resultCount: built.resultCount,
+          reflection: {
+            need_search: built.reflection.needSearch,
+            reason: built.reflection.reason,
+            search_query: built.reflection.searchQuery,
+            angle: built.reflection.angle,
+          },
+          expiresAt: Date.now() + ttl,
+        });
 
-      if (RESPONSE_CACHE.size > CACHE_MAX) {
-        pruneResponseCache();
+        if (RESPONSE_CACHE.size > CACHE_MAX) {
+          pruneResponseCache();
+        }
       }
     }
 
