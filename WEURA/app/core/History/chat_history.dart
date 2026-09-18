@@ -15,6 +15,7 @@ class ChatMessageData {
     this.imagePrompt,
     this.playerData,
     this.visionImagePath,
+    this.imageLocalPath,
   });
 
   final String text;
@@ -24,6 +25,7 @@ class ChatMessageData {
   final String? imagePrompt;
   final Map<String, dynamic>? playerData;
   final String? visionImagePath;
+  final String? imageLocalPath;
 
   Map<String, dynamic> toJson() {
     return {
@@ -34,6 +36,7 @@ class ChatMessageData {
       if (imagePrompt != null) 'imagePrompt': imagePrompt,
       if (playerData != null) 'playerData': playerData,
       if (visionImagePath != null) 'visionImagePath': visionImagePath,
+      if (imageLocalPath != null) 'imageLocalPath': imageLocalPath,
     };
   }
 
@@ -51,6 +54,7 @@ class ChatMessageData {
           ? Map<String, dynamic>.from(json['playerData'] as Map)
           : null,
       visionImagePath: json['visionImagePath']?.toString(),
+      imageLocalPath: json['imageLocalPath']?.toString(),
     );
   }
 
@@ -62,6 +66,7 @@ class ChatMessageData {
     String? imagePrompt,
     Map<String, dynamic>? playerData,
     String? visionImagePath,
+    String? imageLocalPath,
   }) {
     return ChatMessageData(
       text: text ?? this.text,
@@ -71,6 +76,7 @@ class ChatMessageData {
       imagePrompt: imagePrompt ?? this.imagePrompt,
       playerData: playerData ?? this.playerData,
       visionImagePath: visionImagePath ?? this.visionImagePath,
+      imageLocalPath: imageLocalPath ?? this.imageLocalPath,
     );
   }
 }
