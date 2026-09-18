@@ -5,21 +5,13 @@ const router = express.Router();
 const GROQ_API_URL =
   'https://api.groq.com/openai/v1/chat/completions';
 
-/* ============================================================
- *  CONSTANTS
- * ============================================================ */
-
-/// Raised limit: 12MB base64 (~9MB raw image).
-/// Client-side compression keeps images under 2MB usually.
-const MAX_IMAGE_DATA_URL_LENGTH = 12_000_000;
-
+const MAX_IMAGE_DATA_URL_LENGTH = 6_000_000; // ~4.5MB image
 const MAX_QUESTION_LENGTH = 2000;
-const MODEL_TIMEOUT_MS = 60_000;
+const MODEL_TIMEOUT_MS = 45_000;
 
 const VISION_MODELS = [
   'meta-llama/llama-4-scout-17b-16e-instruct',
   'meta-llama/llama-4-maverick-17b-128e-instruct',
-  'llama-3.2-90b-vision-preview',
   'llama-3.2-11b-vision-preview',
 ];
 
@@ -28,31 +20,13 @@ const ALLOWED_MIME_TYPES = new Set([
   'image/jpg',
   'image/png',
   'image/webp',
-  'image/gif',
 ]);
 
 const SYSTEM_PROMPT = `You are WEURA Vision — an expert image analyst.
 
-You receive an image and a user's question. Your job:
-
-1. If the user asks a specific question, answer it accurately based ONLY on what is visible in the image.
-2. If no specific question is asked, provide a structured analysis:
-   • What the image shows (subjects, setting, objects)
-   • Notable details (text, colors, composition)
-   • Mood / atmosphere
-   • Any relevant context
-3. If the image contains text (Arabic, English, French, etc.), extract it accurately (OCR).
-4. If the image contains people, describe them respectfully. Never assume identity, religion, or sensitive traits.
-5. NEVER invent details that cannot be seen.
-6. If the image is unclear, say so honestly.
-
-Match the user's language (Arabic, English, French, dialect, etc.).
-Keep the response well-structured with Markdown when helpful.`;
-
-type VisionRequest = {
-  image?: unknown;
-  question?: unknown;
-};
+Match the user's language. Describe only what you actually see.
+Never invent details. Extract text accurately (OCR) if present.
+Keep the response structured with Markdown when helpful.`;
 
 type CallResult = {
   ok: boolean;
@@ -61,28 +35,21 @@ type CallResult = {
   error?: string;
 };
 
-/* ============================================================
- *  VALIDATION
- * ============================================================ */
-
 function validateImageData(raw: string): string | null {
   if (!raw) return 'Image is required.';
-
-  if (!raw.startsWith('data:image/')) {
-    return 'Image must be a base64 data URL.';
-  }
+  if (!raw.startsWith('data:image/')) return 'Invalid image format.';
 
   const match = raw.match(/^data:([^;]+);base64,/);
-  if (!match) return 'Invalid image format.';
+  if (!match) return 'Invalid base64 data URL.';
 
   const mimeType = match[1].toLowerCase();
   if (!ALLOWED_MIME_TYPES.has(mimeType)) {
-    return 'Unsupported image type. Allowed: JPEG, PNG, WebP, GIF.';
+    return 'Unsupported image type. Allowed: JPEG, PNG, WebP.';
   }
 
   if (raw.length > MAX_IMAGE_DATA_URL_LENGTH) {
     const mb = (raw.length / (1024 * 1024)).toFixed(1);
-    return `Image is too large (${mb} MB). Maximum ~9 MB.`;
+    return `Image is too large (${mb} MB). Maximum ~4 MB.`;
   }
 
   return null;
@@ -96,10 +63,6 @@ function sanitizeQuestion(raw: unknown): string {
     .slice(0, MAX_QUESTION_LENGTH);
   return clean || 'Describe this image in detail.';
 }
-
-/* ============================================================
- *  GROQ CALL
- * ============================================================ */
 
 async function callVisionModel(
   model: string,
@@ -122,10 +85,7 @@ async function callVisionModel(
             role: 'user',
             content: [
               { type: 'text', text: question },
-              {
-                type: 'image_url',
-                image_url: { url: imageData },
-              },
+              { type: 'image_url', image_url: { url: imageData } },
             ],
           },
         ],
@@ -144,7 +104,7 @@ async function callVisionModel(
       return {
         ok: false,
         status: response.status,
-        error: 'Invalid JSON from provider.',
+        error: `Provider returned invalid JSON (HTTP ${response.status}).`,
       };
     }
 
@@ -168,28 +128,16 @@ async function callVisionModel(
       };
     }
 
-    return {
-      ok: true,
-      content: content.trim(),
-      status: response.status,
-    };
+    return { ok: true, content: content.trim(), status: response.status };
   } catch (error) {
-    return {
-      ok: false,
-      status: 0,
-      error:
-        error instanceof Error ? error.message : 'Unknown error.',
-    };
+    const msg = error instanceof Error ? error.message : 'Unknown';
+    return { ok: false, status: 0, error: msg };
   }
 }
 
-/* ============================================================
- *  ROUTE
- * ============================================================ */
-
 router.post('/vision', async (req, res) => {
   try {
-    const body = req.body as VisionRequest;
+    const body = req.body as { image?: unknown; question?: unknown };
 
     const imageData =
       typeof body.image === 'string' ? body.image.trim() : '';
@@ -197,6 +145,7 @@ router.post('/vision', async (req, res) => {
 
     const imageError = validateImageData(imageData);
     if (imageError) {
+      console.error(`[WEURA] Vision validation error: ${imageError}`);
       return res.status(400).json({
         success: false,
         error: imageError,
@@ -211,17 +160,17 @@ router.post('/vision', async (req, res) => {
       });
     }
 
+    const sizeKB = (imageData.length / 1024).toFixed(0);
+    console.log(`[WEURA] Vision request: ${sizeKB} KB, Q: "${question.slice(0, 50)}"`);
+
     const errors: string[] = [];
 
     for (const model of VISION_MODELS) {
-      const result = await callVisionModel(
-        model,
-        apiKey,
-        imageData,
-        question,
-      );
+      console.log(`[WEURA] Vision trying: ${model}`);
+      const result = await callVisionModel(model, apiKey, imageData, question);
 
       if (result.ok && result.content) {
+        console.log(`[WEURA] Vision OK with: ${model}`);
         return res.json({
           success: true,
           content: result.content,
@@ -230,24 +179,22 @@ router.post('/vision', async (req, res) => {
       }
 
       errors.push(`${model}: ${result.error}`);
+      console.warn(`[WEURA] Vision failed with ${model}: ${result.error}`);
     }
 
     console.error('[WEURA] All vision models failed:', errors);
 
+    // Return the FIRST error to help debugging
     return res.status(502).json({
       success: false,
-      error:
-        'Vision service is unavailable. ' +
-        'The image could not be analyzed. Please try again.',
+      error: errors[0] ?? 'Vision failed.',
     });
   } catch (error) {
     console.error('[WEURA] Vision handler error:', error);
     return res.status(500).json({
       success: false,
       error:
-        error instanceof Error
-          ? error.message
-          : 'Unexpected vision error.',
+        error instanceof Error ? error.message : 'Unexpected vision error.',
     });
   }
 });
