@@ -905,6 +905,10 @@ class _ChatScreenState extends State<ChatScreen>
     }
   }
 
+  // ═════════════════════════════════════════════════════════════
+  //  VISION — PICKED IMAGE
+  // ═════════════════════════════════════════════════════════════
+
   Future<void> _pickImage(ImageSource source) async {
     if (_isLoading) {
       _showMessage('Wait for the current request to finish.');
@@ -916,12 +920,12 @@ class _ChatScreenState extends State<ChatScreen>
     }
 
     try {
-      // Aggressive compression: keeps payload small.
+      // Strong compression — keeps payload under 1MB.
       final XFile? picked = await _imagePicker.pickImage(
         source: source,
-        maxWidth: 1400,
-        maxHeight: 1400,
-        imageQuality: 70,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 55,
       );
 
       if (picked == null) return;
@@ -977,9 +981,16 @@ class _ChatScreenState extends State<ChatScreen>
       final base64Data = base64Encode(bytes);
       final dataUrl = 'data:image/jpeg;base64,$base64Data';
 
+      final sizeKB = bytes.length / 1024;
       debugPrint(
-        '[WEURA] Vision payload: ${(bytes.length / 1024).toStringAsFixed(0)} KB',
+        '[WEURA] Vision payload: ${sizeKB.toStringAsFixed(0)} KB',
       );
+
+      if (sizeKB > 4000) {
+        throw const GrokException(
+          'الصورة كبيرة بزاف (أكثر من 4 ميغا). جرّب صورة أصغر.',
+        );
+      }
 
       final uri = Uri.parse('$_serverUrl/api/vision');
 
@@ -1008,10 +1019,12 @@ class _ChatScreenState extends State<ChatScreen>
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
         final msg = data['error']?.toString();
-        throw Exception(
+        // Show the REAL error, not a generic one.
+        throw GrokException(
           msg != null && msg.isNotEmpty
               ? msg
-              : 'Vision request failed (HTTP ${response.statusCode}).',
+              : 'Vision failed (HTTP ${response.statusCode})',
+          statusCode: response.statusCode,
         );
       }
 
@@ -2705,7 +2718,6 @@ class _ChatScreenState extends State<ChatScreen>
 
   MarkdownStyleSheet _markdownStyle(WeuraColors colors) {
     return MarkdownStyleSheet(
-      // ✨ Font جديد: أكبر + line-height أوسع = أسهل في القراءة
       p: TextStyle(
         color: colors.textPrimary,
         fontSize: 17,
@@ -2794,7 +2806,7 @@ class _ChatScreenState extends State<ChatScreen>
 }
 
 // ---------------------------------------------------------------------------
-// Typing markdown widget — inline cursor + beautiful animation
+// Typing markdown
 // ---------------------------------------------------------------------------
 
 class _TypedMarkdown extends StatefulWidget {
@@ -2847,7 +2859,6 @@ class _TypedMarkdownState extends State<_TypedMarkdown>
       return;
     }
 
-    // 12ms per char (slightly faster = smoother)
     final durationMs = (len * 12).clamp(400, 5000);
 
     _controller = AnimationController(
@@ -3454,7 +3465,7 @@ class _ImageZoomViewerState extends State<_ImageZoomViewer>
 }
 
 // ---------------------------------------------------------------------------
-// Image generating loader — IMMEDIATE (no grey delay)
+// Image generating loader
 // ---------------------------------------------------------------------------
 
 class _ImageGeneratingLoader extends StatefulWidget {
