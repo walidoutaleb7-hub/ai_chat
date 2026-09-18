@@ -6,10 +6,6 @@ const RAPIDAPI_HOST =
   process.env.SPORTAPI_HOST?.trim() || 'sportapi7.p.rapidapi.com';
 const RAPIDAPI_KEY = process.env.SPORTAPI_KEY?.trim();
 
-/* ============================================================
- *  CACHE
- * ============================================================ */
-
 type CacheEntry = { data: any; expiresAt: number };
 const CACHE = new Map<string, CacheEntry>();
 const CACHE_TTL = 5 * 60 * 1000;
@@ -30,12 +26,7 @@ function pruneCache(): void {
     }
   }
 }
-
 setInterval(pruneCache, 5 * 60 * 1000).unref();
-
-/* ============================================================
- *  RAW HTTP
- * ============================================================ */
 
 async function rapidGet(
   path: string,
@@ -90,20 +81,41 @@ async function rapidGet(
 }
 
 /* ============================================================
- *  DEBUG — tries many search paths and reports which works
+ *  DEBUG — tries MANY search paths
  * ============================================================ */
 
 router.get('/football/debug', async (req, res) => {
   const q = String(req.query.q ?? 'messi').trim();
+  const enc = encodeURIComponent(q);
 
-  const candidates = [
+  // Wide variety of candidate paths.
+  const candidates: string[] = [
+    // Classic
     `/api/v1/search/players`,
     `/api/v1/search/player`,
     `/api/v1/search`,
     `/api/v1/players/search`,
     `/api/v1/players`,
     `/api/v1/player/search`,
-    `/api/v1/search/players?q=${encodeURIComponent(q)}`,
+    // Without "api"
+    `/v1/search/players`,
+    `/v1/players/search`,
+    `/search/players`,
+    `/search_players`,
+    // Without "v1"
+    `/api/search/players`,
+    `/api/search_players`,
+    // Underscore style
+    `/api/v1/search_players`,
+    // Dashes
+    `/api/v1/search-players`,
+    `/api/search-players`,
+    // Capital
+    `/api/v1/Search/players`,
+    `/api/v1/Players/search`,
+    // Query param variation (some APIs use q=in-path)
+    `/api/v1/search/${enc}`,
+    `/api/v1/find/players`,
   ];
 
   const results: Array<{
@@ -115,24 +127,21 @@ router.get('/football/debug', async (req, res) => {
   }> = [];
 
   for (const path of candidates) {
-    const basePath = path.split('?')[0];
-
-    const r = await rapidGet(basePath, {
+    const r = await rapidGet(path, {
       q,
       search: q,
       term: q,
       name: q,
       query: q,
+      text: q,
     });
 
     results.push({
-      path: basePath,
+      path,
       status: r.status,
       ok: r.ok,
-      preview: r.ok
-        ? summarize(r.data)
-        : undefined,
-      error: r.ok ? undefined : r.error,
+      preview: r.ok ? summarize(r.data) : undefined,
+      error: r.ok ? undefined : (r.error ?? '').slice(0, 80),
     });
   }
 
@@ -140,6 +149,7 @@ router.get('/football/debug', async (req, res) => {
     query: q,
     host: RAPIDAPI_HOST,
     keyConfigured: Boolean(RAPIDAPI_KEY),
+    successCount: results.filter((r) => r.ok).length,
     results,
   });
 });
@@ -158,9 +168,6 @@ function summarize(data: any): any {
   if (Array.isArray(list)) {
     return {
       listLength: list.length,
-      firstItemPreview: list[0]
-        ? Object.keys(list[0]).slice(0, 10)
-        : null,
       firstItem: list[0] ?? null,
     };
   }
@@ -178,15 +185,12 @@ router.get('/football/health', async (_req, res) => {
   if (!RAPIDAPI_KEY) {
     return res.json({ success: false, error: 'SPORTAPI_KEY missing' });
   }
-
   const r = await rapidGet('/api/v1/player/750');
-
   return res.json({
     success: r.ok,
     host: RAPIDAPI_HOST,
     status: r.status,
     error: r.ok ? undefined : r.error,
-    note: 'Player/750 = Messi-like test ID',
   });
 });
 
