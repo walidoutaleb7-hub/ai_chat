@@ -328,7 +328,7 @@ const CLUB_ALIASES: Record<string, string> = {
   'crystal palace': 'Crystal Palace',
   'nottingham forest': 'Nottingham Forest',
   wolves: 'Wolves',
-  'wolverhampton': 'Wolves',
+  wolverhampton: 'Wolves',
   fulham: 'Fulham',
   brentford: 'Brentford',
   bournemouth: 'Bournemouth',
@@ -394,7 +394,7 @@ const CLUB_ALIASES: Record<string, string> = {
   psv: 'PSV',
   feyenoord: 'Feyenoord',
 
-  // Saudi Arabia (critical for Ronaldo etc.)
+  // Saudi Arabia
   'al nassr': 'Al Nassr',
   'al-nassr': 'Al Nassr',
   alnassr: 'Al Nassr',
@@ -418,7 +418,7 @@ const CLUB_ALIASES: Record<string, string> = {
   'al wasl': 'Al Wasl',
   'al-wasl': 'Al Wasl',
   'al jazira': 'Al Jazira',
-  'sharjah': 'Sharjah',
+  sharjah: 'Sharjah',
 
   // Qatar
   'al sadd': 'Al Sadd',
@@ -431,7 +431,7 @@ const CLUB_ALIASES: Record<string, string> = {
   'al ahly': 'Al Ahly',
   'al-ahly': 'Al Ahly',
   'al ahly cairo': 'Al Ahly',
-  'zamalek': 'Zamalek',
+  zamalek: 'Zamalek',
   'pyramids fc': 'Pyramids FC',
   pyramids: 'Pyramids FC',
 
@@ -441,7 +441,7 @@ const CLUB_ALIASES: Record<string, string> = {
   'wydad casablanca': 'Wydad Casablanca',
   wydad: 'Wydad Casablanca',
 
-  // Algeria
+  // Algeria / Tunisia
   'cr belouizdad': 'CR Belouizdad',
   belouizdad: 'CR Belouizdad',
   'js kabylie': 'JS Kabylie',
@@ -449,7 +449,7 @@ const CLUB_ALIASES: Record<string, string> = {
   'mc alger': 'MC Alger',
   'usm alger': 'USM Alger',
   'es setif': 'ES Setif',
-  'esperance': 'Esperance de Tunis',
+  esperance: 'Esperance de Tunis',
   'etoile du sahel': 'Etoile du Sahel',
   'cs sfaxien': 'CS Sfaxien',
   'club africain': 'Club Africain',
@@ -457,17 +457,17 @@ const CLUB_ALIASES: Record<string, string> = {
   // USA
   'inter miami': 'Inter Miami',
   'la galaxy': 'LA Galaxy',
-  'lafc': 'LAFC',
+  lafc: 'LAFC',
   'atlanta united': 'Atlanta United',
   'seattle sounders': 'Seattle Sounders',
 
   // Others
   celtic: 'Celtic',
   rangers: 'Rangers',
-  'besiktas': 'Besiktas',
-  'galatasaray': 'Galatasaray',
-  'fenerbahce': 'Fenerbahce',
-  'zenit': 'Zenit',
+  besiktas: 'Besiktas',
+  galatasaray: 'Galatasaray',
+  fenerbahce: 'Fenerbahce',
+  zenit: 'Zenit',
   'shakhtar donetsk': 'Shakhtar Donetsk',
   'dynamo kyiv': 'Dynamo Kyiv',
   'red star belgrade': 'Red Star Belgrade',
@@ -489,7 +489,6 @@ function detectClubFromText(text: string): string {
  * Weighted club detection from search results.
  * - More-recent results count more.
  * - Mentions in titles count double.
- * Returns the winning club + its score, or null.
  */
 function detectClubFromSearchResults(
   results: Array<{ title: string; snippet: string; date?: string }>,
@@ -503,9 +502,7 @@ function detectClubFromSearchResults(
   for (const r of results) {
     const titleText = (r.title ?? '').toLowerCase();
     const bodyText = (r.snippet ?? '').toLowerCase();
-    const both = `${titleText} ${bodyText}`;
 
-    // Recency weight: 1.0 (today) → 0.3 (6+ months ago).
     let weight = 1.0;
     if (r.date) {
       const d = Date.parse(r.date);
@@ -606,7 +603,7 @@ function extractFallbackFromDescription(description: string): {
 }
 
 /* ============================================================
- *  GROQ EXTRACTOR (STRICT)
+ *  GROQ EXTRACTOR (STRICT — recent search > outdated description)
  * ============================================================ */
 
 const EXTRACTOR_SYSTEM_PROMPT = [
@@ -653,11 +650,18 @@ const EXTRACTOR_SYSTEM_PROMPT = [
   '',
   'FIELD RULES:',
   '- currentClub: club the player plays for RIGHT NOW (2026).',
-  '- currentClubCountry: country of that club (e.g. "السعودية", "إسبانيا").',
+  '- currentClubCountry: country of that club (e.g. "Saudi Arabia", "Spain").',
   '- lastTransfer: format "FromClub to ToClub (Year)".',
+  '  IMPORTANT: use ONLY the transfer that brought the player to the',
+  '  CURRENT club. Do NOT combine transfers from different years.',
+  '  Example: Ronaldo (Al Nassr) → "Manchester United to Al Nassr (2023)".',
+  '  NOT "Juventus to Al Nassr" (he left Juventus in 2021).',
   '- stats.season: e.g. "2025-26".',
-  '- trophies: array of STRINGS only.',
-  '- latestNews: ONE short sentence in ENGLISH (max 200 chars).',
+  '- trophies: array of STRINGS only. Include ALL major trophies',
+  '  (Champions League, league titles, Ballon d\'Or count, international',
+  '  cups). Example: ["5x Champions League", "Euro 2016", "Nations League 2019"].',
+  '- latestNews: ONE short sentence in ENGLISH about the player. Use the',
+  '  MOST RECENT search result (check the dates — prefer 2026 over 2025/2024).',
   '- Leave any field "" if not confirmed by sources.',
   '- Return ONLY JSON. No markdown. No explanation.',
 ].join('\n');
@@ -709,7 +713,7 @@ async function extractPlayerData(
           { role: 'user', content: userMessage },
         ],
         temperature: 0.05,
-        max_tokens: 800,
+        max_tokens: 900,
         response_format: { type: 'json_object' },
         tools: [],
         tool_choice: 'none',
@@ -887,14 +891,17 @@ router.get('/player', async (req, res) => {
     /* ---- 2. Tavily — multi-query strategy ---- */
     const currentYear = new Date().getFullYear();
     const prevYear = currentYear - 1;
+    const currentMonth = new Date().toLocaleString('en-US', {
+      month: 'long',
+    });
 
     const searchQueries = [
       `${englishName} current club ${currentYear}`,
       `${englishName} transfer news ${currentYear}`,
       `${englishName} signs for club`,
       `${englishName} joins new club`,
-      `${englishName} contract ${currentYear} ${prevYear}`,
-      `${englishName} latest news`,
+      `${englishName} ${currentMonth} ${currentYear} news`,
+      `${englishName} latest news ${currentYear} ${prevYear}`,
     ];
 
     const allResults: Array<{
@@ -952,7 +959,6 @@ router.get('/player', async (req, res) => {
         latestNews: fallback.latestNews,
       };
     } else {
-      // If LLM returned nothing for currentClub → use search detection.
       if (!freshData.currentClub) {
         freshData.currentClub =
           searchDetection?.club || fallback.currentClub;
