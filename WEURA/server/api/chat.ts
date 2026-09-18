@@ -327,6 +327,12 @@ function buildSoulBlock(): string {
     `- Bracketed citations like [1], [2] UNLESS a SEARCH RESULTS block is present.\n` +
     `- Fake enthusiasm ("Wow!", "Amazing!").\n\n` +
 
+    `CODE OUTPUT RULES:\n` +
+    `- When the user asks for code → output ONLY the code + a brief explanation.\n` +
+    `- Do NOT simulate running the code. Do NOT print demo results.\n` +
+    `- Do NOT show "expected output" unless the user explicitly asks "شو النتيجة؟" / "what's the output?".\n` +
+    `- Exception: if the user asks "ورّيني كيفاش يخدم" / "show me how it runs" → then you MAY show a SHORT output (max 5 lines).\n\n` +
+
     `SUCCESS: The user closes the app thinking: "كأنني نهدر مع صاحبي."`
   );
 }
@@ -359,7 +365,7 @@ function buildModeBlock(mode: string | null): string {
     case 'research':
       return 'MODE: RESEARCH. Use ONLY search results. Cite [1], [2] — only numbers that exist. "المصادر:" only if cited.';
     case 'code':
-      return 'MODE: CODE. Senior engineer. Fenced blocks with language tag. Brief explanation above.';
+      return 'MODE: CODE. Senior engineer. Fenced blocks with language tag. Brief explanation above. Output ONLY the code + short explanation. No demo output.';
     case 'creative':
       return 'MODE: CREATIVE. Original. Match style. No clichés.';
     case 'vision':
@@ -544,10 +550,23 @@ router.post('/chat', async (req, res) => {
 
     const built = await buildMessages(safeMessages, memory, mode, requestId);
 
+    // Smart max_tokens:
+    //   - Code / research / files / creative → allow long responses (4096).
+    //   - Normal chat → keep efficient (2048).
+    // This prevents long code / stories from being cut off mid-way,
+    // while saving tokens on short conversations.
+    const isLongFormMode =
+      mode === 'code' ||
+      mode === 'research' ||
+      mode === 'files' ||
+      mode === 'creative';
+
+    const maxTokens = isLongFormMode ? 4096 : 2048;
+
     const result = await askGrok(built.messages, {
       requestId,
       temperature: 0.85,
-      maxTokens: 1200,
+      maxTokens,
     });
 
     return res.json({
