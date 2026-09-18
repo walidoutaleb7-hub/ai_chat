@@ -59,6 +59,7 @@ class _ChatMessage {
     this.visionImagePath,
     this.playerData,
     this.imageLocalPath,
+    this.isImageLoading = false,
   });
 
   final String text;
@@ -69,6 +70,7 @@ class _ChatMessage {
   final String? visionImagePath;
   final Map<String, dynamic>? playerData;
   final String? imageLocalPath;
+  final bool isImageLoading;
 }
 
 class _ChatScreenState extends State<ChatScreen>
@@ -223,35 +225,18 @@ class _ChatScreenState extends State<ChatScreen>
         }
       }
 
-      Uint8List bytes;
-
-      if (localPath != null) {
-        final file = File(localPath);
-        if (await file.exists()) {
-          bytes = await file.readAsBytes();
-        } else {
-          final response = await http
-              .get(Uri.parse(imageUrl))
-              .timeout(const Duration(seconds: 60));
-          if (response.statusCode != 200) {
-            throw Exception(
-              'Download failed: HTTP ${response.statusCode}',
-            );
-          }
-          bytes = response.bodyBytes;
-        }
-      } else {
-        final response = await http
-            .get(Uri.parse(imageUrl))
-            .timeout(const Duration(seconds: 60));
-        if (response.statusCode != 200) {
-          throw Exception(
-            'Download failed: HTTP ${response.statusCode}',
-          );
-        }
-        bytes = response.bodyBytes;
+      if (localPath == null) {
+        _showMessage('Image file not available.');
+        return;
       }
 
+      final file = File(localPath);
+      if (!await file.exists()) {
+        _showMessage('Image file not found.');
+        return;
+      }
+
+      final bytes = await file.readAsBytes();
       await Gal.putImageBytes(bytes, album: 'WEURA');
 
       if (!mounted) return;
@@ -348,10 +333,6 @@ class _ChatScreenState extends State<ChatScreen>
     } catch (_) {}
   }
 
-  // ---------------------------------------------------------------------------
-  // Auto-scroll during typing
-  // ---------------------------------------------------------------------------
-
   void _autoScrollDuringTyping() {
     if (!_scrollController.hasClients) return;
     final pos = _scrollController.position;
@@ -360,10 +341,6 @@ class _ChatScreenState extends State<ChatScreen>
       _scrollController.jumpTo(pos.maxScrollExtent);
     }
   }
-
-  // ---------------------------------------------------------------------------
-  // Edit user message
-  // ---------------------------------------------------------------------------
 
   Future<void> _editUserMessage(int index, WeuraColors colors) async {
     if (_isLoading) {
@@ -434,10 +411,6 @@ class _ChatScreenState extends State<ChatScreen>
 
     await _sendMessage(newText, addUserMessage: false);
   }
-
-  // ---------------------------------------------------------------------------
-  // File picker + analysis
-  // ---------------------------------------------------------------------------
 
   Future<void> _pickFile() async {
     if (_isLoading) {
@@ -571,10 +544,6 @@ class _ChatScreenState extends State<ChatScreen>
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Player Card
-  // ---------------------------------------------------------------------------
-
   String? _detectPlayerIntent(String message) {
     final text = message.trim();
     final lower = text.toLowerCase();
@@ -688,10 +657,6 @@ class _ChatScreenState extends State<ChatScreen>
       }
     }
   }
-
-  // ---------------------------------------------------------------------------
-  // Image generation
-  // ---------------------------------------------------------------------------
 
   bool _isArabicLetterBefore(String text, int index) {
     if (index <= 0) return false;
@@ -823,6 +788,7 @@ class _ChatScreenState extends State<ChatScreen>
           isUser: false,
           imageUrl: imageUrl,
           imagePrompt: prompt,
+          isImageLoading: true,
         ),
       );
       _isLoading = false;
@@ -832,19 +798,80 @@ class _ChatScreenState extends State<ChatScreen>
     _scrollToBottom();
 
     final idx = _messages.length - 1;
+
     final localPath = await _downloadImageLocally(imageUrl);
-    if (localPath != null && mounted) {
-      setState(() {
+
+    if (!mounted) return;
+
+    setState(() {
+      if (localPath != null) {
         _messages[idx] = _ChatMessage(
           text: '',
           isUser: false,
           imageUrl: imageUrl,
           imagePrompt: prompt,
           imageLocalPath: localPath,
+          isImageLoading: false,
         );
-      });
-      await _persistMessages();
-    }
+      } else {
+        _messages[idx] = _ChatMessage(
+          text: 'تعذر إنشاء الصورة. جرّب مرة أخرى.',
+          isUser: false,
+          isError: true,
+          imagePrompt: prompt,
+        );
+      }
+    });
+
+    await _persistMessages();
+    _scrollToBottom();
+  }
+
+  Future<void> _regenerateImage(int index) async {
+    if (index < 0 || index >= _messages.length) return;
+    final original = _messages[index];
+    if (original.imagePrompt == null) return;
+
+    final newUrl = _buildImageUrl(
+      '${original.imagePrompt} ${DateTime.now().millisecondsSinceEpoch}',
+    );
+
+    setState(() {
+      _messages[index] = _ChatMessage(
+        text: '',
+        isUser: false,
+        imageUrl: newUrl,
+        imagePrompt: original.imagePrompt,
+        isImageLoading: true,
+      );
+    });
+
+    _scrollToBottom();
+
+    final localPath = await _downloadImageLocally(newUrl);
+
+    if (!mounted) return;
+
+    setState(() {
+      if (localPath != null) {
+        _messages[index] = _ChatMessage(
+          text: '',
+          isUser: false,
+          imageUrl: newUrl,
+          imagePrompt: original.imagePrompt,
+          imageLocalPath: localPath,
+        );
+      } else {
+        _messages[index] = _ChatMessage(
+          text: 'تعذر إنشاء الصورة. جرّب مرة أخرى.',
+          isUser: false,
+          isError: true,
+          imagePrompt: original.imagePrompt,
+        );
+      }
+    });
+
+    await _persistMessages();
   }
 
   Future<String?> _downloadImageLocally(String url) async {
@@ -878,10 +905,6 @@ class _ChatScreenState extends State<ChatScreen>
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Vision
-  // ---------------------------------------------------------------------------
-
   Future<void> _pickImage(ImageSource source) async {
     if (_isLoading) {
       _showMessage('Wait for the current request to finish.');
@@ -893,11 +916,12 @@ class _ChatScreenState extends State<ChatScreen>
     }
 
     try {
+      // Aggressive compression: keeps payload small.
       final XFile? picked = await _imagePicker.pickImage(
         source: source,
-        maxWidth: 1600,
-        maxHeight: 1600,
-        imageQuality: 85,
+        maxWidth: 1400,
+        maxHeight: 1400,
+        imageQuality: 70,
       );
 
       if (picked == null) return;
@@ -949,18 +973,13 @@ class _ChatScreenState extends State<ChatScreen>
     try {
       final bytes = await image.readAsBytes();
 
-      final lowerPath = image.path.toLowerCase();
-      String mimeType = 'image/jpeg';
-      if (lowerPath.endsWith('.png')) {
-        mimeType = 'image/png';
-      } else if (lowerPath.endsWith('.webp')) {
-        mimeType = 'image/webp';
-      } else if (lowerPath.endsWith('.gif')) {
-        mimeType = 'image/gif';
-      }
-
+      // Force JPEG MIME (image_picker already converts to JPEG).
       final base64Data = base64Encode(bytes);
-      final dataUrl = 'data:$mimeType;base64,$base64Data';
+      final dataUrl = 'data:image/jpeg;base64,$base64Data';
+
+      debugPrint(
+        '[WEURA] Vision payload: ${(bytes.length / 1024).toStringAsFixed(0)} KB',
+      );
 
       final uri = Uri.parse('$_serverUrl/api/vision');
 
@@ -1035,10 +1054,6 @@ class _ChatScreenState extends State<ChatScreen>
       }
     }
   }
-
-  // ---------------------------------------------------------------------------
-  // Send
-  // ---------------------------------------------------------------------------
 
   Future<void> _sendMessage(
     String text, {
@@ -1263,7 +1278,7 @@ class _ChatScreenState extends State<ChatScreen>
       if (!_scrollController.hasClients) return;
       _scrollController.animateTo(
         _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 250),
+        duration: const Duration(milliseconds: 300),
         curve: Curves.easeOutCubic,
       );
     });
@@ -1310,7 +1325,7 @@ class _ChatScreenState extends State<ChatScreen>
     );
   }
 
-  void _openImageZoom(String imageUrl) {
+  void _openImageZoom(String imageUrl, {String? localPath}) {
     Navigator.of(context).push(
       PageRouteBuilder<void>(
         opaque: false,
@@ -1319,7 +1334,11 @@ class _ChatScreenState extends State<ChatScreen>
         reverseTransitionDuration: const Duration(milliseconds: 200),
         pageBuilder: (_, __, ___) => _ImageZoomViewer(
           imageUrl: imageUrl,
-          onSave: () => _saveImageToGallery(imageUrl),
+          localPath: localPath,
+          onSave: () => _saveImageToGallery(
+            imageUrl,
+            localPath: localPath,
+          ),
           onCopyUrl: () => _copyMessage(imageUrl),
         ),
         transitionsBuilder: (_, animation, __, child) {
@@ -1339,10 +1358,6 @@ class _ChatScreenState extends State<ChatScreen>
       ),
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // Drawer
-  // ---------------------------------------------------------------------------
 
   Widget _buildDrawer(WeuraColors colors) {
     return Drawer(
@@ -1538,10 +1553,6 @@ class _ChatScreenState extends State<ChatScreen>
       ),
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // Sheets
-  // ---------------------------------------------------------------------------
 
   void _showAttachmentSheet(WeuraColors colors) {
     showModalBottomSheet<void>(
@@ -1748,10 +1759,6 @@ class _ChatScreenState extends State<ChatScreen>
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Build
-  // ---------------------------------------------------------------------------
-
   @override
   Widget build(BuildContext context) {
     final colors = WeuraColors.of(context);
@@ -1803,7 +1810,7 @@ class _ChatScreenState extends State<ChatScreen>
                     controller: _scrollController,
                     keyboardDismissBehavior:
                         ScrollViewKeyboardDismissBehavior.onDrag,
-                    padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
+                    padding: const EdgeInsets.fromLTRB(18, 22, 18, 24),
                     itemCount: _messages.length + (_isLoading ? 1 : 0),
                     itemBuilder: (context, index) {
                       if (_isLoading && index == _messages.length) {
@@ -2008,17 +2015,13 @@ class _ChatScreenState extends State<ChatScreen>
     return (mainText, uniqueUrls);
   }
 
-  // ---------------------------------------------------------------------------
-  // Message rendering
-  // ---------------------------------------------------------------------------
-
   Widget _messageBubble(
     WeuraColors colors,
     _ChatMessage message,
     int index,
     bool isLastAssistant,
   ) {
-    if (message.imageUrl != null) {
+    if (message.imageUrl != null || message.isImageLoading) {
       return _imageBubble(colors, message, index);
     }
 
@@ -2026,7 +2029,7 @@ class _ChatScreenState extends State<ChatScreen>
       return Align(
         alignment: Alignment.centerLeft,
         child: Padding(
-          padding: const EdgeInsets.only(bottom: 22, right: 12),
+          padding: const EdgeInsets.only(bottom: 24, right: 8),
           child: PlayerCard(
             data: message.playerData!,
             onShare: () {
@@ -2062,17 +2065,17 @@ class _ChatScreenState extends State<ChatScreen>
             : () => _editUserMessage(msgIndex, colors),
         child: Padding(
           padding: const EdgeInsets.only(
-            bottom: 22,
+            bottom: 24,
             left: 40,
             top: 4,
           ),
           child: Container(
             constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width * 0.80,
+              maxWidth: MediaQuery.of(context).size.width * 0.82,
             ),
             padding: const EdgeInsets.symmetric(
-              horizontal: 18,
-              vertical: 14,
+              horizontal: 20,
+              vertical: 16,
             ),
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -2084,16 +2087,16 @@ class _ChatScreenState extends State<ChatScreen>
                 ],
               ),
               borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(22),
-                topRight: Radius.circular(22),
-                bottomLeft: Radius.circular(22),
+                topLeft: Radius.circular(24),
+                topRight: Radius.circular(24),
+                bottomLeft: Radius.circular(24),
                 bottomRight: Radius.circular(6),
               ),
               boxShadow: [
                 BoxShadow(
-                  color: colors.userBubble.withValues(alpha: 0.22),
-                  blurRadius: 20,
-                  offset: const Offset(0, 6),
+                  color: colors.userBubble.withValues(alpha: 0.28),
+                  blurRadius: 22,
+                  offset: const Offset(0, 8),
                 ),
               ],
             ),
@@ -2107,11 +2110,11 @@ class _ChatScreenState extends State<ChatScreen>
                       borderRadius: BorderRadius.circular(14),
                       child: Image.file(
                         File(message.visionImagePath!),
-                        width: 260,
+                        width: 280,
                         fit: BoxFit.cover,
                         errorBuilder: (_, __, ___) => Container(
-                          width: 260,
-                          height: 140,
+                          width: 280,
+                          height: 150,
                           decoration: BoxDecoration(
                             color: Colors.black.withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(14),
@@ -2136,7 +2139,7 @@ class _ChatScreenState extends State<ChatScreen>
                       message.text,
                       style: TextStyle(
                         color: colors.userBubbleText,
-                        fontSize: 16,
+                        fontSize: 17,
                         height: 1.55,
                         letterSpacing: 0.1,
                       ),
@@ -2166,7 +2169,7 @@ class _ChatScreenState extends State<ChatScreen>
     final isTyping = _typingIndices.contains(index);
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 28, right: 8, top: 4),
+      margin: const EdgeInsets.only(bottom: 32, right: 8, top: 6),
       child: Directionality(
         textDirection: bubbleDirection,
         child: Column(
@@ -2200,13 +2203,13 @@ class _ChatScreenState extends State<ChatScreen>
 
             if (sources.isNotEmpty && !isTyping)
               Padding(
-                padding: const EdgeInsets.only(top: 16),
+                padding: const EdgeInsets.only(top: 18),
                 child: _sourcesSection(colors, sources),
               ),
 
             if (!message.isError && !isTyping)
               Padding(
-                padding: const EdgeInsets.only(top: 12),
+                padding: const EdgeInsets.only(top: 14),
                 child: _actionBar(
                   colors,
                   message,
@@ -2249,10 +2252,10 @@ class _ChatScreenState extends State<ChatScreen>
 
   Widget _errorMessage(WeuraColors colors, String text) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: colors.danger.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: colors.danger.withValues(alpha: 0.25),
         ),
@@ -2273,8 +2276,8 @@ class _ChatScreenState extends State<ChatScreen>
               text,
               style: TextStyle(
                 color: colors.danger,
-                fontSize: 15,
-                height: 1.6,
+                fontSize: 15.5,
+                height: 1.65,
               ),
             ),
           ),
@@ -2283,41 +2286,20 @@ class _ChatScreenState extends State<ChatScreen>
     );
   }
 
-  Widget _buildImageWidget(_ChatMessage message, WeuraColors colors) {
-    final localPath = message.imageLocalPath;
-
-    if (localPath != null) {
-      final file = File(localPath);
-      if (file.existsSync()) {
-        return Image.file(
-          file,
-          width: 320,
-          height: 320,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _NetworkImageWithLoader(
-            url: message.imageUrl!,
-            colors: colors,
-          ),
-        );
-      }
-    }
-
-    return _NetworkImageWithLoader(
-      url: message.imageUrl!,
-      colors: colors,
-    );
-  }
-
   Widget _imageBubble(
     WeuraColors colors,
     _ChatMessage message,
     int index,
   ) {
+    final isLoading = message.isImageLoading;
+    final hasLocal = message.imageLocalPath != null &&
+        File(message.imageLocalPath!).existsSync();
+
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
         constraints: const BoxConstraints(maxWidth: 650),
-        margin: const EdgeInsets.only(bottom: 22, right: 12, top: 4),
+        margin: const EdgeInsets.only(bottom: 24, right: 8, top: 6),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -2329,15 +2311,15 @@ class _ChatScreenState extends State<ChatScreen>
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Container(
-                      width: 22,
-                      height: 22,
+                      width: 24,
+                      height: 24,
                       decoration: BoxDecoration(
                         color: colors.accentSoft,
-                        borderRadius: BorderRadius.circular(6),
+                        borderRadius: BorderRadius.circular(7),
                       ),
                       child: Icon(
                         Icons.image_outlined,
-                        size: 14,
+                        size: 15,
                         color: colors.accentGlow,
                       ),
                     ),
@@ -2347,89 +2329,131 @@ class _ChatScreenState extends State<ChatScreen>
                         message.imagePrompt!,
                         style: TextStyle(
                           color: colors.textSecondary,
-                          fontSize: 13.5,
+                          fontSize: 14,
                         ),
                       ),
                     ),
                   ],
                 ),
               ),
-            GestureDetector(
-              onTap: () => _openImageZoom(message.imageUrl!),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(18),
+            if (isLoading)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(20),
                 child: Container(
                   width: 320,
                   height: 320,
                   decoration: BoxDecoration(
                     color: colors.surface,
-                    borderRadius: BorderRadius.circular(18),
+                    borderRadius: BorderRadius.circular(20),
                     border: Border.all(color: colors.border),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.06),
-                        blurRadius: 24,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
                   ),
-                  child: _buildImageWidget(message, colors),
+                  child: _ImageGeneratingLoader(colors: colors),
                 ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(top: 10),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _actionIcon(
-                    colors: colors,
-                    icon: Icons.save_alt_rounded,
-                    tooltip: 'Save to gallery',
-                    onPressed: () => _saveImageToGallery(
-                      message.imageUrl ?? '',
-                      localPath: message.imageLocalPath,
+              )
+            else if (hasLocal)
+              GestureDetector(
+                onTap: () => _openImageZoom(
+                  message.imageUrl ?? '',
+                  localPath: message.imageLocalPath,
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: Container(
+                    width: 320,
+                    height: 320,
+                    decoration: BoxDecoration(
+                      color: colors.surface,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: colors.border),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.08),
+                          blurRadius: 28,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
+                    ),
+                    child: Image.file(
+                      File(message.imageLocalPath!),
+                      width: 320,
+                      height: 320,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                        width: 320,
+                        height: 320,
+                        alignment: Alignment.center,
+                        child: Icon(
+                          Icons.broken_image_outlined,
+                          size: 52,
+                          color: colors.danger,
+                        ),
+                      ),
                     ),
                   ),
-                  _actionIcon(
-                    colors: colors,
-                    icon: Icons.link_rounded,
-                    tooltip: 'Copy image URL',
-                    onPressed: () =>
-                        _copyMessage(message.imageUrl ?? ''),
+                ),
+              )
+            else
+              ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  width: 320,
+                  height: 320,
+                  decoration: BoxDecoration(
+                    color: colors.surface,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: colors.border),
                   ),
-                  _actionIcon(
-                    colors: colors,
-                    icon: Icons.zoom_in_rounded,
-                    tooltip: 'View fullscreen',
-                    onPressed: () =>
-                        _openImageZoom(message.imageUrl ?? ''),
+                  alignment: Alignment.center,
+                  child: Text(
+                    'الصورة غير متوفرة',
+                    style: TextStyle(
+                      color: colors.textMuted,
+                      fontSize: 13,
+                    ),
                   ),
-                  _actionIcon(
-                    colors: colors,
-                    icon: Icons.refresh_rounded,
-                    tooltip: 'Regenerate',
-                    onPressed: () {
-                      if (message.imagePrompt == null) return;
-                      final idx = _messages.indexOf(message);
-                      if (idx == -1) return;
-
-                      final newUrl =
-                          _buildImageUrl(message.imagePrompt!);
-
-                      setState(() {
-                        _messages[idx] = _ChatMessage(
-                          text: '',
-                          isUser: false,
-                          imageUrl: newUrl,
-                          imagePrompt: message.imagePrompt,
-                        );
-                      });
-                    },
-                  ),
-                ],
+                ),
               ),
-            ),
+
+            if (!isLoading && hasLocal)
+              Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _actionIcon(
+                      colors: colors,
+                      icon: Icons.save_alt_rounded,
+                      tooltip: 'Save to gallery',
+                      onPressed: () => _saveImageToGallery(
+                        message.imageUrl ?? '',
+                        localPath: message.imageLocalPath,
+                      ),
+                    ),
+                    _actionIcon(
+                      colors: colors,
+                      icon: Icons.link_rounded,
+                      tooltip: 'Copy image URL',
+                      onPressed: () =>
+                          _copyMessage(message.imageUrl ?? ''),
+                    ),
+                    _actionIcon(
+                      colors: colors,
+                      icon: Icons.zoom_in_rounded,
+                      tooltip: 'View fullscreen',
+                      onPressed: () => _openImageZoom(
+                        message.imageUrl ?? '',
+                        localPath: message.imageLocalPath,
+                      ),
+                    ),
+                    _actionIcon(
+                      colors: colors,
+                      icon: Icons.refresh_rounded,
+                      tooltip: 'Regenerate',
+                      onPressed: () => _regenerateImage(index),
+                    ),
+                  ],
+                ),
+              ),
           ],
         ),
       ),
@@ -2446,7 +2470,7 @@ class _ChatScreenState extends State<ChatScreen>
             'المصادر',
             style: TextStyle(
               color: colors.textMuted,
-              fontSize: 11.5,
+              fontSize: 12,
               fontWeight: FontWeight.w700,
               letterSpacing: 1.2,
             ),
@@ -2476,25 +2500,25 @@ class _ChatScreenState extends State<ChatScreen>
 
     return Material(
       color: colors.surface,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(15),
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(15),
         onTap: () => _openUrl(url),
         onLongPress: () => _copyMessage(url),
         child: Container(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(13),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(15),
             border: Border.all(color: colors.border),
           ),
           child: Row(
             children: [
               Container(
-                width: 38,
-                height: 38,
+                width: 40,
+                height: 40,
                 decoration: BoxDecoration(
                   color: color.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(11),
                   border: Border.all(
                     color: color.withValues(alpha: 0.30),
                   ),
@@ -2521,7 +2545,7 @@ class _ChatScreenState extends State<ChatScreen>
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: colors.textPrimary,
-                        fontSize: 14,
+                        fontSize: 14.5,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -2533,7 +2557,7 @@ class _ChatScreenState extends State<ChatScreen>
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: colors.textMuted,
-                          fontSize: 11,
+                          fontSize: 11.5,
                         ),
                       ),
                     ],
@@ -2666,12 +2690,12 @@ class _ChatScreenState extends State<ChatScreen>
         color: Colors.transparent,
         child: InkWell(
           onTap: onPressed,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(9),
           child: Tooltip(
             message: tooltip,
             child: Padding(
-              padding: const EdgeInsets.all(7),
-              child: Icon(icon, size: 18, color: color),
+              padding: const EdgeInsets.all(8),
+              child: Icon(icon, size: 19, color: color),
             ),
           ),
         ),
@@ -2681,33 +2705,36 @@ class _ChatScreenState extends State<ChatScreen>
 
   MarkdownStyleSheet _markdownStyle(WeuraColors colors) {
     return MarkdownStyleSheet(
+      // ✨ Font جديد: أكبر + line-height أوسع = أسهل في القراءة
       p: TextStyle(
         color: colors.textPrimary,
-        fontSize: 16,
-        height: 1.75,
-        letterSpacing: 0.1,
+        fontSize: 17,
+        height: 1.85,
+        letterSpacing: 0.15,
       ),
       h1: TextStyle(
         color: colors.textPrimary,
-        fontSize: 26,
-        fontWeight: FontWeight.w700,
+        fontSize: 28,
+        fontWeight: FontWeight.w800,
         height: 1.4,
+        letterSpacing: -0.5,
       ),
       h2: TextStyle(
         color: colors.textPrimary,
-        fontSize: 22,
+        fontSize: 23,
         fontWeight: FontWeight.w700,
-        height: 1.4,
+        height: 1.45,
+        letterSpacing: -0.3,
       ),
       h3: TextStyle(
         color: colors.textPrimary,
-        fontSize: 18,
+        fontSize: 19.5,
         fontWeight: FontWeight.w700,
-        height: 1.4,
+        height: 1.5,
       ),
       strong: TextStyle(
         color: colors.textPrimary,
-        fontWeight: FontWeight.w700,
+        fontWeight: FontWeight.w800,
       ),
       em: TextStyle(
         color: colors.textPrimary,
@@ -2716,34 +2743,36 @@ class _ChatScreenState extends State<ChatScreen>
       a: TextStyle(
         color: colors.accentGlow,
         decoration: TextDecoration.underline,
+        decorationColor: colors.accentGlow.withValues(alpha: 0.5),
       ),
       code: TextStyle(
         color: colors.accentGlow,
         backgroundColor: colors.surface,
         fontFamily: 'monospace',
-        fontSize: 14.5,
+        fontSize: 15,
       ),
       codeblockDecoration: const BoxDecoration(color: Colors.transparent),
       codeblockPadding: EdgeInsets.zero,
       blockquote: TextStyle(
         color: colors.textSecondary,
-        fontSize: 15.5,
+        fontSize: 16.5,
         fontStyle: FontStyle.italic,
-        height: 1.7,
+        height: 1.85,
       ),
       blockquoteDecoration: BoxDecoration(
         color: colors.accentSoft,
         border: Border(
-          left: BorderSide(color: colors.accentGlow, width: 3),
+          left: BorderSide(color: colors.accentGlow, width: 3.5),
         ),
+        borderRadius: BorderRadius.circular(6),
       ),
-      blockquotePadding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      blockquotePadding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
       listBullet: TextStyle(
         color: colors.textPrimary,
-        fontSize: 16,
-        height: 1.75,
+        fontSize: 17,
+        height: 1.85,
       ),
-      listIndent: 24,
+      listIndent: 26,
       horizontalRuleDecoration: BoxDecoration(
         border: Border(
           top: BorderSide(color: colors.borderStrong),
@@ -2752,19 +2781,20 @@ class _ChatScreenState extends State<ChatScreen>
       tableHead: TextStyle(
         color: colors.textPrimary,
         fontWeight: FontWeight.w700,
+        fontSize: 15.5,
       ),
       tableBody: TextStyle(
         color: colors.textSecondary,
-        fontSize: 14.5,
+        fontSize: 15,
       ),
       tableBorder: TableBorder.all(color: colors.borderStrong),
-      tableCellsPadding: const EdgeInsets.all(10),
+      tableCellsPadding: const EdgeInsets.all(12),
     );
   }
 }
 
 // ---------------------------------------------------------------------------
-// Typing markdown widget — progressive reveal with elegant cursor
+// Typing markdown widget — inline cursor + beautiful animation
 // ---------------------------------------------------------------------------
 
 class _TypedMarkdown extends StatefulWidget {
@@ -2797,11 +2827,12 @@ class _TypedMarkdownState extends State<_TypedMarkdown>
   void initState() {
     super.initState();
 
-    // Cursor pulse — runs continuously while typing.
     _cursorController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 900),
-    )..repeat(reverse: true);
+      duration: const Duration(milliseconds: 750),
+    );
+    _cursorController.value = 0.7;
+    _cursorController.repeat(reverse: true);
 
     final len = widget.fullText.length;
 
@@ -2816,8 +2847,8 @@ class _TypedMarkdownState extends State<_TypedMarkdown>
       return;
     }
 
-    // Duration: 14ms per char, clamped between 500ms and 5500ms.
-    final durationMs = (len * 14).clamp(500, 5500);
+    // 12ms per char (slightly faster = smoother)
+    final durationMs = (len * 12).clamp(400, 5000);
 
     _controller = AnimationController(
       vsync: this,
@@ -2866,58 +2897,61 @@ class _TypedMarkdownState extends State<_TypedMarkdown>
       );
     }
 
-    // While typing: show text + a glowing pulsing cursor.
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        MarkdownBody(
-          data: _visibleText,
-          selectable: false,
-          styleSheet: widget.styleSheet,
-          builders: widget.builders,
-        ),
-        Padding(
-          padding: const EdgeInsets.only(top: 4, left: 2),
-          child: AnimatedBuilder(
-            animation: _cursorController,
-            builder: (context, _) {
-              final t = _cursorController.value;
-              return Opacity(
-                opacity: 0.35 + (t * 0.65),
-                child: Container(
-                  width: 10,
-                  height: 18,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(3),
-                    gradient: const LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Color(0xFF3B82F6),
-                        Color(0xFF60A5FA),
-                      ],
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF3B82F6)
-                            .withValues(alpha: 0.55 * t),
-                        blurRadius: 12,
-                        spreadRadius: 1,
+    final baseStyle = widget.styleSheet.p ??
+        const TextStyle(fontSize: 17, height: 1.85);
+    final colors = WeuraColors.of(context);
+
+    return AnimatedBuilder(
+      animation: _cursorController,
+      builder: (context, _) {
+        final t = _cursorController.value;
+        return RichText(
+          text: TextSpan(
+            style: baseStyle,
+            children: [
+              TextSpan(text: _visibleText),
+              WidgetSpan(
+                alignment: PlaceholderAlignment.middle,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 4),
+                  child: Opacity(
+                    opacity: 0.55 + (t * 0.45),
+                    child: Container(
+                      width: 3,
+                      height: 22,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            colors.accentGlow,
+                            colors.accentGlow.withValues(alpha: 0.5),
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(2.5),
+                        boxShadow: [
+                          BoxShadow(
+                            color: colors.accentGlow
+                                .withValues(alpha: 0.7 * t),
+                            blurRadius: 10,
+                            spreadRadius: 1.5,
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
                 ),
-              );
-            },
+              ),
+            ],
           ),
-        ),
-      ],
+        );
+      },
     );
   }
 }
 
 // ---------------------------------------------------------------------------
-// Code block builder — colored + copyable
+// Code block builder
 // ---------------------------------------------------------------------------
 
 class _CodeBlockBuilder extends MarkdownElementBuilder {
@@ -3004,16 +3038,16 @@ class _CodeBlockState extends State<_CodeBlock> {
         widget.language.isEmpty ? 'code' : widget.language;
 
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 12),
+      margin: const EdgeInsets.symmetric(vertical: 14),
       decoration: BoxDecoration(
         color: const Color(0xFF0A0B12),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(15),
         border: Border.all(color: colors.border),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.15),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
+            color: Colors.black.withValues(alpha: 0.18),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
@@ -3021,12 +3055,12 @@ class _CodeBlockState extends State<_CodeBlock> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
-            padding: const EdgeInsets.fromLTRB(16, 10, 10, 10),
+            padding: const EdgeInsets.fromLTRB(16, 11, 10, 11),
             decoration: BoxDecoration(
               color: const Color(0xFF0F1119),
               borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(14),
-                topRight: Radius.circular(14),
+                topLeft: Radius.circular(15),
+                topRight: Radius.circular(15),
               ),
               border: Border(
                 bottom: BorderSide(color: colors.border),
@@ -3035,17 +3069,17 @@ class _CodeBlockState extends State<_CodeBlock> {
             child: Row(
               children: [
                 Container(
-                  width: 9,
-                  height: 9,
+                  width: 10,
+                  height: 10,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: colors.accentGlow,
                     boxShadow: [
                       BoxShadow(
                         color: colors.accentGlow
-                            .withValues(alpha: 0.55),
-                        blurRadius: 8,
-                        spreadRadius: 1,
+                            .withValues(alpha: 0.6),
+                        blurRadius: 9,
+                        spreadRadius: 1.5,
                       ),
                     ],
                   ),
@@ -3055,7 +3089,7 @@ class _CodeBlockState extends State<_CodeBlock> {
                   displayLang,
                   style: TextStyle(
                     color: colors.textMuted,
-                    fontSize: 12.5,
+                    fontSize: 13,
                     fontWeight: FontWeight.w600,
                     letterSpacing: 0.4,
                   ),
@@ -3088,7 +3122,7 @@ class _CodeBlockState extends State<_CodeBlock> {
                             color: _copied
                                 ? colors.accentGlow
                                 : colors.textMuted,
-                            fontSize: 12,
+                            fontSize: 12.5,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -3100,7 +3134,7 @@ class _CodeBlockState extends State<_CodeBlock> {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(15),
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: HighlightView(
@@ -3110,8 +3144,8 @@ class _CodeBlockState extends State<_CodeBlock> {
                 padding: EdgeInsets.zero,
                 textStyle: const TextStyle(
                   fontFamily: 'monospace',
-                  fontSize: 13.5,
-                  height: 1.6,
+                  fontSize: 14,
+                  height: 1.65,
                 ),
               ),
             ),
@@ -3123,83 +3157,19 @@ class _CodeBlockState extends State<_CodeBlock> {
 }
 
 // ---------------------------------------------------------------------------
-// Network image with loader
-// ---------------------------------------------------------------------------
-
-class _NetworkImageWithLoader extends StatelessWidget {
-  const _NetworkImageWithLoader({
-    required this.url,
-    required this.colors,
-  });
-
-  final String url;
-  final WeuraColors colors;
-
-  @override
-  Widget build(BuildContext context) {
-    return Image.network(
-      url,
-      width: 320,
-      height: 320,
-      fit: BoxFit.cover,
-      loadingBuilder: (context, child, progress) {
-        if (progress == null) return child;
-        return _ImageGeneratingLoader(colors: colors);
-      },
-      errorBuilder: (context, error, stackTrace) {
-        return Container(
-          width: 320,
-          height: 320,
-          padding: const EdgeInsets.all(24),
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.broken_image_outlined,
-                  size: 52,
-                  color: colors.danger,
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  'Image generation failed',
-                  style: TextStyle(
-                    color: colors.danger,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'The model may be loading.\nTap refresh to retry.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: colors.textMuted,
-                    fontSize: 12,
-                    height: 1.4,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Fullscreen Image Zoom Viewer
+// Image Zoom Viewer
 // ---------------------------------------------------------------------------
 
 class _ImageZoomViewer extends StatefulWidget {
   const _ImageZoomViewer({
     required this.imageUrl,
+    this.localPath,
     this.onSave,
     this.onCopyUrl,
   });
 
   final String imageUrl;
+  final String? localPath;
   final VoidCallback? onSave;
   final VoidCallback? onCopyUrl;
 
@@ -3214,20 +3184,16 @@ class _ImageZoomViewerState extends State<_ImageZoomViewer>
 
   late final AnimationController _animController;
   late Animation<Matrix4> _animation;
-
   bool _isZoomed = false;
-
   static const double _doubleTapScale = 2.5;
 
   @override
   void initState() {
     super.initState();
-
     _animController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 220),
     );
-
     _animation = Matrix4Tween(
       begin: Matrix4.identity(),
       end: Matrix4.identity(),
@@ -3237,7 +3203,6 @@ class _ImageZoomViewerState extends State<_ImageZoomViewer>
         curve: Curves.easeOutCubic,
       ),
     );
-
     _animController.addListener(_onTick);
     _transformController.addListener(_onTransformChanged);
   }
@@ -3276,9 +3241,7 @@ class _ImageZoomViewerState extends State<_ImageZoomViewer>
     _animController.forward(from: 0);
   }
 
-  void _resetZoom() {
-    _animateTo(Matrix4.identity());
-  }
+  void _resetZoom() => _animateTo(Matrix4.identity());
 
   void _handleDoubleTap() {
     if (_isZoomed) {
@@ -3290,8 +3253,54 @@ class _ImageZoomViewerState extends State<_ImageZoomViewer>
     }
   }
 
-  void _close() {
-    Navigator.of(context).maybePop();
+  void _close() => Navigator.of(context).maybePop();
+
+  Widget _buildImageViewerImage() {
+    final path = widget.localPath;
+    if (path != null) {
+      final file = File(path);
+      if (file.existsSync()) {
+        return Image.file(
+          file,
+          fit: BoxFit.contain,
+          errorBuilder: (_, __, ___) => _errorImage(),
+        );
+      }
+    }
+    return Image.network(
+      widget.imageUrl,
+      fit: BoxFit.contain,
+      loadingBuilder: (context, child, progress) {
+        if (progress == null) return child;
+        return const Center(
+          child: SizedBox(
+            width: 32,
+            height: 32,
+            child: CircularProgressIndicator(
+              color: Colors.white,
+              strokeWidth: 2.5,
+            ),
+          ),
+        );
+      },
+      errorBuilder: (_, __, ___) => _errorImage(),
+    );
+  }
+
+  Widget _errorImage() {
+    return const Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.broken_image_outlined, color: Colors.white54, size: 60),
+          SizedBox(height: 14),
+          Text(
+            'Could not load image',
+            style: TextStyle(color: Colors.white70, fontSize: 14),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -3312,47 +3321,7 @@ class _ImageZoomViewerState extends State<_ImageZoomViewer>
                 panEnabled: true,
                 scaleEnabled: true,
                 clipBehavior: Clip.hardEdge,
-                child: Center(
-                  child: Image.network(
-                    widget.imageUrl,
-                    fit: BoxFit.contain,
-                    loadingBuilder: (context, child, progress) {
-                      if (progress == null) return child;
-                      return const Center(
-                        child: SizedBox(
-                          width: 32,
-                          height: 32,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2.5,
-                          ),
-                        ),
-                      );
-                    },
-                    errorBuilder: (_, __, ___) {
-                      return const Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.broken_image_outlined,
-                              color: Colors.white54,
-                              size: 60,
-                            ),
-                            SizedBox(height: 14),
-                            Text(
-                              'Could not load image',
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                ),
+                child: Center(child: _buildImageViewerImage()),
               ),
             ),
           ),
@@ -3485,7 +3454,7 @@ class _ImageZoomViewerState extends State<_ImageZoomViewer>
 }
 
 // ---------------------------------------------------------------------------
-// Image generating loader
+// Image generating loader — IMMEDIATE (no grey delay)
 // ---------------------------------------------------------------------------
 
 class _ImageGeneratingLoader extends StatefulWidget {
@@ -3512,22 +3481,30 @@ class _ImageGeneratingLoaderState extends State<_ImageGeneratingLoader>
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1400),
-    )..repeat(reverse: true);
+    );
+    _pulseController.value = 0.5;
+    _pulseController.repeat(reverse: true);
 
     _rotateController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 5),
-    )..repeat();
+    );
+    _rotateController.value = 0.3;
+    _rotateController.repeat();
 
     _sparkleController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1800),
-    )..repeat();
+    );
+    _sparkleController.value = 0.4;
+    _sparkleController.repeat();
 
     _progressController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 4),
-    )..repeat();
+    );
+    _progressController.value = 0.5;
+    _progressController.repeat();
   }
 
   @override
@@ -3543,96 +3520,98 @@ class _ImageGeneratingLoaderState extends State<_ImageGeneratingLoader>
   Widget build(BuildContext context) {
     final colors = widget.colors;
 
-    return Container(
-      width: 320,
-      height: 320,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: colors.surfaceAlt,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          SizedBox(
-            width: 170,
-            height: 170,
-            child: AnimatedBuilder(
-              animation: Listenable.merge([
-                _pulseController,
-                _rotateController,
-                _sparkleController,
-              ]),
-              builder: (context, _) {
-                return CustomPaint(
-                  painter: _ImageLoadingPainter(
-                    progress: _pulseController.value,
-                    rotation: _rotateController.value,
-                    sparkle: _sparkleController.value,
-                    glow: colors.accentGlow,
-                    accent: colors.accent,
-                  ),
-                );
-              },
+    return RepaintBoundary(
+      child: Container(
+        width: 320,
+        height: 320,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: colors.surfaceAlt,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SizedBox(
+              width: 170,
+              height: 170,
+              child: AnimatedBuilder(
+                animation: Listenable.merge([
+                  _pulseController,
+                  _rotateController,
+                  _sparkleController,
+                ]),
+                builder: (context, _) {
+                  return CustomPaint(
+                    painter: _ImageLoadingPainter(
+                      progress: _pulseController.value,
+                      rotation: _rotateController.value,
+                      sparkle: _sparkleController.value,
+                      glow: colors.accentGlow,
+                      accent: colors.accent,
+                    ),
+                  );
+                },
+              ),
             ),
-          ),
-          const SizedBox(height: 22),
-          Text(
-            'Creating your image',
-            style: TextStyle(
-              color: colors.textPrimary,
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.4,
+            const SizedBox(height: 22),
+            Text(
+              'Creating your image',
+              style: TextStyle(
+                color: colors.textPrimary,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.4,
+              ),
             ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'This can take 5-15 seconds',
-            style: TextStyle(
-              color: colors.textMuted,
-              fontSize: 12,
+            const SizedBox(height: 6),
+            Text(
+              'This can take 5-15 seconds',
+              style: TextStyle(
+                color: colors.textMuted,
+                fontSize: 12,
+              ),
             ),
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: 160,
-            height: 4,
-            child: AnimatedBuilder(
-              animation: _progressController,
-              builder: (context, _) {
-                return ClipRRect(
-                  borderRadius: BorderRadius.circular(2),
-                  child: Stack(
-                    children: [
-                      Container(color: colors.surface),
-                      FractionallySizedBox(
-                        widthFactor: 0.35,
-                        alignment: Alignment(
-                          -1.0 + (_progressController.value * 2.4),
-                          0,
-                        ),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                colors.accentGlow
-                                    .withValues(alpha: 0.0),
-                                colors.accentGlow,
-                                colors.accentGlow
-                                    .withValues(alpha: 0.0),
-                              ],
+            const SizedBox(height: 16),
+            SizedBox(
+              width: 160,
+              height: 4,
+              child: AnimatedBuilder(
+                animation: _progressController,
+                builder: (context, _) {
+                  return ClipRRect(
+                    borderRadius: BorderRadius.circular(2),
+                    child: Stack(
+                      children: [
+                        Container(color: colors.surface),
+                        FractionallySizedBox(
+                          widthFactor: 0.35,
+                          alignment: Alignment(
+                            -1.0 + (_progressController.value * 2.4),
+                            0,
+                          ),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  colors.accentGlow
+                                      .withValues(alpha: 0.0),
+                                  colors.accentGlow,
+                                  colors.accentGlow
+                                      .withValues(alpha: 0.0),
+                                ],
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-                );
-              },
+                      ],
+                    ),
+                  );
+                },
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
