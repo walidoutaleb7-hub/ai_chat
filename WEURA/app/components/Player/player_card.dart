@@ -36,6 +36,7 @@ class PlayerCard extends StatelessWidget {
     final height = _cleanHeight(_str(player['height']));
     final age = _calcAge(_str(player['birthDate']));
     final foot = _translateFoot(_str(player['side']));
+    final description = _str(player['description']);
 
     final currentClub = _translateClub(_str(current['currentClub']));
     final lastTransfer = _formatTransfer(_str(current['lastTransfer']));
@@ -50,8 +51,8 @@ class PlayerCard extends StatelessWidget {
     return Directionality(
       textDirection: TextDirection.rtl,
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 8),
-        constraints: const BoxConstraints(maxWidth: 460),
+        margin: const EdgeInsets.symmetric(vertical: 10),
+        constraints: const BoxConstraints(maxWidth: 480),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topRight,
@@ -61,16 +62,21 @@ class PlayerCard extends StatelessWidget {
               colors.surface,
             ],
           ),
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(22),
           border: Border.all(
-            color: colors.accentGlow.withValues(alpha: 0.35),
+            color: colors.accentGlow.withValues(alpha: 0.30),
             width: 1,
           ),
           boxShadow: [
             BoxShadow(
-              color: colors.accent.withValues(alpha: 0.20),
-              blurRadius: 30,
+              color: colors.accent.withValues(alpha: 0.18),
+              blurRadius: 32,
               spreadRadius: 2,
+            ),
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.10),
+              blurRadius: 12,
+              offset: const Offset(0, 6),
             ),
           ],
         ),
@@ -78,104 +84,27 @@ class PlayerCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // ─── Header ──────────────────────────────────────────────────
-            Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    colors.accent.withValues(alpha: 0.10),
-                    Colors.transparent,
-                  ],
-                ),
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(20),
-                  topRight: Radius.circular(20),
-                ),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  _buildPhoto(colors, photo, name),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            if (flag.isNotEmpty) ...[
-                              Text(
-                                flag,
-                                style: const TextStyle(fontSize: 20),
-                              ),
-                              const SizedBox(width: 6),
-                            ],
-                            Flexible(
-                              child: Text(
-                                name,
-                                style: TextStyle(
-                                  color: colors.textPrimary,
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: -0.3,
-                                ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                        if (nameAlternate.isNotEmpty) ...[
-                          const SizedBox(height: 2),
-                          Text(
-                            nameAlternate,
-                            style: TextStyle(
-                              color: colors.textFaint,
-                              fontSize: 11.5,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                        if (nationality.isNotEmpty) ...[
-                          const SizedBox(height: 3),
-                          Text(
-                            nationality,
-                            style: TextStyle(
-                              color: colors.textMuted,
-                              fontSize: 12.5,
-                            ),
-                          ),
-                        ],
-                        const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 4,
-                          children: [
-                            if (position.isNotEmpty)
-                              _chip(colors, position),
-                            if (number.isNotEmpty)
-                              _chip(colors, '#$number'),
-                            if (age.isNotEmpty) _chip(colors, age),
-                            if (height.isNotEmpty) _chip(colors, height),
-                            if (foot.isNotEmpty) _chip(colors, foot),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+            _buildHeader(
+              colors: colors,
+              photo: photo,
+              name: name,
+              nameAlternate: nameAlternate,
+              flag: flag,
+              nationality: nationality,
+              position: position,
+              number: number,
+              age: age,
+              height: height,
+              foot: foot,
             ),
 
             // ─── Body ────────────────────────────────────────────────────
             Padding(
-              padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Current Club (highlight)
                   if (currentClub.isNotEmpty) ...[
                     _infoRow(
                       colors,
@@ -184,8 +113,10 @@ class PlayerCard extends StatelessWidget {
                       value: currentClub,
                       highlight: true,
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 12),
                   ],
+
+                  // Last Transfer
                   if (lastTransfer.isNotEmpty) ...[
                     _infoRow(
                       colors,
@@ -193,8 +124,10 @@ class PlayerCard extends StatelessWidget {
                       label: 'آخر انتقال',
                       value: lastTransfer,
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 12),
                   ],
+
+                  // Market Value
                   if (marketValue.isNotEmpty) ...[
                     _infoRow(
                       colors,
@@ -202,8 +135,10 @@ class PlayerCard extends StatelessWidget {
                       label: 'القيمة السوقية',
                       value: marketValue,
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 12),
                   ],
+
+                  // Stats
                   if (goals.isNotEmpty ||
                       assists.isNotEmpty ||
                       season.isNotEmpty) ...[
@@ -214,25 +149,42 @@ class PlayerCard extends StatelessWidget {
                       goals: goals,
                       assists: assists,
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 14),
                   ],
+
+                  // Trophies
                   if (trophies.isNotEmpty) ...[
                     _miniSection(
                       colors,
                       'الألقاب',
                       trophies.join(' • '),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 12),
                   ],
-                  // Latest News — English only with label
+
+                  // Latest News (English with EN label)
                   if (latestNews.isNotEmpty) ...[
-                    _latestNewsSection(
+                    _englishSection(
                       colors,
-                      _trimNews(latestNews),
+                      title: 'آخر الأخبار',
+                      body: _trimNews(latestNews),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 12),
                   ],
+
+                  // Bio / Description (English with EN label)
+                  if (description.isNotEmpty) ...[
+                    _englishSection(
+                      colors,
+                      title: 'نبذة',
+                      body: _trimBio(description),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+
                   const SizedBox(height: 4),
+
+                  // Footer: sources + share
                   _footer(colors, sources),
                 ],
               ),
@@ -244,8 +196,115 @@ class PlayerCard extends StatelessWidget {
   }
 
   // ---------------------------------------------------------------------------
-  // Sub-widgets
+  // Header
   // ---------------------------------------------------------------------------
+
+  Widget _buildHeader({
+    required WeuraColors colors,
+    required String photo,
+    required String name,
+    required String nameAlternate,
+    required String flag,
+    required String nationality,
+    required String position,
+    required String number,
+    required String age,
+    required String height,
+    required String foot,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            colors.accent.withValues(alpha: 0.12),
+            Colors.transparent,
+          ],
+        ),
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(22),
+          topRight: Radius.circular(22),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          _buildPhoto(colors, photo, name),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    if (flag.isNotEmpty) ...[
+                      Text(
+                        flag,
+                        style: const TextStyle(fontSize: 22),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    Flexible(
+                      child: Text(
+                        name,
+                        style: TextStyle(
+                          color: colors.textPrimary,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.3,
+                          height: 1.2,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+                if (nameAlternate.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    nameAlternate,
+                    style: TextStyle(
+                      color: colors.textFaint,
+                      fontSize: 12,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+                if (nationality.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    nationality,
+                    style: TextStyle(
+                      color: colors.textMuted,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 7,
+                  runSpacing: 6,
+                  children: [
+                    if (position.isNotEmpty)
+                      _chip(colors, position),
+                    if (number.isNotEmpty)
+                      _chip(colors, '#$number'),
+                    if (age.isNotEmpty) _chip(colors, age),
+                    if (height.isNotEmpty) _chip(colors, height),
+                    if (foot.isNotEmpty) _chip(colors, foot),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildPhoto(
     WeuraColors colors,
@@ -253,19 +312,19 @@ class PlayerCard extends StatelessWidget {
     String name,
   ) {
     return Container(
-      width: 96,
-      height: 96,
+      width: 100,
+      height: 100,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: colors.surface,
         border: Border.all(
-          color: colors.accentGlow.withValues(alpha: 0.45),
+          color: colors.accentGlow.withValues(alpha: 0.50),
           width: 2,
         ),
         boxShadow: [
           BoxShadow(
-            color: colors.accentGlow.withValues(alpha: 0.30),
-            blurRadius: 18,
+            color: colors.accentGlow.withValues(alpha: 0.35),
+            blurRadius: 20,
             spreadRadius: 1,
           ),
         ],
@@ -292,7 +351,7 @@ class PlayerCard extends StatelessWidget {
               '${sources.length} مصادر',
               style: TextStyle(
                 color: colors.textFaint,
-                fontSize: 11,
+                fontSize: 11.5,
               ),
             ),
           ),
@@ -301,26 +360,26 @@ class PlayerCard extends StatelessWidget {
             color: Colors.transparent,
             child: InkWell(
               onTap: onShare,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(10),
               child: Padding(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 6,
+                  horizontal: 10,
+                  vertical: 7,
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     SvgPicture.asset(
                       'assets/icons/send.svg',
-                      width: 14,
-                      height: 14,
+                      width: 15,
+                      height: 15,
                     ),
-                    const SizedBox(width: 5),
+                    const SizedBox(width: 6),
                     Text(
                       'مشاركة',
                       style: TextStyle(
                         color: colors.textMuted,
-                        fontSize: 12,
+                        fontSize: 12.5,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -334,57 +393,60 @@ class PlayerCard extends StatelessWidget {
   }
 
   // ---------------------------------------------------------------------------
-  // Latest News — English only with label
+  // English section with EN label
   // ---------------------------------------------------------------------------
 
-  Widget _latestNewsSection(WeuraColors colors, String text) {
+  Widget _englishSection(
+    WeuraColors colors, {
+    required String title,
+    required String body,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
             Text(
-              'آخر الأخبار',
+              title,
               style: TextStyle(
                 color: colors.textFaint,
-                fontSize: 11,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
                 letterSpacing: 0.4,
               ),
             ),
-            const SizedBox(width: 6),
+            const SizedBox(width: 8),
             Container(
               padding: const EdgeInsets.symmetric(
-                horizontal: 6,
+                horizontal: 7,
                 vertical: 2,
               ),
               decoration: BoxDecoration(
                 color: colors.surfaceAlt,
                 borderRadius: BorderRadius.circular(6),
-                border: Border.all(
-                  color: colors.border,
-                ),
+                border: Border.all(color: colors.border),
               ),
               child: Text(
                 'EN',
                 style: TextStyle(
                   color: colors.textMuted,
                   fontSize: 9,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.5,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.6,
                 ),
               ),
             ),
           ],
         ),
-        const SizedBox(height: 5),
+        const SizedBox(height: 6),
         Directionality(
           textDirection: TextDirection.ltr,
           child: Text(
-            text,
+            body,
             style: TextStyle(
               color: colors.textSecondary,
-              fontSize: 12.5,
-              height: 1.5,
+              fontSize: 13,
+              height: 1.55,
             ),
           ),
         ),
@@ -407,6 +469,19 @@ class PlayerCard extends StatelessWidget {
       return '${raw.substring(0, 220)}...';
     }
     return raw;
+  }
+
+  String _trimBio(String raw) {
+    // Keep it short — max 350 chars, cut at a sentence boundary if possible.
+    const maxLen = 350;
+    if (raw.length <= maxLen) return raw;
+
+    final sliced = raw.substring(0, maxLen);
+    final lastDot = sliced.lastIndexOf('. ');
+    if (lastDot > 150) {
+      return sliced.substring(0, lastDot + 1).trim();
+    }
+    return '$sliced...';
   }
 
   List<String> _trophiesList(dynamic raw) {
@@ -578,6 +653,9 @@ class PlayerCard extends StatelessWidget {
       'inter miami': 'إنتر ميامي',
       'al hilal': 'الهلال',
       'al nassr': 'النصر',
+      'al-nassr': 'النصر',
+      'al-ittihad': 'الاتحاد',
+      'al ittihad': 'الاتحاد',
       'al ahly': 'الأهلي',
       'zamalek': 'الزمالك',
       'esperance': 'الترجي',
@@ -612,8 +690,6 @@ class PlayerCard extends StatelessWidget {
     return map[raw.toLowerCase()] ?? raw;
   }
 
-  /// Formats last transfer as "من X إلى Y (سنة)" when possible.
-  /// Falls back to "انتقل إلى X (سنة)" if only one club is available.
   String _formatTransfer(String raw) {
     if (raw.isEmpty) return '';
 
@@ -634,7 +710,7 @@ class PlayerCard extends StatelessWidget {
       }
     }
 
-    // Case 2: "ClubName (Year)" — no "from" info available
+    // Case 2: "ClubName (Year)"
     final singleMatch = RegExp(
       r'^(.+?)(\s*\((\d{4})\))?$',
     ).firstMatch(raw);
@@ -658,9 +734,37 @@ class PlayerCard extends StatelessWidget {
 
   String _cleanHeight(String raw) {
     if (raw.isEmpty) return '';
-    final match = RegExp(r'([\d.]+)\s*m').firstMatch(raw);
-    if (match != null) return '${match.group(1)} م';
-    if (raw.length > 8) return raw.substring(0, 8);
+
+    final clean = raw.trim().toLowerCase();
+
+    // "1.76 m"
+    final metersMatch = RegExp(r'([\d.]+)\s*m\b').firstMatch(clean);
+    if (metersMatch != null) {
+      final v = double.tryParse(metersMatch.group(1)!);
+      if (v != null && v >= 1.0 && v <= 2.5) {
+        return '${v.toStringAsFixed(2)} م';
+      }
+    }
+
+    // "176 cm"
+    final cmMatch = RegExp(r'([\d.]+)\s*cm\b').firstMatch(clean);
+    if (cmMatch != null) {
+      final v = double.tryParse(cmMatch.group(1)!);
+      if (v != null && v >= 100 && v <= 250) {
+        return '${(v / 100).toStringAsFixed(2)} م';
+      }
+    }
+
+    // Just a number "176"
+    final numberMatch = RegExp(r'^(\d{3})$').firstMatch(clean);
+    if (numberMatch != null) {
+      final v = double.tryParse(numberMatch.group(1)!);
+      if (v != null && v >= 100 && v <= 250) {
+        return '${(v / 100).toStringAsFixed(2)} م';
+      }
+    }
+
+    if (raw.length > 10) return raw.substring(0, 10);
     return raw;
   }
 
@@ -694,7 +798,7 @@ class PlayerCard extends StatelessWidget {
           letter,
           style: TextStyle(
             color: colors.accentGlow,
-            fontSize: 36,
+            fontSize: 38,
             fontWeight: FontWeight.w800,
           ),
         ),
@@ -704,10 +808,10 @@ class PlayerCard extends StatelessWidget {
 
   Widget _chip(WeuraColors colors, String label) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
       decoration: BoxDecoration(
         color: colors.accentSoft,
-        borderRadius: BorderRadius.circular(7),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(
           color: colors.accentGlow.withValues(alpha: 0.22),
         ),
@@ -716,7 +820,7 @@ class PlayerCard extends StatelessWidget {
         label,
         style: TextStyle(
           color: colors.accentGlow,
-          fontSize: 11,
+          fontSize: 11.5,
           fontWeight: FontWeight.w600,
         ),
       ),
@@ -751,17 +855,18 @@ class PlayerCard extends StatelessWidget {
                 style: TextStyle(
                   color: colors.textFaint,
                   fontSize: 11,
+                  fontWeight: FontWeight.w600,
                   letterSpacing: 0.4,
                 ),
               ),
-              const SizedBox(height: 2),
+              const SizedBox(height: 3),
               Text(
                 value,
                 style: TextStyle(
                   color: highlight
                       ? colors.textPrimary
                       : colors.textSecondary,
-                  fontSize: 14,
+                  fontSize: 14.5,
                   fontWeight: highlight
                       ? FontWeight.w700
                       : FontWeight.w500,
@@ -782,10 +887,10 @@ class PlayerCard extends StatelessWidget {
     required String assists,
   }) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
       decoration: BoxDecoration(
         color: colors.surface,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: colors.accentGlow.withValues(alpha: 0.18),
         ),
@@ -810,16 +915,17 @@ class PlayerCard extends StatelessWidget {
           value,
           style: TextStyle(
             color: colors.accentGlow,
-            fontSize: 18,
+            fontSize: 19,
             fontWeight: FontWeight.w800,
           ),
         ),
-        const SizedBox(height: 3),
+        const SizedBox(height: 4),
         Text(
           label,
           style: TextStyle(
             color: colors.textMuted,
-            fontSize: 11,
+            fontSize: 11.5,
+            fontWeight: FontWeight.w500,
             letterSpacing: 0.3,
           ),
         ),
@@ -835,16 +941,17 @@ class PlayerCard extends StatelessWidget {
           title,
           style: TextStyle(
             color: colors.textFaint,
-            fontSize: 11,
+            fontSize: 11.5,
+            fontWeight: FontWeight.w600,
             letterSpacing: 0.4,
           ),
         ),
-        const SizedBox(height: 3),
+        const SizedBox(height: 5),
         Text(
           body,
           style: TextStyle(
             color: colors.textSecondary,
-            fontSize: 13,
+            fontSize: 13.5,
             height: 1.5,
           ),
         ),
