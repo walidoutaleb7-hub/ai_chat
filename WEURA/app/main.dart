@@ -28,13 +28,15 @@ const List<String> _kSvgIcons = [
   'assets/logo/weura.svg',
 ];
 
+/// Force flutter_svg to load every icon into its global cache BEFORE
+/// the first frame. Without this, `SvgPicture.asset()` renders empty
+/// on the very first build while the bytes load asynchronously.
 Future<void> _precacheSvgIcons() async {
   for (final path in _kSvgIcons) {
     try {
-      final loader = SvgAssetLoader(path);
-      await svg.cache.putIfAbsent(
-        loader.cacheKey(null),
-        () => loader.loadBytes(null),
+      await precachePicture(
+        SvgAssetLoader(path),
+        null,
       );
     } catch (e) {
       debugPrint('[WEURA] Failed to precache $path: $e');
