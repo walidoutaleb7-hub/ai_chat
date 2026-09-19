@@ -1,4 +1,10 @@
+import 'dart:math' as math;
+
 import '../../services/Storage/storage_service.dart';
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 class WeuraMemory {
   const WeuraMemory({
@@ -66,16 +72,10 @@ class MemoryManager {
 
   int get count => _memories.length;
 
-  // ---------------------------------------------------------------------------
-  // Stop words (used for scoring)
-  // ---------------------------------------------------------------------------
-
   static const Set<String> _stopWords = {
-    // Arabic
     'من', 'ما', 'هل', 'في', 'على', 'عن', 'إلى', 'الى', 'هذا', 'هذه',
     'ذلك', 'التي', 'الذي', 'كان', 'كانت', 'هو', 'هي', 'أنا', 'انا',
     'أنت', 'انت', 'نحن', 'هم', 'لا', 'نعم', 'و', 'أو', 'او', 'ثم',
-    // English
     'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been',
     'of', 'in', 'on', 'at', 'to', 'for', 'with', 'and', 'or',
     'i', 'you', 'he', 'she', 'it', 'we', 'they', 'do', 'does',
@@ -83,22 +83,6 @@ class MemoryManager {
     'what', 'who', 'when', 'where', 'why', 'how', 'this', 'that',
   };
 
-  // ---------------------------------------------------------------------------
-  // Name detection patterns
-  // ---------------------------------------------------------------------------
-
-  /// Only EXPLICIT name forms are matched here.
-  ///
-  /// "I am" / "i'm" / "أنا" are deliberately EXCLUDED because they cause
-  /// too many false positives:
-  ///   "I am learning Flutter" → would return "learning"
-  ///   "أنا هنا" → would return "هنا"
-  ///
-  /// We only trust explicit declarations:
-  ///   "my name is X"
-  ///   "call me X"
-  ///   "اسمي X"
-  ///   "نادني X"
   static final List<RegExp> _namePatterns = [
     RegExp(
       r"(?:my name is|call me)\s+([A-Za-z\u0600-\u06FF][A-Za-z\u0600-\u06FF\s\-]{1,30})",
@@ -110,7 +94,6 @@ class MemoryManager {
     ),
   ];
 
-  /// Words that could be mistakenly extracted but are never names.
   static const Set<String> _notNames = {
     'tired', 'sad', 'happy', 'hungry', 'busy', 'here', 'there',
     'good', 'fine', 'okay', 'ok', 'ready', 'sorry', 'learning',
@@ -118,10 +101,6 @@ class MemoryManager {
     'هنا', 'هناك', 'بخير', 'لاباس', 'تعبان', 'فرحان', 'زعفان',
     'جاهز', 'مشغول', 'رايح', 'جاي', 'نستنى',
   };
-
-  // ---------------------------------------------------------------------------
-  // Persistence
-  // ---------------------------------------------------------------------------
 
   Future<void> load() async {
     final data = await _storage.read<List<dynamic>>(_storageKey);
@@ -149,10 +128,6 @@ class MemoryManager {
       _memories.map((memory) => memory.toJson()).toList(),
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // CRUD
-  // ---------------------------------------------------------------------------
 
   Future<WeuraMemory> add(String content) async {
     final cleanContent = content.trim();
@@ -234,11 +209,6 @@ class MemoryManager {
     }).toList();
   }
 
-  // ---------------------------------------------------------------------------
-  // Context builder — for the AI
-  // ---------------------------------------------------------------------------
-
-  /// Selects the most relevant memories for a given query.
   String buildRelevantContext(String query, {int maxItems = 5}) {
     if (_memories.isEmpty) return '';
 
@@ -296,13 +266,6 @@ class MemoryManager {
         lowerContent.contains('call me');
   }
 
-  // ---------------------------------------------------------------------------
-  // Name extraction — for the AI identity block
-  // ---------------------------------------------------------------------------
-
-  /// Returns the user's name if it was saved in memory, otherwise null.
-  ///
-  /// Only explicit declarations are accepted (see [_namePatterns]).
   String? getUserName() {
     for (final memory in _memories) {
       final content = memory.content.trim();
@@ -321,10 +284,8 @@ class MemoryManager {
   }
 
   String _cleanName(String raw) {
-    // Cut at the first sentence-ending punctuation.
     var result = raw.split(RegExp(r'[.,!?؟\n]')).first.trim();
 
-    // Take only the first few tokens (before a stop word).
     final tokens = result.split(RegExp(r'\s+'));
     final kept = <String>[];
     for (final token in tokens) {
@@ -332,28 +293,21 @@ class MemoryManager {
         break;
       }
       kept.add(token);
-      if (kept.length >= 3) break; // Max 3 words.
+      if (kept.length >= 3) break;
     }
 
     result = kept.join(' ').trim();
 
-    // Reject known non-names (e.g. "tired", "hapa").
     if (_notNames.contains(result.toLowerCase())) return '';
 
-    // Reject if it contains digits or symbols.
     if (RegExp(r'[0-9@#$%^&*()_+=\[\]{}|\\/<>~`]').hasMatch(result)) {
       return '';
     }
 
-    // Reject if it's only one character.
     if (result.length < 2) return '';
 
     return result;
   }
-
-  // ---------------------------------------------------------------------------
-  // Export / Import
-  // ---------------------------------------------------------------------------
 
   List<Map<String, dynamic>> exportJson() {
     return _memories.map((m) => m.toJson()).toList();
@@ -380,23 +334,20 @@ class MemoryManager {
     await _save();
   }
 
-  // ---------------------------------------------------------------------------
-  // ID generation
-  // ---------------------------------------------------------------------------
-
   String _generateId() {
     final now = DateTime.now().microsecondsSinceEpoch;
     final rand = _randomSuffix();
     return '${now}_$rand';
   }
 
+  /// Random suffix using [math.Random] — avoids collisions on devices
+  /// with low-resolution microsecond clocks.
   String _randomSuffix() {
     const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
     final buffer = StringBuffer();
+    final random = math.Random();
     for (int i = 0; i < 6; i++) {
-      buffer.write(
-        chars[(DateTime.now().microsecond + i * 7) % chars.length],
-      );
+      buffer.write(chars[random.nextInt(chars.length)]);
     }
     return buffer.toString();
   }
