@@ -18,10 +18,6 @@ export type AskOptions = {
   maxTokens?: number;
 };
 
-/* ============================================================
- *  PROVIDER COOLDOWN (skip dead providers for 10 min)
- * ============================================================ */
-
 type CooldownEntry = { until: number; reason: string };
 const COOLDOWN_MS = 10 * 60 * 1000;
 const COOLDOWNS = new Map<string, CooldownEntry>();
@@ -40,14 +36,9 @@ function setCooldown(name: string, reason: string): void {
   COOLDOWNS.set(name, { until: Date.now() + COOLDOWN_MS, reason });
 }
 
-/* ============================================================
- *  PROVIDER REGISTRY — 3 providers
- * ============================================================ */
-
 function getProviders(): Provider[] {
   const providers: Provider[] = [];
 
-  // 1. Groq — primary (fastest)
   const groqKey = process.env.GROQ_API_KEY?.trim();
   if (groqKey) {
     providers.push({
@@ -58,7 +49,6 @@ function getProviders(): Provider[] {
     });
   }
 
-  // 2. Cerebras — fallback 1
   const cerebrasKey = process.env.CEREBRAS_API_KEY?.trim();
   if (cerebrasKey) {
     providers.push({
@@ -69,16 +59,13 @@ function getProviders(): Provider[] {
     });
   }
 
-  // 3. Mistral — fallback 2 (500K tokens/month free)
   const mistralKey = process.env.MISTRAL_API_KEY?.trim();
   if (mistralKey) {
     providers.push({
       name: 'mistral',
       url: 'https://api.mistral.ai/v1/chat/completions',
       apiKey: mistralKey,
-      model:
-        process.env.MISTRAL_MODEL?.trim() ||
-        'mistral-small-latest',
+      model: process.env.MISTRAL_MODEL?.trim() || 'mistral-small-latest',
     });
   }
 
@@ -91,10 +78,6 @@ function getProviders(): Provider[] {
 
   return providers;
 }
-
-/* ============================================================
- *  CONTENT EXTRACTION
- * ============================================================ */
 
 function extractContent(raw: unknown): string {
   if (typeof raw === 'string') return raw;
@@ -112,10 +95,6 @@ function extractContent(raw: unknown): string {
   }
   return '';
 }
-
-/* ============================================================
- *  SINGLE PROVIDER CALL
- * ============================================================ */
 
 async function callProvider(
   provider: Provider,
@@ -208,32 +187,49 @@ async function callProvider(
  *  ERROR CLASSIFICATION
  * ============================================================ */
 
+/**
+ * Detects HTTP status codes with word boundaries.
+ * Prevents false positives like "0.400 seconds" or "error 4005".
+ */
+function hasStatusCode(msg: string, code: number): boolean {
+  const re = new RegExp(`(?:http\\s?|status\\s?|error\\s?|code\\s?)?\\b${code}\\b`, 'i');
+  return re.test(msg);
+}
+
 function isRetryableError(error: unknown): boolean {
   if (!(error instanceof Error)) return true;
   const msg = error.message.toLowerCase();
 
+  // Explicit status codes
+  if (
+    hasStatusCode(msg, 400) ||
+    hasStatusCode(msg, 401) ||
+    hasStatusCode(msg, 402) ||
+    hasStatusCode(msg, 403) ||
+    hasStatusCode(msg, 408) ||
+    hasStatusCode(msg, 429) ||
+    hasStatusCode(msg, 500) ||
+    hasStatusCode(msg, 502) ||
+    hasStatusCode(msg, 503) ||
+    hasStatusCode(msg, 504) ||
+    hasStatusCode(msg, 520)
+  ) {
+    return true;
+  }
+
+  // Keyword-based
   return (
-    msg.includes('402') ||
     msg.includes('payment') ||
     msg.includes('credit') ||
     msg.includes('billing') ||
     msg.includes('insufficient') ||
-    msg.includes('401') ||
     msg.includes('unauthorized') ||
     msg.includes('invalid api key') ||
-    msg.includes('403') ||
     msg.includes('forbidden') ||
-    msg.includes('429') ||
     msg.includes('rate limit') ||
     msg.includes('too many') ||
     msg.includes('quota') ||
     msg.includes('exceeded') ||
-    msg.includes('500') ||
-    msg.includes('502') ||
-    msg.includes('503') ||
-    msg.includes('504') ||
-    msg.includes('520') ||
-    msg.includes('400') ||
     msg.includes('tool choice') ||
     msg.includes('called a tool') ||
     msg.includes('timed out') ||
@@ -254,20 +250,16 @@ function isProviderDeadError(error: unknown): boolean {
   const msg = error.message.toLowerCase();
 
   return (
-    msg.includes('402') ||
+    hasStatusCode(msg, 402) ||
+    hasStatusCode(msg, 401) ||
+    hasStatusCode(msg, 403) ||
     msg.includes('payment required') ||
     msg.includes('insufficient') ||
-    msg.includes('401') ||
     msg.includes('unauthorized') ||
     msg.includes('invalid api key') ||
-    msg.includes('403') ||
     msg.includes('forbidden')
   );
 }
-
-/* ============================================================
- *  MAIN ENTRY
- * ============================================================ */
 
 export async function askGrok(
   messages: GrokMessage[],
@@ -300,8 +292,7 @@ export async function askGrok(
 
       return result;
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : String(error);
+      const message = error instanceof Error ? error.message : String(error);
       errors.push(message);
 
       console.error(
@@ -320,9 +311,7 @@ export async function askGrok(
       }
 
       if (isLast) {
-        throw new Error(
-          `All AI providers failed:\n${errors.join('\n')}`,
-        );
+        throw new Error(`All AI providers failed:\n${errors.join('\n')}`);
       }
 
       console.log(
