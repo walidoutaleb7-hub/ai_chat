@@ -5,21 +5,24 @@ publish_to: "none"
 version: 1.0.0+1
 
 environment:
-  sdk: ">=3.5.0 <4.0.0"
+  sdk: ">=3.6.0 <4.0.0"
 
 dependencies:
   flutter:
     sdk: flutter
 
+  flutter_localizations:
+    sdk: flutter
+
   # ─── UI ─────────────────────────────────────────────
-  flutter_svg: ^2.2.0
+  flutter_svg: ^2.0.10
 
   # ─── Networking ─────────────────────────────────────
-  http: ^1.5.0
+  http: ^1.2.0
 
   # ─── Markdown & Code ────────────────────────────────
-  flutter_markdown_plus: ^1.0.4
-  markdown: ^7.2.2
+  flutter_markdown_plus: ^1.0.3
+  markdown: ^7.2.0
   flutter_highlight: ^0.7.0
 
   # ─── Local persistence ──────────────────────────────
@@ -59,10 +62,8 @@ dev_dependencies:
 
   flutter_lints: ^3.0.0
 
-  # ─── Auto-generate app icons ────────────────────────
   flutter_launcher_icons: ^0.14.1
 
-# ─── App Launcher Icons Configuration ─────────────────
 flutter_launcher_icons:
   android: "launcher_icon"
   ios: false
