@@ -51,24 +51,6 @@ const TRUSTED_GENERAL = [
 /**
  * 12 official + historical football sources.
  * Coverage: 1932 → today.
- *
- * History / stats:
- *   rsssf.org            → archive from 1886
- *   fbref.com            → 100+ leagues, detailed stats
- *   11v11.com            → English football since 1920s
- *   footballdatabase.eu  → results from 1930s
- *   worldfootball.net    → from 1930s, friendlies
- *   zerozero.pt          → worldwide coverage
- *
- * Transfers / modern:
- *   transfermarkt.com    → biggest DB, values
- *
- * News / analysis:
- *   kicker.de            → German official
- *   marca.com            → Spanish reliable
- *   bbc.com              → global news
- *   espn.com             → news + analysis
- *   theathletic.com      → deep journalism
  */
 const TRUSTED_FOOTBALL = [
   'rsssf.org',
@@ -129,11 +111,18 @@ async function runSearch(
   const apiKey = process.env.TAVILY_API_KEY?.trim();
   if (!apiKey) throw new Error('TAVILY_API_KEY is not configured.');
 
+  // Use raw_content only when we actually need deep context.
+  // Football + timeSensitive queries benefit from it; general queries
+  // are fine with the compact snippet.
+  const needsRawContent = Boolean(
+    options.football || options.timeSensitive,
+  );
+
   const body: Record<string, unknown> = {
     query,
     max_results: Math.min(limit, 10),
     include_answer: false,
-    include_raw_content: true,
+    include_raw_content: needsRawContent,
     search_depth: 'advanced',
   };
 
