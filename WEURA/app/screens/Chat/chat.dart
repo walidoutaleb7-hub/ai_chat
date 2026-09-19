@@ -19,7 +19,6 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../components/Composer/comppser.dart';
 import '../../components/Player/player_card.dart';
-import '../../components/UI/weura_background.dart';
 import '../../components/Voice/voice_input_sheet.dart';
 import '../../core/AI/ai_router.dart';
 import '../../core/History/chat_history.dart';
@@ -98,6 +97,7 @@ class _ChatScreenState extends State<ChatScreen>
   bool _requestCancelled = false;
   ChatSession? _session;
   WeuraFile? _attachedFile;
+  XFile? _attachedImage;
 
   static const String _serverUrl =
       'https://ai-chat-tlol.onrender.com';
@@ -416,6 +416,11 @@ class _ChatScreenState extends State<ChatScreen>
   Future<void> _pickFile() async {
     if (_isLoading) {
       _showMessage('Wait for the current request to finish.');
+      return;
+    }
+
+    if (_attachedImage != null) {
+      _showMessage('Remove the attached image first.');
       return;
     }
 
@@ -906,6 +911,10 @@ class _ChatScreenState extends State<ChatScreen>
     }
   }
 
+  // ===========================================================================
+  // IMAGE PICKING — attach instead of immediate analyze
+  // ===========================================================================
+
   Future<void> _pickImage(ImageSource source) async {
     if (_isLoading) {
       _showMessage('Wait for the current request to finish.');
@@ -913,6 +922,10 @@ class _ChatScreenState extends State<ChatScreen>
     }
     if (_attachedFile != null) {
       _showMessage('Remove the attached file first.');
+      return;
+    }
+    if (_attachedImage != null) {
+      _showMessage('Already have an image attached.');
       return;
     }
 
@@ -926,7 +939,10 @@ class _ChatScreenState extends State<ChatScreen>
 
       if (picked == null) return;
 
-      await _analyzeImage(picked);
+      // Attach instead of immediately analyzing.
+      setState(() {
+        _attachedImage = picked;
+      });
     } catch (error) {
       debugPrint('[WEURA] Pick image error: $error');
       if (!mounted) return;
@@ -938,13 +954,27 @@ class _ChatScreenState extends State<ChatScreen>
     }
   }
 
+  bool _isEditRequest(String text) {
+    final t = text.toLowerCase();
+    const editWords = [
+      'غير', 'بدل', 'حول', 'خلي', 'عدل', 'زيد', 'حيد', 'رجع',
+      'خليه', 'خليها', 'رجعو', 'رجعها',
+      'make', 'change', 'turn', 'edit', 'modify', 'add', 'remove',
+      'convert', 'transform', 'replace', 'swap',
+    ];
+    return editWords.any(t.contains);
+  }
+
   Future<void> _analyzeImage(
     XFile image, {
     bool addUserMessage = true,
+    String? customQuestion,
   }) async {
     if (_isLoading) return;
 
-    const defaultQuestion = 'اشرح هذه الصورة بالتفصيل.';
+    final defaultQuestion = (customQuestion?.trim().isNotEmpty ?? false)
+        ? customQuestion!.trim()
+        : 'اشرح هذه الصورة بالتفصيل.';
 
     await _ensureSession('🖼️ Image analysis');
 
@@ -1062,6 +1092,141 @@ class _ChatScreenState extends State<ChatScreen>
     }
   }
 
+  // ===========================================================================
+  // IMAGE EDITING — describe + regenerate with modification
+  // ===========================================================================
+
+  Future<void> _editImage(XFile image, String instruction) async {
+    if (_isLoading) return;
+
+    final title = instruction.length > 30
+        ? '${instruction.substring(0, 30)}...'
+        : instruction;
+
+    await _ensureSession('🎨 $title');
+
+    setState(() {
+      _messages.add(
+        _ChatMessage(
+          text: instruction,
+          isUser: true,
+          visionImagePath: image.path,
+        ),
+      );
+      _messages.add(
+        _ChatMessage(
+          text: '',
+          isUser: false,
+          imagePrompt: instruction,
+          isImageLoading: true,
+        ),
+      );
+      _isLoading = true;
+      _requestCancelled = false;
+    });
+
+    await _persistMessages();
+    _scrollToBottom();
+
+    final idx = _messages.length - 1;
+
+    try {
+      final bytes = await image.readAsBytes();
+      final base64Data = base64Encode(bytes);
+      final dataUrl = 'data:image/jpeg;base64,$base64Data';
+
+      final sizeKB = bytes.length / 1024;
+      if (sizeKB > 4000) {
+        throw const GrokException(
+          'الصورة كبيرة بزاف (أكثر من 4 ميغا). جرّب صورة أصغر.',
+        );
+      }
+
+      final uri = Uri.parse('$_serverUrl/api/image/edit');
+
+      final response = await http
+          .post(
+            uri,
+            headers: const {
+              'Content-Type': 'application/json',
+              'Accept': 'image/*, application/json',
+            },
+            body: jsonEncode({
+              'image': dataUrl,
+              'prompt': instruction,
+            }),
+          )
+          .timeout(const Duration(seconds: 120));
+
+      if (!mounted || _requestCancelled) return;
+
+      final contentType = response.headers['content-type'] ?? '';
+
+      if (contentType.contains('application/json')) {
+        Map<String, dynamic> data;
+        try {
+          data = jsonDecode(response.body) as Map<String, dynamic>;
+        } catch (_) {
+          throw Exception('فشل تعديل الصورة.');
+        }
+        throw Exception(
+          data['error']?.toString() ?? 'فشل تعديل الصورة.',
+        );
+      }
+
+      if (response.statusCode != 200) {
+        throw Exception(
+          'فشل تعديل الصورة (HTTP ${response.statusCode}).',
+        );
+      }
+
+      final dir = await getApplicationDocumentsDirectory();
+      final weuraDir = Directory('${dir.path}/weura_images');
+      if (!await weuraDir.exists()) {
+        await weuraDir.create(recursive: true);
+      }
+
+      final fileName =
+          'edit_${DateTime.now().microsecondsSinceEpoch}.jpg';
+      final file = File('${weuraDir.path}/$fileName');
+      await file.writeAsBytes(response.bodyBytes);
+
+      setState(() {
+        _messages[idx] = _ChatMessage(
+          text: '',
+          isUser: false,
+          imagePrompt: instruction,
+          imageLocalPath: file.path,
+          isImageLoading: false,
+        );
+      });
+
+      await _persistMessages();
+      _scrollToBottom();
+    } catch (error) {
+      if (!mounted || _requestCancelled) return;
+
+      setState(() {
+        _messages[idx] = _ChatMessage(
+          text: _cleanError(error),
+          isUser: false,
+          isError: true,
+          imagePrompt: instruction,
+        );
+      });
+
+      _scrollToBottom();
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  // ===========================================================================
+  // SEND MESSAGE
+  // ===========================================================================
+
   Future<void> _sendMessage(
     String text, {
     bool addUserMessage = true,
@@ -1069,6 +1234,22 @@ class _ChatScreenState extends State<ChatScreen>
     if (_isLoading) return;
 
     final message = text.trim();
+
+    // Image attached
+    if (_attachedImage != null) {
+      final img = _attachedImage!;
+      setState(() => _attachedImage = null);
+
+      if (message.isNotEmpty && _isEditRequest(message)) {
+        await _editImage(img, message);
+      } else {
+        await _analyzeImage(
+          img,
+          customQuestion: message.isEmpty ? null : message,
+        );
+      }
+      return;
+    }
 
     if (_attachedFile != null) {
       final file = _attachedFile!;
@@ -1590,7 +1771,7 @@ class _ChatScreenState extends State<ChatScreen>
                   colors: colors,
                   asset: 'assets/icons/home.svg',
                   title: 'Photos',
-                  subtitle: 'Analyze an image from gallery',
+                  subtitle: 'Attach an image (analyze or edit)',
                   onTap: () {
                     Navigator.pop(sheetContext);
                     _pickImage(ImageSource.gallery);
@@ -1600,7 +1781,7 @@ class _ChatScreenState extends State<ChatScreen>
                   colors: colors,
                   asset: 'assets/icons/camera.svg',
                   title: 'Camera',
-                  subtitle: 'Capture and analyze an image',
+                  subtitle: 'Capture and attach an image',
                   onTap: () {
                     Navigator.pop(sheetContext);
                     _pickImage(ImageSource.camera);
@@ -1772,7 +1953,7 @@ class _ChatScreenState extends State<ChatScreen>
 
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: Colors.transparent,
+      backgroundColor: colors.background,
       drawer: _buildDrawer(colors),
       appBar: AppBar(
         backgroundColor: colors.background,
@@ -1808,48 +1989,119 @@ class _ChatScreenState extends State<ChatScreen>
           ),
         ],
       ),
-      body: WeuraBackground(
-        intensity: 1.0,
-        child: Column(
+      body: Column(
+        children: [
+          Expanded(
+            child: _messages.isEmpty
+                ? _emptyState(colors)
+                : ListView.builder(
+                    controller: _scrollController,
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    padding: const EdgeInsets.fromLTRB(18, 22, 18, 24),
+                    itemCount: _messages.length + (_isLoading ? 1 : 0),
+                    itemBuilder: (context, index) {
+                      if (_isLoading && index == _messages.length) {
+                        return _WeuraThinking(colors: colors);
+                      }
+                      final message = _messages[index];
+                      final isLastAssistant = !message.isUser &&
+                          index == _messages.length - 1;
+                      return _messageBubble(
+                        colors,
+                        message,
+                        index,
+                        isLastAssistant,
+                      );
+                    },
+                  ),
+          ),
+          if (_attachedImage != null)
+            _attachedImageChip(colors, _attachedImage!),
+          if (_attachedFile != null)
+            _attachedFileChip(colors, _attachedFile!),
+          WeuraComposer(
+            enabled: true,
+            isLoading: _isLoading,
+            onSend: _sendMessage,
+            onAttach: () => _showAttachmentSheet(colors),
+            onMode: () => _showModePicker(colors),
+            onVoice: () => _handleVoice(colors),
+            onStop: _cancelRequest,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _attachedImageChip(WeuraColors colors, XFile image) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 4, 14, 0),
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: colors.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: colors.accentGlow.withValues(alpha: 0.30),
+          ),
+        ),
+        child: Row(
           children: [
-            Expanded(
-              child: _messages.isEmpty
-                  ? _emptyState(colors)
-                  : ListView.builder(
-                      controller: _scrollController,
-                      keyboardDismissBehavior:
-                          ScrollViewKeyboardDismissBehavior.onDrag,
-                      padding:
-                          const EdgeInsets.fromLTRB(18, 22, 18, 24),
-                      itemCount:
-                          _messages.length + (_isLoading ? 1 : 0),
-                      itemBuilder: (context, index) {
-                        if (_isLoading &&
-                            index == _messages.length) {
-                          return _WeuraThinking(colors: colors);
-                        }
-                        final message = _messages[index];
-                        final isLastAssistant = !message.isUser &&
-                            index == _messages.length - 1;
-                        return _messageBubble(
-                          colors,
-                          message,
-                          index,
-                          isLastAssistant,
-                        );
-                      },
-                    ),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Image.file(
+                File(image.path),
+                width: 56,
+                height: 56,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Container(
+                  width: 56,
+                  height: 56,
+                  color: colors.surfaceAlt,
+                  child: Icon(
+                    Icons.broken_image_outlined,
+                    color: colors.textMuted,
+                    size: 22,
+                  ),
+                ),
+              ),
             ),
-            if (_attachedFile != null)
-              _attachedFileChip(colors, _attachedFile!),
-            WeuraComposer(
-              enabled: true,
-              isLoading: _isLoading,
-              onSend: _sendMessage,
-              onAttach: () => _showAttachmentSheet(colors),
-              onMode: () => _showModePicker(colors),
-              onVoice: () => _handleVoice(colors),
-              onStop: _cancelRequest,
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'صورة ملصقة',
+                    style: TextStyle(
+                      color: colors.textPrimary,
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    'اكتب سؤالك أو طلب التعديل',
+                    style: TextStyle(
+                      color: colors.textMuted,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            InkWell(
+              onTap: () => setState(() => _attachedImage = null),
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.all(6),
+                child: Icon(
+                  Icons.close_rounded,
+                  size: 18,
+                  color: colors.textMuted,
+                ),
+              ),
             ),
           ],
         ),
@@ -2806,7 +3058,7 @@ class _ChatScreenState extends State<ChatScreen>
 }
 
 // ---------------------------------------------------------------------------
-// Typing markdown — inline cursor
+// Typing markdown
 // ---------------------------------------------------------------------------
 
 class _TypedMarkdown extends StatefulWidget {
