@@ -27,16 +27,16 @@ jobs:
           cache: true
 
       - name: Get dependencies
-        working-directory: app
+        working-directory: WEURA
         run: flutter pub get
 
       - name: Build APK
-        working-directory: app
+        working-directory: WEURA
         run: flutter build apk --release --split-per-abi
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: weura-apk
-          path: app/build/app/outputs/flutter-apk/*.apk
+          path: WEURA/build/app/outputs/flutter-apk/*.apk
           retention-days: 30
