@@ -137,8 +137,7 @@ class _ChatScreenState extends State<ChatScreen>
     _grok.dispose();
 
     // _voiceOut is a singleton (VoiceOutputService.instance).
-    // We only stop any ongoing playback — never dispose it here,
-    // because other screens still depend on it.
+    // We only stop any ongoing playback — never dispose it here.
     _voiceOut.stop();
 
     super.dispose();
@@ -559,7 +558,6 @@ class _ChatScreenState extends State<ChatScreen>
       setState(() {
         _messages.add(_ChatMessage(text: content, isUser: false));
         _typingIndices.add(_messages.length - 1);
-        // ✅ Success → clear the attached file now.
         _attachedFile = null;
       });
 
@@ -589,13 +587,8 @@ class _ChatScreenState extends State<ChatScreen>
     final lower = text.toLowerCase();
 
     const triggers = [
-      'بطاقة ',
-      'بطاقه ',
-      'معلومات عن ',
-      'بروفايل ',
-      'profile of ',
-      'card of ',
-      'player card ',
+      'بطاقة ', 'بطاقه ', 'معلومات عن ', 'بروفايل ',
+      'profile of ', 'card of ', 'player card ',
     ];
 
     for (final t in triggers) {
@@ -877,10 +870,7 @@ class _ChatScreenState extends State<ChatScreen>
     final original = _messages[index];
     if (original.imagePrompt == null) return;
 
-    // Pass a fresh seed via query param — keeps the prompt clean
-    // and bypasses the server cache so we get a new image.
     final seed = DateTime.now().millisecondsSinceEpoch;
-
     final newUrl = _buildImageUrl(original.imagePrompt!, seed: seed);
 
     setState(() {
@@ -1280,8 +1270,6 @@ class _ChatScreenState extends State<ChatScreen>
 
     if (_attachedFile != null) {
       final file = _attachedFile!;
-      // Keep the file attached until the request succeeds.
-      // _sendFileToServer clears it on success.
       await _sendFileToServer(file, message);
       return;
     }
@@ -3140,9 +3128,7 @@ class _TypedMarkdownState extends State<_TypedMarkdown>
     _startTyping(widget.fullText);
   }
 
-  /// (Re)initializes the typing controller for [text].
   void _startTyping(String text) {
-    // Clean up previous controller if any.
     if (_controllerReady) {
       _controller.removeListener(_onTick);
       _controller.dispose();
@@ -3185,7 +3171,6 @@ class _TypedMarkdownState extends State<_TypedMarkdown>
   @override
   void didUpdateWidget(covariant _TypedMarkdown oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // If the parent passes a different text, restart the animation.
     if (oldWidget.fullText != widget.fullText) {
       _startTyping(widget.fullText);
       if (mounted) setState(() {});
@@ -3573,7 +3558,6 @@ class _ImageZoomViewerState extends State<_ImageZoomViewer>
     if (_isZoomed) {
       _resetZoom();
     } else {
-      // Zoom toward the center instead of the top-left origin.
       final size = MediaQuery.of(context).size;
       final cx = size.width / 2;
       final cy = size.height / 2;
@@ -4532,7 +4516,7 @@ class _WeuraThinkingPainter extends CustomPainter {
 }
 
 // ---------------------------------------------------------------------------
-// Football thinking indicator
+// Football thinking indicator — cinematic animation (English only)
 // ---------------------------------------------------------------------------
 
 class _FootballThinking extends StatefulWidget {
@@ -4550,6 +4534,7 @@ class _FootballThinkingState extends State<_FootballThinking>
   late final AnimationController _pulseController;
   late final AnimationController _grassController;
   late final AnimationController _lightController;
+  late final AnimationController _shimmerController;
 
   @override
   void initState() {
@@ -4574,6 +4559,11 @@ class _FootballThinkingState extends State<_FootballThinking>
       vsync: this,
       duration: const Duration(milliseconds: 900),
     )..repeat(reverse: true);
+
+    _shimmerController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2200),
+    )..repeat();
   }
 
   @override
@@ -4582,6 +4572,7 @@ class _FootballThinkingState extends State<_FootballThinking>
     _pulseController.dispose();
     _grassController.dispose();
     _lightController.dispose();
+    _shimmerController.dispose();
     super.dispose();
   }
 
@@ -4592,188 +4583,238 @@ class _FootballThinkingState extends State<_FootballThinking>
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 24, left: 4, right: 8, top: 6),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+        margin: const EdgeInsets.only(
+          bottom: 28,
+          left: 4,
+          right: 40,
+          top: 8,
+        ),
+        padding: const EdgeInsets.symmetric(
+          horizontal: 22,
+          vertical: 20,
+        ),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              const Color(0xFF0B1A0F),
-              const Color(0xFF0A0F1A),
+              const Color(0xFF08150C),
+              const Color(0xFF0A1018),
               colors.surface,
             ],
             stops: const [0.0, 0.5, 1.0],
           ),
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(24),
           border: Border.all(
-            color: const Color(0xFF34D399).withValues(alpha: 0.35),
+            color: const Color(0xFF34D399).withValues(alpha: 0.40),
             width: 1.2,
           ),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFF10B981).withValues(alpha: 0.22),
-              blurRadius: 28,
-              spreadRadius: 2,
-              offset: const Offset(0, 6),
+              color: const Color(0xFF10B981).withValues(alpha: 0.28),
+              blurRadius: 36,
+              spreadRadius: 3,
+              offset: const Offset(0, 8),
+            ),
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.22),
+              blurRadius: 20,
+              offset: const Offset(0, 4),
             ),
           ],
         ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SizedBox(
-              height: 90,
-              width: 260,
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    child: AnimatedBuilder(
-                      animation: _grassController,
-                      builder: (context, _) {
-                        return CustomPaint(
-                          size: const Size(double.infinity, 18),
-                          painter: _GrassPainter(
-                            progress: _grassController.value,
-                            color1: const Color(0xFF047857),
-                            color2: const Color(0xFF10B981),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  Positioned(
-                    left: 0,
-                    top: 4,
-                    child: AnimatedBuilder(
-                      animation: _lightController,
-                      builder: (context, _) => _lightBeam(
-                        opacity: _lightController.value,
-                        color: const Color(0xFFFBBF24),
-                        alignLeft: true,
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    right: 0,
-                    top: 4,
-                    child: AnimatedBuilder(
-                      animation: _lightController,
-                      builder: (context, _) => _lightBeam(
-                        opacity: 1.0 - _lightController.value,
-                        color: const Color(0xFFFBBF24),
-                        alignLeft: false,
-                      ),
-                    ),
-                  ),
-                  Align(
-                    alignment: Alignment.bottomCenter,
-                    child: Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
+              height: 110,
+              width: 240,
+              child: RepaintBoundary(
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
                       child: AnimatedBuilder(
-                        animation: _ballController,
+                        animation: _grassController,
                         builder: (context, _) {
-                          return Transform.rotate(
-                            angle: _ballController.value * 2 * math.pi,
-                            child: Transform.scale(
-                              scale: 1.0 +
-                                  0.06 *
-                                      math.sin(
-                                        _ballController.value * 2 * math.pi,
-                                      ),
-                              child: SizedBox(
-                                width: 46,
-                                height: 46,
-                                child: CustomPaint(
-                                  painter: _FootballPainter(),
-                                ),
-                              ),
+                          return CustomPaint(
+                            size: const Size(double.infinity, 22),
+                            painter: _GrassPainter(
+                              progress: _grassController.value,
+                              color1: const Color(0xFF047857),
+                              color2: const Color(0xFF10B981),
                             ),
                           );
                         },
                       ),
                     ),
-                  ),
-                  Align(
-                    alignment: Alignment.bottomCenter,
-                    child: Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
+                    Positioned(
+                      left: 0,
+                      top: 4,
                       child: AnimatedBuilder(
-                        animation: _pulseController,
-                        builder: (context, _) {
-                          return Opacity(
-                            opacity: 1.0 - _pulseController.value,
-                            child: Transform.scale(
-                              scale: 1.0 + _pulseController.value * 0.9,
-                              child: Container(
-                                width: 46,
-                                height: 46,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: const Color(0xFF34D399)
-                                        .withValues(alpha: 0.55),
-                                    width: 1.5,
+                        animation: _lightController,
+                        builder: (context, _) => _lightBeam(
+                          opacity: _lightController.value,
+                          color: const Color(0xFFFBBF24),
+                          alignLeft: true,
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      right: 0,
+                      top: 4,
+                      child: AnimatedBuilder(
+                        animation: _lightController,
+                        builder: (context, _) => _lightBeam(
+                          opacity: 1.0 - _lightController.value,
+                          color: const Color(0xFFFBBF24),
+                          alignLeft: false,
+                        ),
+                      ),
+                    ),
+                    Align(
+                      alignment: Alignment.bottomCenter,
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 14),
+                        child: AnimatedBuilder(
+                          animation: _ballController,
+                          builder: (context, _) {
+                            final t = _ballController.value;
+                            return Transform.translate(
+                              offset: Offset(
+                                0,
+                                -6 * math.sin(t * 2 * math.pi),
+                              ),
+                              child: Transform.rotate(
+                                angle: t * 2 * math.pi,
+                                child: Transform.scale(
+                                  scale: 1.0 +
+                                      0.06 * math.sin(t * 2 * math.pi),
+                                  child: SizedBox(
+                                    width: 52,
+                                    height: 52,
+                                    child: CustomPaint(
+                                      painter: _FootballPainter(),
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                          );
-                        },
+                            );
+                          },
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                    Align(
+                      alignment: Alignment.bottomCenter,
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 14),
+                        child: AnimatedBuilder(
+                          animation: _pulseController,
+                          builder: (context, _) {
+                            return Opacity(
+                              opacity: 1.0 - _pulseController.value,
+                              child: Transform.scale(
+                                scale: 1.0 + _pulseController.value * 1.1,
+                                child: Container(
+                                  width: 52,
+                                  height: 52,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: const Color(0xFF34D399)
+                                          .withValues(alpha: 0.65),
+                                      width: 1.6,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-            const SizedBox(height: 12),
+
+            const SizedBox(height: 14),
+
+            AnimatedBuilder(
+              animation: _shimmerController,
+              builder: (context, _) {
+                return ShaderMask(
+                  blendMode: BlendMode.srcIn,
+                  shaderCallback: (bounds) {
+                    final t = _shimmerController.value;
+                    return LinearGradient(
+                      begin: Alignment(-1.0 - t * 2, 0),
+                      end: Alignment(1.0 - t * 2, 0),
+                      colors: [
+                        const Color(0xFF34D399).withValues(alpha: 0.45),
+                        Colors.white,
+                        const Color(0xFF34D399),
+                        Colors.white,
+                        const Color(0xFF34D399).withValues(alpha: 0.45),
+                      ],
+                      stops: const [0.0, 0.3, 0.5, 0.7, 1.0],
+                    ).createShader(bounds);
+                  },
+                  child: const Text(
+                    'Football thinking...',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 15.5,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                );
+              },
+            ),
+
+            const SizedBox(height: 6),
+
             Row(
               mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: const Color(0xFF34D399),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF34D399)
-                            .withValues(alpha: 0.7),
-                        blurRadius: 10,
-                        spreadRadius: 1,
+              children: List.generate(3, (i) {
+                return AnimatedBuilder(
+                  animation: _pulseController,
+                  builder: (context, _) {
+                    final offset = i * 0.18;
+                    final v = (_pulseController.value + offset) % 1.0;
+                    final opacity = 0.25 + (math.sin(v * math.pi) * 0.75);
+                    final scale = 0.85 + (math.sin(v * math.pi) * 0.35);
+                    return Padding(
+                      padding: EdgeInsets.only(right: i < 2 ? 6 : 0),
+                      child: Transform.scale(
+                        scale: scale,
+                        child: Container(
+                          width: 6,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: const Color(0xFF34D399)
+                                .withValues(alpha: opacity),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF34D399)
+                                    .withValues(alpha: opacity * 0.7),
+                                blurRadius: 8,
+                                spreadRadius: 1,
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  'راه يفحص الملاعب...',
-                  style: TextStyle(
-                    color: colors.textPrimary,
-                    fontSize: 14.5,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.2,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 5),
-            Padding(
-              padding: const EdgeInsets.only(left: 18),
-              child: Text(
-                'نبحث في 12 مصدر كروي رسمي',
-                style: TextStyle(
-                  color: colors.textMuted,
-                  fontSize: 12,
-                  height: 1.4,
-                ),
-              ),
+                    );
+                  },
+                );
+              }),
             ),
           ],
         ),
@@ -4792,7 +4833,7 @@ class _FootballThinkingState extends State<_FootballThinking>
         angle: alignLeft ? 0.6 : -0.6,
         child: Container(
           width: 26,
-          height: 34,
+          height: 40,
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: alignLeft
@@ -4802,7 +4843,7 @@ class _FootballThinkingState extends State<_FootballThinking>
                   ? Alignment.bottomLeft
                   : Alignment.bottomRight,
               colors: [
-                color.withValues(alpha: 0.85),
+                color.withValues(alpha: 0.90),
                 color.withValues(alpha: 0.0),
               ],
             ),
