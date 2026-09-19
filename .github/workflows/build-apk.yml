@@ -22,44 +22,169 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.24.0"
+          flutter-version: "3.27.4"
           channel: stable
           cache: true
 
-      - name: Bump Kotlin + compileSdk + minSdk
+      - name: Force correct pubspec.yaml (assets + deps)
+        working-directory: WEURA
+        run: |
+          cat > pubspec.yaml <<'EOF'
+name: weura
+description: WEURA AI — Think Beyond.
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.6.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  flutter_svg: ^2.2.0
+  http: ^1.2.0
+  flutter_markdown_plus: ^1.0.3
+  markdown: ^7.2.0
+  flutter_highlight: ^0.7.0
+  shared_preferences: ^2.3.2
+  url_launcher: ^6.3.0
+  speech_to_text: ^7.0.0
+  flutter_tts: ^4.2.0
+  share_plus: ^10.1.2
+  gal: ^2.3.0
+  image_picker: ^1.1.2
+  file_picker: ^8.1.7
+  path_provider: ^2.1.5
+  syncfusion_flutter_pdf: ^27.1.48
+  archive: ^3.6.1
+  xml: ^6.5.0
+  excel: ^4.0.6
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  flutter_launcher_icons: ^0.14.1
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: false
+  image_path: "assets/icons/app_icon.png"
+  min_sdk_android: 24
+  adaptive_icon_background: "#07070C"
+  adaptive_icon_foreground: "assets/icons/app_icon.png"
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/icons/
+    - assets/logo/
+EOF
+
+          echo "=== pubspec.yaml written ==="
+          sed -n '/^flutter:/,$p' pubspec.yaml
+          echo ""
+          echo "=== assets/icons/ ==="
+          ls assets/icons/ | head -30
+          echo ""
+          echo "=== assets/logo/ ==="
+          ls assets/logo/ 2>/dev/null || echo "MISSING — creating"
+          mkdir -p assets/logo
+          cp assets/icons/weura.svg assets/logo/weura.svg 2>/dev/null || true
+          cp assets/icons/app_icon.png assets/logo/app_icon.png 2>/dev/null || true
+          ls assets/logo/
+
+      - name: Regenerate Android project
+        working-directory: WEURA
+        run: |
+          rm -rf android
+          flutter create . --platforms=android --project-name=weura --org com.weura --no-pub
+
+      - name: Restore pubspec.yaml after flutter create
+        working-directory: WEURA
+        run: |
+          cat > pubspec.yaml <<'EOF'
+name: weura
+description: WEURA AI — Think Beyond.
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.6.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  flutter_svg: ^2.2.0
+  http: ^1.2.0
+  flutter_markdown_plus: ^1.0.3
+  markdown: ^7.2.0
+  flutter_highlight: ^0.7.0
+  shared_preferences: ^2.3.2
+  url_launcher: ^6.3.0
+  speech_to_text: ^7.0.0
+  flutter_tts: ^4.2.0
+  share_plus: ^10.1.2
+  gal: ^2.3.0
+  image_picker: ^1.1.2
+  file_picker: ^8.1.7
+  path_provider: ^2.1.5
+  syncfusion_flutter_pdf: ^27.1.48
+  archive: ^3.6.1
+  xml: ^6.5.0
+  excel: ^4.0.6
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  flutter_launcher_icons: ^0.14.1
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: false
+  image_path: "assets/icons/app_icon.png"
+  min_sdk_android: 24
+  adaptive_icon_background: "#07070C"
+  adaptive_icon_foreground: "assets/icons/app_icon.png"
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/icons/
+    - assets/logo/
+EOF
+
+      - name: Fix Android config
         working-directory: WEURA/android
         run: |
           sed -i 's/id "org.jetbrains.kotlin.android" version "[^"]*"/id "org.jetbrains.kotlin.android" version "2.1.0"/' settings.gradle 2>/dev/null || true
           sed -i 's/^\( *\)compileSdk = .*/\1compileSdk = 36/' app/build.gradle 2>/dev/null || true
-          sed -i 's/^\( *\)compileSdkVersion .*/\1compileSdkVersion 36/' app/build.gradle 2>/dev/null || true
           sed -i 's/^\( *\)minSdk = .*/\1minSdk = 24/' app/build.gradle 2>/dev/null || true
-          sed -i 's/^\( *\)minSdkVersion .*/\1minSdkVersion 24/' app/build.gradle 2>/dev/null || true
-
           if ! grep -q 'android.permission.INTERNET' app/src/main/AndroidManifest.xml 2>/dev/null; then
             sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <application|' app/src/main/AndroidManifest.xml 2>/dev/null || true
           fi
-
-          echo "=== settings.gradle ==="
-          cat settings.gradle | grep -i kotlin || true
-          echo ""
-          echo "=== app/build.gradle (sdk) ==="
-          grep -E 'compileSdk|minSdk' app/build.gradle || true
 
       - name: Get dependencies
         working-directory: WEURA
         run: flutter pub get
 
-      - name: Verify assets
+      - name: Generate launcher icons
         working-directory: WEURA
+        run: dart run flutter_launcher_icons || true
+
+      - name: Re-apply Android config
+        working-directory: WEURA/android
         run: |
-          echo "=== pubspec.yaml (flutter section) ==="
-          sed -n '/^flutter:/,$p' pubspec.yaml
-          echo ""
-          echo "=== assets/icons/ ==="
-          ls assets/icons/ | head -20
-          echo ""
-          echo "=== assets/logo/ ==="
-          ls assets/logo/ 2>/dev/null || echo "MISSING"
+          sed -i 's/^\( *\)compileSdk = .*/\1compileSdk = 36/' app/build.gradle 2>/dev/null || true
+          sed -i 's/^\( *\)minSdk = .*/\1minSdk = 24/' app/build.gradle 2>/dev/null || true
+          if ! grep -q 'android.permission.INTERNET' app/src/main/AndroidManifest.xml 2>/dev/null; then
+            sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <application|' app/src/main/AndroidManifest.xml 2>/dev/null || true
+          fi
 
       - name: Build Universal APK
         working-directory: WEURA
