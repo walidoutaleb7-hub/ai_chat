@@ -21,6 +21,7 @@ type CacheEntry = {
   provider: string;
   searchUsed: boolean;
   resultCount: number;
+  football: boolean;
   reflection: {
     need_search: boolean;
     reason: string;
@@ -32,8 +33,8 @@ type CacheEntry = {
 
 const RESPONSE_CACHE = new Map<string, CacheEntry>();
 
-const CACHE_TTL_NEWS_MS = 15 * 60 * 1000; // 15 min
-const CACHE_TTL_FACT_MS = 6 * 60 * 60 * 1000; // 6 hours
+const CACHE_TTL_NEWS_MS = 15 * 60 * 1000;
+const CACHE_TTL_FACT_MS = 6 * 60 * 60 * 1000;
 const CACHE_MAX = 500;
 
 function pruneResponseCache(): void {
@@ -61,7 +62,6 @@ function buildCacheKey(userMessage: string): string {
 function pickTTL(userMessage: string, searchUsed: boolean): number {
   const lower = userMessage.toLowerCase();
 
-  // Time-specific questions → NEVER cache (they change constantly).
   if (/\b(time|الساعة|الوقت|دقيقة|ساعة|كم الساعة|شحال الساعة)\b/i.test(lower)) {
     return 0;
   }
@@ -94,6 +94,49 @@ function todayISO(): string {
 }
 
 /* ============================================================
+ *  FOOTBALL DETECTION
+ * ============================================================ */
+
+const FOOTBALL_KEYWORDS = [
+  // Arabic
+  'كرة القدم', 'كرة قدم', 'مباراة', 'ماتش', 'لاعب', 'فريق',
+  'هدف', 'أهداف', 'دوري', 'كأس', 'ملعب', 'بطولة', 'انتقال',
+  'مدرب', 'تشكيلة', 'نتيجة', 'ترتيب', 'تصفيات', 'منتخب',
+  'الدوري', 'الكأس', 'الهداف', 'صانع ألعاب', 'حراس',
+  'وسط الميدان', 'دفاع', 'هجوم', 'تحكيم', 'حكم', 'ركلة',
+  'ريال مدريد', 'برشلونة', 'ليفربول', 'مانشستر', 'تشيلسي',
+  'أرسنال', 'بايرن', 'يوفنتوس', 'ميلان', 'إنتر', 'سان جيرمان',
+  'ميسي', 'رونالدو', 'مبابي', 'هالاند', 'بنزيمة', 'صلاح',
+  'نيمار', 'حكيمي', 'محرز', 'زياش', 'بونو', 'أوناحي',
+  'فينيسيوس', 'بيلينغهام', 'رودري', 'رافينيا', 'موسيالا',
+  'الدوري الإسباني', 'الدوري الإنجليزي', 'الدوري الإيطالي',
+  'الدوري الألماني', 'الدوري الفرنسي', 'دوري أبطال أوروبا',
+  'كأس العالم', 'يورو', 'كوبا أمريكا', 'أفريقيا',
+  // English
+  'football', 'soccer', 'match', 'player', 'team', 'goal',
+  'league', 'cup', 'stadium', 'championship', 'transfer',
+  'coach', 'manager', 'lineup', 'result', 'standings',
+  'qualifier', 'national team', 'striker', 'goalkeeper',
+  'defender', 'midfielder', 'referee', 'penalty', 'offside',
+  'premier league', 'la liga', 'serie a', 'bundesliga', 'ligue 1',
+  'champions league', 'world cup', 'euro', 'copa america',
+  'real madrid', 'barcelona', 'liverpool', 'manchester',
+  'chelsea', 'arsenal', 'bayern', 'juventus', 'milan', 'inter',
+  'psg', 'messi', 'ronaldo', 'mbappe', 'haaland', 'benzema',
+  'salah', 'neymar', 'hakimi', 'mahrez', 'ziyech', 'bono',
+];
+
+function isFootballQuestion(message: string): boolean {
+  const text = message.toLowerCase().trim();
+  if (text.length < 3) return false;
+
+  for (const kw of FOOTBALL_KEYWORDS) {
+    if (text.includes(kw.toLowerCase())) return true;
+  }
+  return false;
+}
+
+/* ============================================================
  *  REFLECTION LAYER
  * ============================================================ */
 
@@ -108,12 +151,13 @@ SEARCH NEEDED (need_search = true):
 - Current events, news, "what happened", "latest", "today"
 - Sports: current managers, players' current clubs, transfers, standings,
   match results, awards (Ballon d'Or, etc.), stats
+- **ANY football / soccer question** (matches, players, clubs, leagues,
+  cups, transfers, results, standings, historical results)
 - Prices, stocks, market data
 - Weather
 - Anything with a year (2020-2030) + event
 - Questions about specific people's CURRENT roles/positions
 - "Who won / who is the current / when did X happen recently"
-- Anything that could have changed since ~2024
 
 NO SEARCH (need_search = false):
 - Greetings, thanks, casual chat, follow-ups
@@ -121,23 +165,18 @@ NO SEARCH (need_search = false):
 - Identity questions about WEURA
 - Math, science, programming concepts, definitions
 - Writing, coding, translations, creativity
-- Stable historical facts (before 2020)
-- **Comparison questions** (X vs Y, "قارن بين", "الفرق بين",
-  "which is better", "difference between")
-- **Opinion / advice questions** ("شنو رايك", "شنو تنصحني",
-  "what do you think", "should I")
-- **Analysis / explanation questions** ("اشرح", "حلل", "علاش",
-  "how does X work", "explain", "why does")
-- **How-to / tutorial questions** ("كيفاش نكتب", "علمني",
-  "how to", "teach me")
-- **Career / study / skill advice** ("توظيف", "مستقبل",
-  "career", "job market", "learning path")
-- **Language / translation help**
-- **Coding questions** of any kind
+- Stable historical facts (before 2020) — EXCEPT football
+- Comparison questions (X vs Y, "قارن بين", "الفرق بين")
+- Opinion / advice questions ("شنو رايك", "شنو تنصحني")
+- Analysis / explanation questions ("اشرح", "حلل", "علاش")
+- How-to / tutorial questions ("كيفاش نكتب", "علمني")
+- Career / study / skill advice
+- Language / translation help
+- Coding questions
 
-CRITICAL: If the question asks for OPINION, COMPARISON, ANALYSIS,
-ADVICE, EXPLANATION, or HOW-TO → need_search = false.
-Even if it mentions a country, a technology, or a topic.
+CRITICAL: For ANY football-related question → need_search = true,
+even if it looks historical (e.g. "شكون فاز بكأس العالم 1998؟").
+Football sources are the ONLY way to answer accurately.
 
 ═══ OUTPUT ═══
 Return ONLY valid JSON (no markdown, no explanation):
@@ -172,7 +211,6 @@ async function reflectOnQuery(
     };
   }
 
-  // Use up to 800 chars of memory — first 400 + last 400 if too long.
   let memorySnippet = '';
   const trimmedMemory = memory.trim();
   if (trimmedMemory.length > 0) {
@@ -245,8 +283,8 @@ async function reflectOnQuery(
 
     return {
       needSearch,
-      reason,
       searchQuery: searchQuery || userMessage,
+      reason,
       angle,
     };
   } catch (error) {
@@ -274,6 +312,9 @@ function fallbackNeedsSearch(message: string): boolean {
   if (text.length < 3) return false;
   if (/^[\d\s+\-*/().%,]+$/.test(text)) return false;
 
+  // Football always searches.
+  if (isFootballQuestion(text)) return true;
+
   const skip = [
     /^(hi|hey|hello|yo|سلام|مرحبا|صباح الخير|مساء الخير|salut|bonjour)[\s!.,?،؟]*$/i,
     /^(thanks|thank you|شكرا|مشكور)[\s!.,?،؟]*$/i,
@@ -282,7 +323,6 @@ function fallbackNeedsSearch(message: string): boolean {
   ];
   if (skip.some((p) => p.test(text))) return false;
 
-  // Comparison / opinion / analysis / how-to → NEVER search.
   const neverSearch = [
     /\b(قارن|الفرق بين|شنو رايك|شو رايك|رايك|تنصحني|علاش|كيفاش|كيف)\b/i,
     /\b(compare|comparison|vs\.?|versus|difference between|which is better)\b/i,
@@ -310,7 +350,7 @@ function cleanSnippet(raw: string, maxLen = 400): string {
 }
 
 /* ============================================================
- *  CLASSIFICATION (lightweight, for cache decision)
+ *  CLASSIFICATION
  * ============================================================ */
 
 function isIdentityQuestion(message: string): boolean {
@@ -376,22 +416,30 @@ function buildSoulBlock(): string {
     `READING PEOPLE:\n` +
     `- Short msg → answer short. Long msg → match depth.\n` +
     `- Frustrated → skip fluff, solve.\n` +
-    `- Sad → acknowledge quietly. No fixing. No lecture. "سمعتك." or "راك هنا."\n` +
+    `- Sad → acknowledge quietly. No fixing. No lecture.\n` +
     `- Playful → play back.\n` +
-    `- Just chatting → chat back. No agenda.\n` +
-    `- Dry reply from user → stay dry back.\n\n` +
+    `- Just chatting → chat back. No agenda.\n\n` +
     `CONTEXT & FOLLOW-UPS:\n` +
     `- You have the previous messages. Use them.\n` +
-    `- If user said "X is Y" earlier, and now asks "is X really Y?", answer based on what THEY said.\n` +
     `- Pronouns (هذا/ذلك/هو/it/that) → last topic. NEVER ask "what do you mean?".\n` +
     `- Short follow-ups (زيد / وضّح / go on) → continue. Never ask what they meant.\n\n` +
     `FACTS & AWARDS (CRITICAL):\n` +
     `- For ANY question about AWARDS, MANAGERS, current club/player status, news,\n` +
-    `  prices, or current events → rely ONLY on the search results when they are provided.\n` +
+    `  prices, or current events → rely ONLY on the search results when provided.\n` +
     `- NEVER answer these from training data alone.\n` +
     `- If search results are absent AND the question is about a recent fact → reply:\n` +
     `  "ما عنديش معلومة مؤكدة."\n` +
     `- Do NOT invent dates, names, or winners.\n\n` +
+    `FOOTBALL (CRITICAL):\n` +
+    `- For ANY football question → search results are MANDATORY.\n` +
+    `- Sources: RSSSF (history from 1886), FBref, Transfermarkt, 11v11,\n` +
+    `  worldfootball, zerozero, kicker, marca, BBC Sport, ESPN, The Athletic.\n` +
+    `- NEVER invent scores, transfers, lineups, stats, dates, or players.\n` +
+    `- If the search results don't have the answer → say so honestly.\n` +
+    `- Be precise: exact score, exact date, exact club.\n` +
+    `- If the question is about a RUMOR vs CONFIRMED transfer:\n` +
+    `  - Only CONFIRMED sources ("signed", "completed", "official") count.\n` +
+    `  - "Interested", "linked", "target" → NOT confirmed.\n\n` +
     `COMPARISON, OPINION, ANALYSIS, HOW-TO (IMPORTANT):\n` +
     `- These are NEVER "current facts". Answer from your own knowledge.\n` +
     `- NEVER reply "هذه المعلومة غير موجودة في المصادر المتاحة" for:\n` +
@@ -401,20 +449,14 @@ function buildSoulBlock(): string {
     `    • How-to / tutorials (علمني، كيفاش نكتب)\n` +
     `    • Career / study / job market questions\n` +
     `    • Coding / technical questions\n` +
-    `- You DO know these things. Give a real, structured answer.\n` +
-    `- If part of the question needs current data (e.g. "job market in Algeria 2025"),\n` +
-    `  use search results IF provided. Otherwise use your best general knowledge\n` +
-    `  and say "حسب معرفتي..." if uncertain.\n\n` +
+    `- You DO know these things. Give a real, structured answer.\n\n` +
     `OPENING (optional):\n` +
     `- MAY add ONE short, natural follow-up if it adds value.\n` +
-    `- ✓ "راك حاب نزيد نفصّل؟" / "واش رايك؟" / "نجيو نطبقوها؟"\n` +
     `- ✗ NEVER: "Let me know if..." / "هل تحتاج أي مساعدة أخرى؟" / "بالتوفيق".\n\n` +
     `DIALECT — MIRROR EXACTLY:\n` +
-    `- "مرحبا" / "كيف حالك" / "شكراً" → MSA → reply in فصحى.\n` +
+    `- "مرحبا" / "كيف حالك" → MSA → reply in فصحى.\n` +
     `- "واش راك" / "كيفاش" / "بصح" / "خويا" → Darija → reply in Darija.\n` +
-    `- English → English. Français → Français. Mixed → mix back.\n` +
-    `- CRITICAL: If user writes "مرحبا" (MSA), reply in فصحى — NOT Darija.\n` +
-    `- If user writes "واش راك" (Darija), reply in Darija — NOT فصحى.\n\n` +
+    `- English → English. Français → Français. Mixed → mix back.\n\n` +
     `NEVER:\n` +
     `- Filler: "Great question!", "Sure!", "Interesting!"\n` +
     `- "As an AI..." / "بصفتي ذكاء اصطناعي..."\n` +
@@ -480,16 +522,37 @@ function buildSearchContext(
   sources: string,
   today: string,
   angle: string,
+  isFootball: boolean,
 ): string {
   const angleLine = angle
     ? `\nREFLECTION ANGLE (internal guidance, do NOT quote): ${angle}\n`
+    : '';
+
+  const footballRules = isFootball
+    ? `\n⚽ FOOTBALL MODE — SPECIAL RULES:\n` +
+      `A. Sources are from 12 official football sites (RSSSF, FBref, 11v11,\n` +
+      `   Transfermarkt, worldfootball, zerozero, kicker, marca, BBC Sport,\n` +
+      `   ESPN, The Athletic, footballdatabase).\n` +
+      `B. RSSSF, 11v11, worldfootball, footballdatabase → HISTORICAL (1932+).\n` +
+      `   Use them for old matches, old tournaments, old stats.\n` +
+      `C. Transfermarkt, kicker, marca, BBC, ESPN, The Athletic → MODERN.\n` +
+      `   Use them for current clubs, transfers, standings, news.\n` +
+      `D. For any current fact (transfer, club, result, standings):\n` +
+      `   - Only count CONFIRMED sources ("signed", "official", "completed").\n` +
+      `   - Rumors ("linked", "interested", "target") are NOT confirmed.\n` +
+      `E. For scores / results: give EXACT numbers (e.g. "3-1").\n` +
+      `F. For awards: use the NEWEST source.\n` +
+      `G. If sources disagree → use the NEWEST one.\n` +
+      `H. If ALL sources are older than 12 months AND the question is about\n` +
+      `   "current" → say "لم أجد معلومات حديثة."\n`
     : '';
 
   return (
     `Today: ${today}.\n` +
     `SEARCH RESULTS (CURRENT, priority over training data):\n\n${sources}\n` +
     angleLine +
-    `\nRULES:\n` +
+    footballRules +
+    `\nGENERAL RULES:\n` +
     `1. Base facts ONLY on results above. No training data for facts.\n` +
     `2. NEVER invent names, scores, dates, transfers, quotes.\n` +
     `3. If not in results AND question is a CURRENT FACT (news, transfer,\n` +
@@ -497,31 +560,22 @@ function buildSearchContext(
     `   المصادر المتاحة."\n` +
     `   \n` +
     `   DO NOT use this fallback for:\n` +
-    `   - Identity questions (WEURA, creator)\n` +
-    `   - User / memory questions\n` +
-    `   - Conversation / follow-up questions\n` +
+    `   - Identity / user / conversation questions\n` +
     `   - COMPARISON questions ("قارن بين", "الفرق بين", X vs Y)\n` +
-    `   - OPINION / ADVICE questions ("شنو رايك", "تنصحني", should I)\n` +
+    `   - OPINION / ADVICE ("شنو رايك", "تنصحني", should I)\n` +
     `   - ANALYSIS / EXPLANATION ("اشرح", "حلل", "علاش", "كيفاش")\n` +
-    `   - HOW-TO / TUTORIAL / LEARNING questions\n` +
-    `   - CAREER / STUDY / JOB MARKET questions\n` +
-    `   - CODING / TECHNICAL questions\n` +
-    `   \n` +
-    `   For ALL of the above → answer from your own knowledge. You DO know them.\n` +
-    `   If a current fact would strengthen the answer and it's NOT in the\n` +
-    `   results, answer anyway and add "حسب معرفتي..." if you're unsure.\n` +
+    `   - HOW-TO / TUTORIAL / LEARNING\n` +
+    `   - CAREER / STUDY / JOB MARKET\n` +
+    `   - CODING / TECHNICAL\n` +
     `4. Cite ONLY numbers that exist ([1], [2]...). Never [4] if only 3 exist.\n` +
     `5. "المصادر:" section at end ONLY if you cited.\n` +
     `6. If user asks "آخر"/"latest" and best match > 3 months → "لم أجد معلومات حديثة."\n` +
     `7. Match user's language. Start with answer. Use Markdown.\n` +
     `8. For AWARDS (Ballon d'Or, FIFA Best, etc.) → answer EXACTLY what the newest source says.\n` +
-    `9. If sources disagree, use the NEWEST one.\n` +
-    `10. DATE FILTER (CRITICAL): Look at each source's "Published" date.\n` +
-    `    - If a source has NO date OR an OLD date (> 1 year old), and another source has a RECENT date, USE THE RECENT ONE.\n` +
-    `    - For "current X" questions, ANY source older than 12 months is AUTOMATICALLY WRONG.\n` +
-    `    - Example: "Real Madrid current coach" → use only sources from the last 12 months.\n` +
-    `11. If ALL sources are older than 1 year → reply: "لم أجد معلومات حديثة في المصادر المتاحة."\n` +
-    `12. NEVER mix information from different time periods.\n`
+    `9. If sources disagree → use the NEWEST one.\n` +
+    `10. DATE FILTER: Look at each source's "Published" date.\n` +
+    `    - For "current X" questions → sources older than 12 months are WRONG.\n` +
+    `11. NEVER mix information from different time periods.\n`
   );
 }
 
@@ -542,11 +596,15 @@ async function buildMessages(
   searchUsed: boolean;
   memoryUsed: boolean;
   resultCount: number;
+  football: boolean;
   reflection: ReflectionResult;
 }> {
   const lastUserMessage = getLastUserMessage(safeMessages);
   const tavilyConfigured = Boolean(process.env.TAVILY_API_KEY?.trim());
   const memoryUsed = memory.length > 0;
+
+  // Football detection (client-side hint + reflection)
+  const isFootball = isFootballQuestion(lastUserMessage);
 
   // Step 1: Reflection
   const reflection = await reflectOnQuery(
@@ -554,6 +612,9 @@ async function buildMessages(
     memory,
     requestId,
   );
+
+  // Force search for football questions.
+  const needSearch = isFootball || reflection.needSearch;
 
   const out: GrokMessage[] = [
     { role: 'system', content: buildIdentityBlock() },
@@ -572,14 +633,14 @@ async function buildMessages(
   let resultCount = 0;
 
   // Step 2: Search if needed
-  if (reflection.needSearch && tavilyConfigured && lastUserMessage) {
+  if (needSearch && tavilyConfigured && lastUserMessage) {
     try {
       const results = await searchTavily(
         reflection.searchQuery,
         8,
         {
-          timeSensitive: true,
-          football: true,
+          timeSensitive: isFootball ? false : true,
+          football: isFootball,
           tech: false,
         },
       );
@@ -589,7 +650,6 @@ async function buildMessages(
         resultCount = results.length;
         const today = todayISO();
 
-        // Sort newest first
         results.sort((a, b) => {
           const da = a.publishedDate ?? '';
           const db = b.publishedDate ?? '';
@@ -608,7 +668,12 @@ async function buildMessages(
 
         out.push({
           role: 'system',
-          content: buildSearchContext(sources, today, reflection.angle),
+          content: buildSearchContext(
+            sources,
+            today,
+            reflection.angle,
+            isFootball,
+          ),
         });
       }
     } catch (error) {
@@ -630,6 +695,7 @@ async function buildMessages(
     searchUsed,
     memoryUsed,
     resultCount,
+    football: isFootball,
     reflection,
   };
 }
@@ -670,8 +736,9 @@ router.post('/chat', async (req, res) => {
     const memory = sanitizeMemory(body.memory);
     const mode = sanitizeMode(body.mode);
 
-    // ═══ Cache lookup ═══
     const lastUserMessage = getLastUserMessage(safeMessages);
+    const isFootball = isFootballQuestion(lastUserMessage);
+
     const isIdentity = isIdentityQuestion(lastUserMessage);
     const isPersonal = isPersonalQuestion(lastUserMessage);
     const isCasual = isCasualMessage(lastUserMessage);
@@ -700,6 +767,7 @@ router.post('/chat', async (req, res) => {
           searchUsed: cached.searchUsed,
           memoryUsed: memory.length > 0,
           resultCount: cached.resultCount,
+          football: cached.football || isFootball,
           mode: mode ?? 'auto',
           reflection: cached.reflection,
           cached: true,
@@ -707,7 +775,6 @@ router.post('/chat', async (req, res) => {
       }
     }
 
-    // ═══ Build & call AI ═══
     const built = await buildMessages(
       safeMessages,
       memory,
@@ -728,10 +795,8 @@ router.post('/chat', async (req, res) => {
       maxTokens,
     });
 
-    // ═══ Save to cache ═══
     if (useCache) {
       const ttl = pickTTL(lastUserMessage, built.searchUsed);
-      // ttl === 0 means "never cache" (e.g. time questions).
       if (ttl > 0) {
         RESPONSE_CACHE.set(cacheKey, {
           content: result.content,
@@ -739,6 +804,7 @@ router.post('/chat', async (req, res) => {
           provider: result.provider,
           searchUsed: built.searchUsed,
           resultCount: built.resultCount,
+          football: built.football,
           reflection: {
             need_search: built.reflection.needSearch,
             reason: built.reflection.reason,
@@ -764,6 +830,7 @@ router.post('/chat', async (req, res) => {
       searchUsed: built.searchUsed,
       memoryUsed: built.memoryUsed,
       resultCount: built.resultCount,
+      football: built.football,
       mode: mode ?? 'auto',
       reflection: {
         need_search: built.reflection.needSearch,
