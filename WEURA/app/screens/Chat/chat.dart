@@ -135,7 +135,12 @@ class _ChatScreenState extends State<ChatScreen>
     _voiceOut.removeListener(_onVoiceChanged);
     _scrollController.dispose();
     _grok.dispose();
+
+    // _voiceOut is a singleton (VoiceOutputService.instance).
+    // We only stop any ongoing playback — never dispose it here,
+    // because other screens still depend on it.
     _voiceOut.stop();
+
     super.dispose();
   }
 
@@ -554,6 +559,8 @@ class _ChatScreenState extends State<ChatScreen>
       setState(() {
         _messages.add(_ChatMessage(text: content, isUser: false));
         _typingIndices.add(_messages.length - 1);
+        // ✅ Success → clear the attached file now.
+        _attachedFile = null;
       });
 
       await _persistMessages();
@@ -1273,7 +1280,8 @@ class _ChatScreenState extends State<ChatScreen>
 
     if (_attachedFile != null) {
       final file = _attachedFile!;
-      setState(() => _attachedFile = null);
+      // Keep the file attached until the request succeeds.
+      // _sendFileToServer clears it on success.
       await _sendFileToServer(file, message);
       return;
     }
@@ -3112,10 +3120,11 @@ class _TypedMarkdown extends StatefulWidget {
 
 class _TypedMarkdownState extends State<_TypedMarkdown>
     with TickerProviderStateMixin {
-  late final AnimationController _controller;
-  late final AnimationController _cursorController;
+  late AnimationController _controller;
+  late AnimationController _cursorController;
   late String _visibleText;
   bool _done = false;
+  bool _controllerReady = false;
 
   @override
   void initState() {
@@ -3128,12 +3137,24 @@ class _TypedMarkdownState extends State<_TypedMarkdown>
     _cursorController.value = 0.7;
     _cursorController.repeat(reverse: true);
 
-    final len = widget.fullText.length;
+    _startTyping(widget.fullText);
+  }
+
+  /// (Re)initializes the typing controller for [text].
+  void _startTyping(String text) {
+    // Clean up previous controller if any.
+    if (_controllerReady) {
+      _controller.removeListener(_onTick);
+      _controller.dispose();
+    }
+
+    final len = text.length;
 
     if (len > 4000) {
-      _visibleText = widget.fullText;
+      _visibleText = text;
       _done = true;
       _controller = AnimationController(vsync: this);
+      _controllerReady = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         widget.onComplete?.call();
       });
@@ -3147,8 +3168,10 @@ class _TypedMarkdownState extends State<_TypedMarkdown>
       vsync: this,
       duration: Duration(milliseconds: durationMs),
     );
+    _controllerReady = true;
 
     _visibleText = '';
+    _done = false;
 
     _controller.addListener(_onTick);
     _controller.forward().whenComplete(() {
@@ -3157,6 +3180,16 @@ class _TypedMarkdownState extends State<_TypedMarkdown>
       _cursorController.stop();
       widget.onComplete?.call();
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant _TypedMarkdown oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // If the parent passes a different text, restart the animation.
+    if (oldWidget.fullText != widget.fullText) {
+      _startTyping(widget.fullText);
+      if (mounted) setState(() {});
+    }
   }
 
   void _onTick() {
@@ -3540,8 +3573,14 @@ class _ImageZoomViewerState extends State<_ImageZoomViewer>
     if (_isZoomed) {
       _resetZoom();
     } else {
+      // Zoom toward the center instead of the top-left origin.
+      final size = MediaQuery.of(context).size;
+      final cx = size.width / 2;
+      final cy = size.height / 2;
       final target = Matrix4.identity()
-        ..scale(_doubleTapScale, _doubleTapScale, 1.0);
+        ..translate(cx, cy)
+        ..scale(_doubleTapScale, _doubleTapScale, 1.0)
+        ..translate(-cx, -cy);
       _animateTo(target);
     }
   }
