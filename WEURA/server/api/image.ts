@@ -290,6 +290,9 @@ async function describeImage(imageData: string): Promise<string | null> {
 
 router.get('/image', async (req, res) => {
   const rawPrompt = String(req.query.prompt ?? '').trim();
+  const rawSeed = String(req.query.seed ?? '').trim();
+  const seed = rawSeed ? parseInt(rawSeed, 10) : undefined;
+  const hasSeed = seed !== undefined && !Number.isNaN(seed);
 
   if (!rawPrompt) {
     return res.status(400).json({ success: false, error: 'Prompt is required.' });
@@ -324,6 +327,37 @@ router.get('/image', async (req, res) => {
   const cacheKey = prompt;
   const now = Date.now();
 
+  // ─── Seed mode: bypass cache, always generate fresh ────────
+  // A seed indicates a "regenerate" request. We skip the cache
+  // entirely so the user gets a genuinely new image every time.
+  if (hasSeed) {
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      const result = await fetchImage(prompt);
+
+      if (result) {
+        res.setHeader('Content-Type', result.contentType);
+        res.setHeader('Cache-Control', 'no-store');
+        res.setHeader('Content-Length', String(result.buffer.length));
+        res.setHeader('X-WEURA-Cache', 'BYPASS');
+        res.setHeader('X-WEURA-Seed', String(seed));
+        res.setHeader('X-WEURA-Attempt', String(attempt));
+        return res.send(result.buffer);
+      }
+
+      if (attempt < MAX_ATTEMPTS) {
+        await new Promise((r) =>
+          setTimeout(r, 1000 * Math.pow(2, attempt - 1)),
+        );
+      }
+    }
+
+    return res.status(502).json({
+      success: false,
+      error: 'Image service is busy. Please try again.',
+    });
+  }
+
+  // ─── Normal mode: cache lookup, then generate ──────────────
   const cached = cache.get(cacheKey);
   if (cached && cached.expiresAt > now) {
     res.setHeader('Content-Type', cached.contentType);
