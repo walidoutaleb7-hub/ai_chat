@@ -135,11 +135,7 @@ class _ChatScreenState extends State<ChatScreen>
     _voiceOut.removeListener(_onVoiceChanged);
     _scrollController.dispose();
     _grok.dispose();
-
-    // _voiceOut is a singleton (VoiceOutputService.instance).
-    // We only stop any ongoing playback — never dispose it here.
     _voiceOut.stop();
-
     super.dispose();
   }
 
@@ -1980,7 +1976,7 @@ class _ChatScreenState extends State<ChatScreen>
       backgroundColor: colors.background,
       drawer: _buildDrawer(colors),
       appBar: AppBar(
-        backgroundColor: colors.background,
+        backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
           tooltip: 'Menu',
@@ -2013,47 +2009,58 @@ class _ChatScreenState extends State<ChatScreen>
           ),
         ],
       ),
-      body: Column(
+      extendBodyBehindAppBar: true,
+      body: Stack(
         children: [
-          Expanded(
-            child: _messages.isEmpty
-                ? _emptyState(colors)
-                : ListView.builder(
-                    controller: _scrollController,
-                    keyboardDismissBehavior:
-                        ScrollViewKeyboardDismissBehavior.onDrag,
-                    padding: const EdgeInsets.fromLTRB(18, 22, 18, 24),
-                    itemCount: _messages.length + (_isLoading ? 1 : 0),
-                    itemBuilder: (context, index) {
-                      if (_isLoading && index == _messages.length) {
-                        return _isFootballQuestion
-                            ? _FootballThinking(colors: colors)
-                            : _WeuraThinking(colors: colors);
-                      }
-                      final message = _messages[index];
-                      final isLastAssistant = !message.isUser &&
-                          index == _messages.length - 1;
-                      return _messageBubble(
-                        colors,
-                        message,
-                        index,
-                        isLastAssistant,
-                      );
-                    },
-                  ),
+          Positioned.fill(
+            child: _ChatBackground(colors: colors),
           ),
-          if (_attachedImage != null)
-            _attachedImageChip(colors, _attachedImage!),
-          if (_attachedFile != null)
-            _attachedFileChip(colors, _attachedFile!),
-          WeuraComposer(
-            enabled: true,
-            isLoading: _isLoading,
-            onSend: _sendMessage,
-            onAttach: () => _showAttachmentSheet(colors),
-            onMode: () => _showModePicker(colors),
-            onVoice: () => _handleVoice(colors),
-            onStop: _cancelRequest,
+          Column(
+            children: [
+              SizedBox(
+                height: MediaQuery.of(context).padding.top + kToolbarHeight,
+              ),
+              Expanded(
+                child: _messages.isEmpty
+                    ? _emptyState(colors)
+                    : ListView.builder(
+                        controller: _scrollController,
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
+                        padding: const EdgeInsets.fromLTRB(18, 22, 18, 24),
+                        itemCount: _messages.length + (_isLoading ? 1 : 0),
+                        itemBuilder: (context, index) {
+                          if (_isLoading && index == _messages.length) {
+                            return _isFootballQuestion
+                                ? _FootballThinking(colors: colors)
+                                : _WeuraThinking(colors: colors);
+                          }
+                          final message = _messages[index];
+                          final isLastAssistant = !message.isUser &&
+                              index == _messages.length - 1;
+                          return _messageBubble(
+                            colors,
+                            message,
+                            index,
+                            isLastAssistant,
+                          );
+                        },
+                      ),
+              ),
+              if (_attachedImage != null)
+                _attachedImageChip(colors, _attachedImage!),
+              if (_attachedFile != null)
+                _attachedFileChip(colors, _attachedFile!),
+              WeuraComposer(
+                enabled: true,
+                isLoading: _isLoading,
+                onSend: _sendMessage,
+                onAttach: () => _showAttachmentSheet(colors),
+                onMode: () => _showModePicker(colors),
+                onVoice: () => _handleVoice(colors),
+                onStop: _cancelRequest,
+              ),
+            ],
           ),
         ],
       ),
@@ -4197,9 +4204,9 @@ class _WeuraThinkingState extends State<_WeuraThinking>
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              colors.surface,
-              colors.surfaceAlt,
-              colors.surface,
+              colors.surface.withValues(alpha: 0.85),
+              colors.surfaceAlt.withValues(alpha: 0.85),
+              colors.surface.withValues(alpha: 0.85),
             ],
             stops: const [0.0, 0.5, 1.0],
           ),
@@ -4598,9 +4605,9 @@ class _FootballThinkingState extends State<_FootballThinking>
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [
-              const Color(0xFF08150C),
-              const Color(0xFF0A1018),
-              colors.surface,
+              const Color(0xFF08150C).withValues(alpha: 0.92),
+              const Color(0xFF0A1018).withValues(alpha: 0.92),
+              colors.surface.withValues(alpha: 0.92),
             ],
             stops: const [0.0, 0.5, 1.0],
           ),
@@ -4966,4 +4973,355 @@ class _FootballPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+// ---------------------------------------------------------------------------
+// Cinematic chat background — aurora + stars + grid + glow + vignette
+// ---------------------------------------------------------------------------
+
+class _ChatBackground extends StatefulWidget {
+  const _ChatBackground({required this.colors});
+
+  final WeuraColors colors;
+
+  @override
+  State<_ChatBackground> createState() => _ChatBackgroundState();
+}
+
+class _ChatBackgroundState extends State<_ChatBackground>
+    with TickerProviderStateMixin {
+  late final AnimationController _auroraController;
+  late final AnimationController _starsController;
+  late final AnimationController _twinkleController;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _auroraController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 24),
+    )..repeat();
+
+    _starsController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 40),
+    )..repeat();
+
+    _twinkleController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2200),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _auroraController.dispose();
+    _starsController.dispose();
+    _twinkleController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = widget.colors;
+
+    return RepaintBoundary(
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              const Color(0xFF04060B),
+              const Color(0xFF060912),
+              colors.background,
+              const Color(0xFF04060B),
+            ],
+            stops: const [0.0, 0.3, 0.65, 1.0],
+          ),
+        ),
+        child: Stack(
+          children: [
+            AnimatedBuilder(
+              animation: _auroraController,
+              builder: (context, _) {
+                return CustomPaint(
+                  size: Size.infinite,
+                  painter: _AuroraPainter(
+                    progress: _auroraController.value,
+                    blue: colors.accent,
+                    glow: colors.accentGlow,
+                  ),
+                );
+              },
+            ),
+
+            AnimatedBuilder(
+              animation: Listenable.merge([
+                _starsController,
+                _twinkleController,
+              ]),
+              builder: (context, _) {
+                return CustomPaint(
+                  size: Size.infinite,
+                  painter: _StarsPainter(
+                    drift: _starsController.value,
+                    twinkle: _twinkleController.value,
+                    color: colors.accentGlow,
+                  ),
+                );
+              },
+            ),
+
+            CustomPaint(
+              size: Size.infinite,
+              painter: _GridOverlayPainter(
+                color: colors.accentGlow.withValues(alpha: 0.035),
+              ),
+            ),
+
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: 240,
+              child: IgnorePointer(
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: RadialGradient(
+                      center: const Alignment(0, 1.2),
+                      radius: 0.9,
+                      colors: [
+                        colors.accent.withValues(alpha: 0.18),
+                        colors.accent.withValues(alpha: 0.06),
+                        Colors.transparent,
+                      ],
+                      stops: const [0.0, 0.5, 1.0],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+            Positioned(
+              left: 0,
+              right: 0,
+              top: 0,
+              height: 180,
+              child: IgnorePointer(
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: RadialGradient(
+                      center: const Alignment(0, -1.5),
+                      radius: 1.1,
+                      colors: [
+                        colors.accentGlow.withValues(alpha: 0.10),
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: RadialGradient(
+                      center: Alignment.center,
+                      radius: 1.0,
+                      colors: [
+                        Colors.transparent,
+                        Colors.black.withValues(alpha: 0.35),
+                      ],
+                      stops: const [0.55, 1.0],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AuroraPainter extends CustomPainter {
+  _AuroraPainter({
+    required this.progress,
+    required this.blue,
+    required this.glow,
+  });
+
+  final double progress;
+  final Color blue;
+  final Color glow;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final t = progress * 2 * math.pi;
+
+    _blob(
+      canvas,
+      size,
+      cx: size.width * (0.30 + 0.15 * math.sin(t)),
+      cy: size.height * (0.20 + 0.10 * math.cos(t * 0.8)),
+      radius: size.width * 0.60,
+      color: blue.withValues(alpha: 0.16),
+    );
+
+    _blob(
+      canvas,
+      size,
+      cx: size.width * (0.75 + 0.10 * math.cos(t * 0.7)),
+      cy: size.height * (0.45 + 0.12 * math.sin(t * 0.9)),
+      radius: size.width * 0.55,
+      color: glow.withValues(alpha: 0.14),
+    );
+
+    _blob(
+      canvas,
+      size,
+      cx: size.width * (0.50 + 0.18 * math.sin(t * 0.5 + 1.2)),
+      cy: size.height * (0.80 + 0.08 * math.cos(t * 0.6)),
+      radius: size.width * 0.65,
+      color: const Color(0xFF8B5CF6).withValues(alpha: 0.10),
+    );
+  }
+
+  void _blob(
+    Canvas canvas,
+    Size size, {
+    required double cx,
+    required double cy,
+    required double radius,
+    required Color color,
+  }) {
+    final paint = Paint()
+      ..shader = RadialGradient(
+        colors: [
+          color,
+          color.withValues(alpha: 0.0),
+        ],
+      ).createShader(
+        Rect.fromCircle(center: Offset(cx, cy), radius: radius),
+      );
+
+    canvas.drawCircle(Offset(cx, cy), radius, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _AuroraPainter oldDelegate) {
+    return oldDelegate.progress != progress;
+  }
+}
+
+class _StarsPainter extends CustomPainter {
+  _StarsPainter({
+    required this.drift,
+    required this.twinkle,
+    required this.color,
+  });
+
+  final double drift;
+  final double twinkle;
+  final Color color;
+
+  static final List<_StarSeed> _stars = _generateStars();
+
+  static List<_StarSeed> _generateStars() {
+    final rnd = math.Random(42);
+    return List.generate(80, (i) {
+      return _StarSeed(
+        x: rnd.nextDouble(),
+        y: rnd.nextDouble(),
+        size: 0.6 + rnd.nextDouble() * 1.6,
+        phase: rnd.nextDouble(),
+        speed: 0.5 + rnd.nextDouble() * 1.5,
+      );
+    });
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (final star in _stars) {
+      final yShift = (drift * star.speed) % 1.0;
+      final y = (star.y - yShift + 1.0) % 1.0;
+
+      final tw = 0.35 +
+          0.65 *
+              (0.5 +
+                  0.5 *
+                      math.sin(
+                        (twinkle + star.phase) * 2 * math.pi,
+                      ));
+
+      final pos = Offset(star.x * size.width, y * size.height);
+
+      canvas.drawCircle(
+        pos,
+        star.size * 3.5,
+        Paint()..color = color.withValues(alpha: 0.10 * tw),
+      );
+
+      canvas.drawCircle(
+        pos,
+        star.size,
+        Paint()..color = Colors.white.withValues(alpha: 0.85 * tw),
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _StarsPainter oldDelegate) {
+    return oldDelegate.drift != drift || oldDelegate.twinkle != twinkle;
+  }
+}
+
+class _StarSeed {
+  const _StarSeed({
+    required this.x,
+    required this.y,
+    required this.size,
+    required this.phase,
+    required this.speed,
+  });
+
+  final double x;
+  final double y;
+  final double size;
+  final double phase;
+  final double speed;
+}
+
+class _GridOverlayPainter extends CustomPainter {
+  _GridOverlayPainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 0.6;
+
+    const spacing = 60.0;
+    const angleOffset = 0.35;
+
+    for (double x = -size.height; x < size.width; x += spacing) {
+      canvas.drawLine(
+        Offset(x + size.height * angleOffset, 0),
+        Offset(x, size.height),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _GridOverlayPainter oldDelegate) {
+    return oldDelegate.color != color;
+  }
 }
