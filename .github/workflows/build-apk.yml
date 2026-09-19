@@ -32,6 +32,17 @@ jobs:
           rm -rf android
           flutter create . --platforms=android --project-name=weura --org com.weura
 
+      - name: Update Kotlin & compileSdk
+        working-directory: WEURA/android
+        run: |
+          # Bump Kotlin version to 2.1.0 (reads metadata 2.2.0)
+          sed -i 's/id "org.jetbrains.kotlin.android" version "[^"]*"/id "org.jetbrains.kotlin.android" version "2.1.0"/' settings.gradle
+          # Bump compileSdk to 36 (flutter_tts requires it)
+          sed -i 's/compileSdk = [0-9]*/compileSdk = 36/' app/build.gradle
+          sed -i 's/compileSdkVersion [0-9]*/compileSdkVersion 36/' app/build.gradle || true
+          # Bump ext.kotlin_version if present
+          sed -i 's/ext.kotlin_version = .*/ext.kotlin_version = "2.1.0"/' build.gradle || true
+
       - name: Get dependencies
         working-directory: WEURA
         run: flutter pub get
