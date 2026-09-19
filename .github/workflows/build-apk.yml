@@ -26,6 +26,12 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Regenerate Android project
+        working-directory: WEURA
+        run: |
+          rm -rf android
+          flutter create . --platforms=android --project-name=weura --org com.weura
+
       - name: Get dependencies
         working-directory: WEURA
         run: flutter pub get
