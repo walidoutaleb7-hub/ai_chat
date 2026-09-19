@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
 import 'core/Settings/app_settings.dart';
 import 'core/Theme/weura_theme.dart';
@@ -7,50 +6,12 @@ import 'screens/Home/home.dart';
 import 'screens/Splash/splash.dart';
 import 'services/Storage/storage_service.dart';
 
-const List<String> _kSvgIcons = [
-  'assets/icons/menu.svg',
-  'assets/icons/mode.svg',
-  'assets/icons/send.svg',
-  'assets/icons/attachment.svg',
-  'assets/icons/microphone.svg',
-  'assets/icons/camera.svg',
-  'assets/icons/file.svg',
-  'assets/icons/plus.svg',
-  'assets/icons/history.svg',
-  'assets/icons/settings.svg',
-  'assets/icons/user.svg',
-  'assets/icons/check.svg',
-  'assets/icons/close.svg',
-  'assets/icons/back.svg',
-  'assets/icons/search.svg',
-  'assets/icons/home.svg',
-  'assets/icons/stop.svg',
-  'assets/logo/weura.svg',
-];
-
-/// Force flutter_svg to load every icon into its global cache BEFORE
-/// the first frame. Without this, `SvgPicture.asset()` renders empty
-/// on the very first build while the bytes load asynchronously.
-Future<void> _precacheSvgIcons() async {
-  for (final path in _kSvgIcons) {
-    try {
-      await precachePicture(
-        SvgAssetLoader(path),
-        null,
-      );
-    } catch (e) {
-      debugPrint('[WEURA] Failed to precache $path: $e');
-    }
-  }
-}
-
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   try {
     await StorageService.init();
     await AppSettingsManager.instance.load();
-    await _precacheSvgIcons();
   } catch (error, stackTrace) {
     debugPrint('[WEURA] Init error: $error');
     debugPrint('$stackTrace');
