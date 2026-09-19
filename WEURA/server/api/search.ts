@@ -12,30 +12,17 @@ export type TavilyResult = {
   query?: string;
 };
 
-/* ============================================================
- *  CACHE
- * ============================================================ */
-
-type CacheEntry = {
-  results: TavilyResult[];
-  expiresAt: number;
-};
+type CacheEntry = { results: TavilyResult[]; expiresAt: number };
 
 const SEARCH_CACHE = new Map<string, CacheEntry>();
-const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const CACHE_TTL_MS = 30 * 60 * 1000;
 const CACHE_MAX_ENTRIES = 200;
 
-/** Removes expired entries + enforces max size. */
 function pruneCache(): void {
   const now = Date.now();
-
   for (const [key, entry] of SEARCH_CACHE.entries()) {
-    if (entry.expiresAt <= now) {
-      SEARCH_CACHE.delete(key);
-    }
+    if (entry.expiresAt <= now) SEARCH_CACHE.delete(key);
   }
-
-  // If still too big, drop oldest entries.
   if (SEARCH_CACHE.size > CACHE_MAX_ENTRIES) {
     const overflow = SEARCH_CACHE.size - CACHE_MAX_ENTRIES;
     let removed = 0;
@@ -47,61 +34,83 @@ function pruneCache(): void {
   }
 }
 
-// Run cleanup every 10 minutes.
 setInterval(pruneCache, 10 * 60 * 1000).unref();
 
 /* ============================================================
- *  DOMAINS
+ *  TRUSTED DOMAIN LISTS
  * ============================================================ */
 
 const TRUSTED_GENERAL = [
-  'reuters.com',
-  'apnews.com',
-  'bbc.com',
-  'aljazeera.net',
-  'aljazeera.com',
-  'cnn.com',
-  'nytimes.com',
-  'theguardian.com',
-  'euronews.com',
-  'france24.com',
-  'lemonde.fr',
-  'wikipedia.org',
-  'britannica.com',
-  'espn.com',
-  'skysports.com',
-  'marca.com',
-  'as.com',
-  'goal.com',
+  'reuters.com', 'apnews.com', 'bbc.com',
+  'aljazeera.net', 'aljazeera.com', 'cnn.com',
+  'nytimes.com', 'theguardian.com', 'euronews.com',
+  'france24.com', 'lemonde.fr',
+  'wikipedia.org', 'britannica.com',
+];
+
+/**
+ * 12 official + historical football sources.
+ * Coverage: 1932 → today.
+ *
+ * History / stats:
+ *   rsssf.org            → archive from 1886
+ *   fbref.com            → 100+ leagues, detailed stats
+ *   11v11.com            → English football since 1920s
+ *   footballdatabase.eu  → results from 1930s
+ *   worldfootball.net    → from 1930s, friendlies
+ *   zerozero.pt          → worldwide coverage
+ *
+ * Transfers / modern:
+ *   transfermarkt.com    → biggest DB, values
+ *
+ * News / analysis:
+ *   kicker.de            → German official
+ *   marca.com            → Spanish reliable
+ *   bbc.com              → global news
+ *   espn.com             → news + analysis
+ *   theathletic.com      → deep journalism
+ */
+const TRUSTED_FOOTBALL = [
+  'rsssf.org',
+  'fbref.com',
+  '11v11.com',
+  'footballdatabase.eu',
+  'worldfootball.net',
+  'zerozero.pt',
   'transfermarkt.com',
-  'fotmob.com',
-  'sofascore.com',
-  'fifa.com',
-  'uefa.com',
+  'kicker.de',
+  'marca.com',
+  'bbc.com',
+  'espn.com',
+  'theathletic.com',
 ];
 
 const TRUSTED_TECH = [
-  'github.com',
-  'stackoverflow.com',
-  'developer.mozilla.org',
-  'flutter.dev',
-  'dart.dev',
-  'pub.dev',
-  'docs.flutter.dev',
+  'github.com', 'stackoverflow.com',
+  'developer.mozilla.org', 'flutter.dev',
+  'dart.dev', 'pub.dev', 'docs.flutter.dev',
 ];
 
 export type SearchOptions = {
   timeSensitive?: boolean;
   football?: boolean;
   tech?: boolean;
+  /** Football only: prefer history-oriented sources. */
+  footballHistory?: boolean;
 };
 
 function buildDomainList(options: SearchOptions): string[] | null {
   const lists: string[][] = [];
 
-  if (options.football) lists.push(TRUSTED_GENERAL);
-  if (options.tech) lists.push(TRUSTED_TECH);
-  if (options.timeSensitive) lists.push(TRUSTED_GENERAL);
+  if (options.football) {
+    lists.push(TRUSTED_FOOTBALL);
+  }
+  if (options.tech) {
+    lists.push(TRUSTED_TECH);
+  }
+  if (options.timeSensitive && !options.football && !options.tech) {
+    lists.push(TRUSTED_GENERAL);
+  }
 
   if (lists.length === 0) return null;
 
@@ -111,10 +120,6 @@ function buildDomainList(options: SearchOptions): string[] | null {
   }
   return Array.from(merged);
 }
-
-/* ============================================================
- *  TAVILY
- * ============================================================ */
 
 async function runSearch(
   query: string,
@@ -132,9 +137,9 @@ async function runSearch(
     search_depth: 'advanced',
   };
 
-  if (options.timeSensitive) {
+  if (options.timeSensitive && !options.footballHistory) {
     body.topic = 'news';
-    body.days = 180;
+    body.days = options.football ? 365 : 180;
   } else {
     body.topic = 'general';
   }
@@ -185,10 +190,6 @@ async function runSearch(
   });
 }
 
-/* ============================================================
- *  MAIN
- * ============================================================ */
-
 export async function searchTavily(
   query: string,
   limit: number = 6,
@@ -209,7 +210,13 @@ export async function searchTavily(
     { q: query, opts: options },
   ];
 
-  if (options.timeSensitive) {
+  if (options.football) {
+    // Football → run a second, more specific query.
+    variants.push({
+      q: `${query} ${currentYear}`,
+      opts: { ...options, timeSensitive: true },
+    });
+  } else if (options.timeSensitive) {
     variants.push({
       q: `${query} latest ${currentYear}`,
       opts: { ...options, timeSensitive: true },
@@ -243,17 +250,12 @@ export async function searchTavily(
     expiresAt: now + CACHE_TTL_MS,
   });
 
-  // Opportunistic prune after each insert.
   if (SEARCH_CACHE.size > CACHE_MAX_ENTRIES) {
     pruneCache();
   }
 
   return finalResults;
 }
-
-/* ============================================================
- *  ROUTE
- * ============================================================ */
 
 router.get('/search', async (req, res) => {
   const query = String(req.query.q ?? '').trim();
