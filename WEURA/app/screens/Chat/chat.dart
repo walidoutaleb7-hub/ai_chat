@@ -95,6 +95,7 @@ class _ChatScreenState extends State<ChatScreen>
   AIMode _mode = AIMode.auto;
   bool _isLoading = false;
   bool _requestCancelled = false;
+  bool _isFootballQuestion = false;
   ChatSession? _session;
   WeuraFile? _attachedFile;
   XFile? _attachedImage;
@@ -102,6 +103,24 @@ class _ChatScreenState extends State<ChatScreen>
   static const String _serverUrl =
       'https://ai-chat-tlol.onrender.com';
   static const String _feedbackKey = 'weura_message_feedback';
+
+  static const List<String> _footballKeywords = [
+    'كرة القدم', 'كرة قدم', 'مباراة', 'ماتش', 'لاعب', 'فريق',
+    'هدف', 'أهداف', 'دوري', 'كأس', 'ملعب', 'بطولة', 'انتقال',
+    'مدرب', 'تشكيلة', 'نتيجة', 'ترتيب', 'تصفيات', 'منتخب',
+    'الدوري', 'الكأس', 'الهداف', 'صانع ألعاب',
+    'ريال مدريد', 'برشلونة', 'ليفربول', 'مانشستر', 'تشيلسي',
+    'أرسنال', 'بايرن', 'يوفنتوس', 'ميلان', 'إنتر', 'سان جيرمان',
+    'ميسي', 'رونالدو', 'مبابي', 'هالاند', 'بنزيمة', 'صلاح',
+    'نيمار', 'حكيمي', 'محرز', 'زياش', 'بونو', 'أوناحي',
+    'فينيسيوس', 'بيلينغهام', 'رودري', 'رافينيا', 'موسيالا',
+    'كأس العالم', 'يورو', 'كوبا أمريكا',
+    'football', 'soccer', 'match', 'player', 'team', 'goal',
+    'league', 'cup', 'stadium', 'transfer', 'coach', 'manager',
+    'lineup', 'result', 'standings', 'premier league', 'la liga',
+    'serie a', 'bundesliga', 'ligue 1', 'champions league',
+    'world cup', 'messi', 'ronaldo', 'mbappe', 'haaland',
+  ];
 
   @override
   void initState() {
@@ -122,6 +141,14 @@ class _ChatScreenState extends State<ChatScreen>
 
   void _onVoiceChanged() {
     if (mounted) setState(() {});
+  }
+
+  bool _detectFootball(String message) {
+    final t = message.toLowerCase();
+    for (final kw in _footballKeywords) {
+      if (t.contains(kw.toLowerCase())) return true;
+    }
+    return false;
   }
 
   Future<void> _initialize() async {
@@ -594,6 +621,7 @@ class _ChatScreenState extends State<ChatScreen>
     setState(() {
       _messages.add(_ChatMessage(text: userMessage, isUser: true));
       _isLoading = true;
+      _isFootballQuestion = true;
       _requestCancelled = false;
     });
 
@@ -659,7 +687,10 @@ class _ChatScreenState extends State<ChatScreen>
       _scrollToBottom();
     } finally {
       if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() {
+          _isLoading = false;
+          _isFootballQuestion = false;
+        });
       }
     }
   }
@@ -911,10 +942,6 @@ class _ChatScreenState extends State<ChatScreen>
     }
   }
 
-  // ===========================================================================
-  // IMAGE PICKING — attach instead of immediate analyze
-  // ===========================================================================
-
   Future<void> _pickImage(ImageSource source) async {
     if (_isLoading) {
       _showMessage('Wait for the current request to finish.');
@@ -939,7 +966,6 @@ class _ChatScreenState extends State<ChatScreen>
 
       if (picked == null) return;
 
-      // Attach instead of immediately analyzing.
       setState(() {
         _attachedImage = picked;
       });
@@ -1092,10 +1118,6 @@ class _ChatScreenState extends State<ChatScreen>
     }
   }
 
-  // ===========================================================================
-  // IMAGE EDITING — describe + regenerate with modification
-  // ===========================================================================
-
   Future<void> _editImage(XFile image, String instruction) async {
     if (_isLoading) return;
 
@@ -1223,10 +1245,6 @@ class _ChatScreenState extends State<ChatScreen>
     }
   }
 
-  // ===========================================================================
-  // SEND MESSAGE
-  // ===========================================================================
-
   Future<void> _sendMessage(
     String text, {
     bool addUserMessage = true,
@@ -1260,6 +1278,9 @@ class _ChatScreenState extends State<ChatScreen>
 
     if (message.isEmpty) return;
 
+    // Football detection → show football animation
+    final isFootball = _detectFootball(message);
+
     final playerName = _detectPlayerIntent(message);
     if (playerName != null) {
       await _maybeStoreMemory(message);
@@ -1286,6 +1307,7 @@ class _ChatScreenState extends State<ChatScreen>
       setState(() {
         _messages.add(_ChatMessage(text: message, isUser: true));
         _isLoading = true;
+        _isFootballQuestion = isFootball;
         _requestCancelled = false;
       });
 
@@ -1294,6 +1316,7 @@ class _ChatScreenState extends State<ChatScreen>
     } else {
       setState(() {
         _isLoading = true;
+        _isFootballQuestion = isFootball;
         _requestCancelled = false;
       });
     }
@@ -1378,7 +1401,10 @@ class _ChatScreenState extends State<ChatScreen>
       _scrollToBottom();
     } finally {
       if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() {
+          _isLoading = false;
+          _isFootballQuestion = false;
+        });
       }
     }
   }
@@ -1405,6 +1431,7 @@ class _ChatScreenState extends State<ChatScreen>
     setState(() {
       _requestCancelled = true;
       _isLoading = false;
+      _isFootballQuestion = false;
     });
   }
 
@@ -2002,7 +2029,9 @@ class _ChatScreenState extends State<ChatScreen>
                     itemCount: _messages.length + (_isLoading ? 1 : 0),
                     itemBuilder: (context, index) {
                       if (_isLoading && index == _messages.length) {
-                        return _WeuraThinking(colors: colors);
+                        return _isFootballQuestion
+                            ? _FootballThinking(colors: colors)
+                            : _WeuraThinking(colors: colors);
                       }
                       final message = _messages[index];
                       final isLastAssistant = !message.isUser &&
@@ -4131,4 +4160,400 @@ class _WeuraThinkingState extends State<_WeuraThinking>
       ),
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Football thinking indicator — strong animation
+// ---------------------------------------------------------------------------
+
+class _FootballThinking extends StatefulWidget {
+  const _FootballThinking({required this.colors});
+
+  final WeuraColors colors;
+
+  @override
+  State<_FootballThinking> createState() => _FootballThinkingState();
+}
+
+class _FootballThinkingState extends State<_FootballThinking>
+    with TickerProviderStateMixin {
+  late final AnimationController _ballController;
+  late final AnimationController _pulseController;
+  late final AnimationController _grassController;
+  late final AnimationController _lightController;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _ballController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1600),
+    )..repeat();
+
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat(reverse: true);
+
+    _grassController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2400),
+    )..repeat();
+
+    _lightController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _ballController.dispose();
+    _pulseController.dispose();
+    _grassController.dispose();
+    _lightController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = widget.colors;
+
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 24, left: 4, right: 8, top: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              const Color(0xFF0B1A0F),
+              const Color(0xFF0A0F1A),
+              colors.surface,
+            ],
+            stops: const [0.0, 0.5, 1.0],
+          ),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: const Color(0xFF34D399).withValues(alpha: 0.35),
+            width: 1.2,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF10B981).withValues(alpha: 0.22),
+              blurRadius: 28,
+              spreadRadius: 2,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              height: 90,
+              width: 260,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: AnimatedBuilder(
+                      animation: _grassController,
+                      builder: (context, _) {
+                        return CustomPaint(
+                          size: const Size(double.infinity, 18),
+                          painter: _GrassPainter(
+                            progress: _grassController.value,
+                            color1: const Color(0xFF047857),
+                            color2: const Color(0xFF10B981),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  Positioned(
+                    left: 0,
+                    top: 4,
+                    child: AnimatedBuilder(
+                      animation: _lightController,
+                      builder: (context, _) => _lightBeam(
+                        opacity: _lightController.value,
+                        color: const Color(0xFFFBBF24),
+                        alignLeft: true,
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    right: 0,
+                    top: 4,
+                    child: AnimatedBuilder(
+                      animation: _lightController,
+                      builder: (context, _) => _lightBeam(
+                        opacity: 1.0 - _lightController.value,
+                        color: const Color(0xFFFBBF24),
+                        alignLeft: false,
+                      ),
+                    ),
+                  ),
+                  Align(
+                    alignment: Alignment.bottomCenter,
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: AnimatedBuilder(
+                        animation: _ballController,
+                        builder: (context, _) {
+                          return Transform.rotate(
+                            angle: _ballController.value * 2 * math.pi,
+                            child: Transform.scale(
+                              scale: 1.0 +
+                                  0.06 *
+                                      math.sin(
+                                        _ballController.value * 2 * math.pi,
+                                      ),
+                              child: SizedBox(
+                                width: 46,
+                                height: 46,
+                                child: CustomPaint(
+                                  painter: _FootballPainter(),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  Align(
+                    alignment: Alignment.bottomCenter,
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: AnimatedBuilder(
+                        animation: _pulseController,
+                        builder: (context, _) {
+                          return Opacity(
+                            opacity: 1.0 - _pulseController.value,
+                            child: Transform.scale(
+                              scale: 1.0 + _pulseController.value * 0.9,
+                              child: Container(
+                                width: 46,
+                                height: 46,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: const Color(0xFF34D399)
+                                        .withValues(alpha: 0.55),
+                                    width: 1.5,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: const Color(0xFF34D399),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF34D399)
+                            .withValues(alpha: 0.7),
+                        blurRadius: 10,
+                        spreadRadius: 1,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'راه يفحص الملاعب...',
+                  style: TextStyle(
+                    color: colors.textPrimary,
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 5),
+            Padding(
+              padding: const EdgeInsets.only(left: 18),
+              child: Text(
+                'نبحث في 12 مصدر كروي رسمي',
+                style: TextStyle(
+                  color: colors.textMuted,
+                  fontSize: 12,
+                  height: 1.4,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _lightBeam({
+    required double opacity,
+    required Color color,
+    required bool alignLeft,
+  }) {
+    return Opacity(
+      opacity: opacity.clamp(0.15, 1.0),
+      child: Transform.rotate(
+        angle: alignLeft ? 0.6 : -0.6,
+        child: Container(
+          width: 26,
+          height: 34,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: alignLeft
+                  ? Alignment.topRight
+                  : Alignment.topLeft,
+              end: alignLeft
+                  ? Alignment.bottomLeft
+                  : Alignment.bottomRight,
+              colors: [
+                color.withValues(alpha: 0.85),
+                color.withValues(alpha: 0.0),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(6),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GrassPainter extends CustomPainter {
+  _GrassPainter({
+    required this.progress,
+    required this.color1,
+    required this.color2,
+  });
+
+  final double progress;
+  final Color color1;
+  final Color color2;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final basePaint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [color1.withValues(alpha: 0.0), color2],
+      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
+    canvas.drawRect(
+      Rect.fromLTWH(0, 0, size.width, size.height),
+      basePaint,
+    );
+
+    final bladePaint = Paint()
+      ..color = color2
+      ..strokeWidth = 1.4
+      ..strokeCap = StrokeCap.round;
+
+    const count = 40;
+    for (int i = 0; i < count; i++) {
+      final x = (i / count) * size.width;
+      final phase = (progress + i / count) % 1.0;
+      final h = 4 + (math.sin(phase * math.pi * 2) * 0.5 + 0.5) * 8;
+      canvas.drawLine(
+        Offset(x, size.height),
+        Offset(x + math.sin(phase * math.pi * 2) * 1.2, size.height - h),
+        bladePaint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _GrassPainter oldDelegate) {
+    return oldDelegate.progress != progress;
+  }
+}
+
+class _FootballPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width / 2;
+
+    final ballPaint = Paint()
+      ..shader = RadialGradient(
+        colors: [
+          Colors.white,
+          const Color(0xFFE5E7EB),
+        ],
+      ).createShader(Rect.fromCircle(center: center, radius: radius));
+    canvas.drawCircle(center, radius, ballPaint);
+
+    final blackPaint = Paint()..color = const Color(0xFF111827);
+
+    _drawPentagon(canvas, center, radius * 0.32, blackPaint);
+
+    for (int i = 0; i < 5; i++) {
+      final angle = (i / 5) * 2 * math.pi - math.pi / 2;
+      final pos = Offset(
+        center.dx + radius * 0.62 * math.cos(angle),
+        center.dy + radius * 0.62 * math.sin(angle),
+      );
+      _drawPentagon(canvas, pos, radius * 0.22, blackPaint);
+    }
+
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1
+        ..color = Colors.black.withValues(alpha: 0.15),
+    );
+  }
+
+  void _drawPentagon(
+    Canvas canvas,
+    Offset center,
+    double radius,
+    Paint paint,
+  ) {
+    final path = Path();
+    for (int i = 0; i < 5; i++) {
+      final angle = (i / 5) * 2 * math.pi - math.pi / 2;
+      final point = Offset(
+        center.dx + radius * math.cos(angle),
+        center.dy + radius * math.sin(angle),
+      );
+      if (i == 0) {
+        path.moveTo(point.dx, point.dy);
+      } else {
+        path.lineTo(point.dx, point.dy);
+      }
+    }
+    path.close();
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
