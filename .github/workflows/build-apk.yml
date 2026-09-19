@@ -26,6 +26,20 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Fix icon path
+        working-directory: WEURA
+        run: |
+          # app_icon.png is in assets/icons/, but pubspec expects assets/logo/
+          # Copy it so flutter_launcher_icons finds it.
+          mkdir -p assets/logo
+          if [ -f assets/icons/app_icon.png ]; then
+            cp assets/icons/app_icon.png assets/logo/app_icon.png
+            echo "✅ Copied app_icon.png to assets/logo/"
+          else
+            echo "❌ app_icon.png NOT FOUND in assets/icons/"
+            ls -la assets/icons/ | head -20
+          fi
+
       - name: Regenerate Android project
         working-directory: WEURA
         run: |
@@ -35,20 +49,19 @@ jobs:
       - name: Fix Android config
         working-directory: WEURA/android
         run: |
-          # 1) Bump Kotlin
+          # Kotlin version (reads metadata 2.2.0)
           sed -i 's/id "org.jetbrains.kotlin.android" version "[^"]*"/id "org.jetbrains.kotlin.android" version "2.1.0"/' settings.gradle
 
-          # 2) compileSdk 36 + minSdk 24
+          # compileSdk 36 + minSdk 24
           sed -i 's/^\( *\)compileSdk = .*/\1compileSdk = 36/' app/build.gradle
           sed -i 's/^\( *\)minSdk = .*/\1minSdk = 24/' app/build.gradle
 
-          # 3) ⚡ ADD INTERNET PERMISSION (this was missing!)
+          # INTERNET permission
           if ! grep -q 'android.permission.INTERNET' app/src/main/AndroidManifest.xml; then
             sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <application|' app/src/main/AndroidManifest.xml
           fi
 
-          # 4) Show the results
-          echo "=== AndroidManifest (permissions) ==="
+          echo "=== Manifest permissions ==="
           grep -E 'uses-permission|<application' app/src/main/AndroidManifest.xml || true
 
       - name: Get dependencies
@@ -57,7 +70,7 @@ jobs:
 
       - name: Generate launcher icons
         working-directory: WEURA
-        run: dart run flutter_launcher_icons || true
+        run: dart run flutter_launcher_icons
 
       - name: Re-apply Android config after icons
         working-directory: WEURA/android
