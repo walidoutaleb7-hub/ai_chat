@@ -98,7 +98,6 @@ function todayISO(): string {
  * ============================================================ */
 
 const FOOTBALL_KEYWORDS = [
-  // Arabic
   'كرة القدم', 'كرة قدم', 'مباراة', 'ماتش', 'لاعب', 'فريق',
   'هدف', 'أهداف', 'دوري', 'كأس', 'ملعب', 'بطولة', 'انتقال',
   'مدرب', 'تشكيلة', 'نتيجة', 'ترتيب', 'تصفيات', 'منتخب',
@@ -112,7 +111,6 @@ const FOOTBALL_KEYWORDS = [
   'الدوري الإسباني', 'الدوري الإنجليزي', 'الدوري الإيطالي',
   'الدوري الألماني', 'الدوري الفرنسي', 'دوري أبطال أوروبا',
   'كأس العالم', 'يورو', 'كوبا أمريكا', 'أفريقيا',
-  // English
   'football', 'soccer', 'match', 'player', 'team', 'goal',
   'league', 'cup', 'stadium', 'championship', 'transfer',
   'coach', 'manager', 'lineup', 'result', 'standings',
@@ -312,7 +310,6 @@ function fallbackNeedsSearch(message: string): boolean {
   if (text.length < 3) return false;
   if (/^[\d\s+\-*/().%,]+$/.test(text)) return false;
 
-  // Football always searches.
   if (isFootballQuestion(text)) return true;
 
   const skip = [
@@ -362,15 +359,41 @@ function isIdentityQuestion(message: string): boolean {
   return patterns.some((p) => p.test(text));
 }
 
+/**
+ * Detects personal questions like "do you know me?".
+ *
+ * Uses \b boundaries (not ^...$) so longer variants like
+ * "واش تعرفني؟" or "do you know me to you" still match.
+ */
 function isPersonalQuestion(message: string): boolean {
   const text = message.trim().toLowerCase();
-  const patterns = [
-    /^(do you know me|do you remember me|who am i)[\s!.,?]*$/i,
-    /^(تعرفني|تتذكرني|تفتكرني|شكون انا|من انا)[\s!.,?،؟]*$/i,
-    /\b(واش تعرفني|واش تتذكرني|تعرفني ولا لا|تتذكرني ولا لا)\b/i,
-    /\b(do you know me|remember me|who am i to you)\b/i,
+  if (text.length === 0) return false;
+
+  // Any of these substrings → personal question.
+  const markers = [
+    'تعرفني',
+    'تتذكرني',
+    'تفتكرني',
+    'شكون انا',
+    'شكون أنا',
+    'من انا',
+    'من أنا',
+    'واش تعرفني',
+    'واش تتذكرني',
+    'تعرفني ولا لا',
+    'تتذكرني ولا لا',
+    'do you know me',
+    'do you remember me',
+    'who am i',
+    'who am i to you',
+    'remember me',
   ];
-  return patterns.some((p) => p.test(text));
+
+  for (const m of markers) {
+    if (text.includes(m.toLowerCase())) return true;
+  }
+
+  return false;
 }
 
 function isCasualMessage(message: string): boolean {
@@ -603,17 +626,14 @@ async function buildMessages(
   const tavilyConfigured = Boolean(process.env.TAVILY_API_KEY?.trim());
   const memoryUsed = memory.length > 0;
 
-  // Football detection (client-side hint + reflection)
   const isFootball = isFootballQuestion(lastUserMessage);
 
-  // Step 1: Reflection
   const reflection = await reflectOnQuery(
     lastUserMessage,
     memory,
     requestId,
   );
 
-  // Force search for football questions.
   const needSearch = isFootball || reflection.needSearch;
 
   const out: GrokMessage[] = [
@@ -632,7 +652,6 @@ async function buildMessages(
   let searchUsed = false;
   let resultCount = 0;
 
-  // Step 2: Search if needed
   if (needSearch && tavilyConfigured && lastUserMessage) {
     try {
       const results = await searchTavily(
