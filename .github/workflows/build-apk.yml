@@ -1,244 +1,82 @@
-name: Build WEURA APK
+name: weura
+description: WEURA AI — Think Beyond.
+publish_to: "none"
 
-on:
-  workflow_dispatch:
-  push:
-    branches:
-      - main
+version: 1.0.0+1
 
-permissions:
-  contents: read
+environment:
+  sdk: ">=3.5.0 <4.0.0"
 
-concurrency:
-  group: build-apk-${{ github.ref }}
-  cancel-in-progress: true
+dependencies:
+  flutter:
+    sdk: flutter
 
-jobs:
-  build:
-    name: Build WEURA Android APK
-    runs-on: ubuntu-22.04
-    timeout-minutes: 30
+  # ─── Localization ───────────────────────────────────
+  flutter_localizations:
+    sdk: flutter
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+  # ─── UI ─────────────────────────────────────────────
+  flutter_svg: ^2.2.0
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
+  # ─── Networking ─────────────────────────────────────
+  http: ^1.5.0
 
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: "3.32.4"
-          channel: stable
-          cache: true
+  # ─── Markdown & Code ────────────────────────────────
+  flutter_markdown_plus: ^1.0.4
+  markdown: ^7.2.2
+  flutter_highlight: ^0.7.0
 
-      - name: Verify Flutter
-        run: flutter --version
+  # ─── Local persistence ──────────────────────────────
+  shared_preferences: ^2.3.2
 
-      - name: Repair Android project
-        working-directory: WEURA
-        run: |
-          set -e
-          if [ ! -f "android/settings.gradle" ] && [ ! -f "android/settings.gradle.kts" ]; then
-            echo "Creating Android project scaffolding..."
-            rm -rf /tmp/weura_backup
-            mkdir -p /tmp/weura_backup
-            cp -r app /tmp/weura_backup/app
-            cp pubspec.yaml /tmp/weura_backup/pubspec.yaml
-            flutter create --platforms=android --project-name=weura --org=com.walidout.weura .
-            rm -rf app
-            cp -r /tmp/weura_backup/app app
-            cp /tmp/weura_backup/pubspec.yaml pubspec.yaml
-          else
-            echo "Android project already exists."
-          fi
-          rm -f test/widget_test.dart
+  # ─── URL launching ──────────────────────────────────
+  url_launcher: ^6.3.0
 
-      - name: Fix Kotlin plugin repository
-        working-directory: WEURA
-        run: |
-          set -e
+  # ─── Voice input (speech-to-text) ───────────────────
+  speech_to_text: ^7.0.0
 
-          SETTINGS_KTS="android/settings.gradle.kts"
-          SETTINGS_GROOVY="android/settings.gradle"
+  # ─── Voice output (text-to-speech) ──────────────────
+  flutter_tts: ^4.2.0
 
-          if [ -f "$SETTINGS_KTS" ]; then
-            echo "=== Patching settings.gradle.kts ==="
+  # ─── Share assistant messages ───────────────────────
+  share_plus: ^10.1.2
 
-            # Add mavenCentral + google to pluginManagement repositories
-            if ! grep -q "mavenCentral()" "$SETTINGS_KTS"; then
-              # Insert repositories block after pluginManagement {
-              sed -i '/pluginManagement {/a\
-                repositories {\
-                    google()\
-                    mavenCentral()\
-                    gradlePluginPortal()\
-                }' "$SETTINGS_KTS"
-            fi
+  # ─── Save generated images to gallery ───────────────
+  gal: ^2.3.0
 
-            # Also add google() and mavenCentral() to dependencyResolutionManagement
-            if ! grep -q "dependencyResolutionManagement" "$SETTINGS_KTS"; then
-              echo "No dependencyResolutionManagement block found, adding one..."
-              cat >> "$SETTINGS_KTS" << 'EOF'
+  # ─── Pick images from gallery / camera ──────────────
+  image_picker: ^1.1.2
 
-          dependencyResolutionManagement {
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-          }
-          EOF
-            fi
+  # ─── Files ──────────────────────────────────────────
+  file_picker: ^8.1.7
+  path_provider: ^2.1.5
 
-            echo "=== Result ==="
-            cat "$SETTINGS_KTS"
+  # ─── File parsing ───────────────────────────────────
+  syncfusion_flutter_pdf: ^27.1.48
+  archive: ^3.6.1
+  xml: ^6.5.0
+  excel: ^4.0.6
 
-          elif [ -f "$SETTINGS_GROOVY" ]; then
-            echo "=== Patching settings.gradle (Groovy) ==="
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
 
-            if ! grep -q "mavenCentral()" "$SETTINGS_GROOVY"; then
-              sed -i '/pluginManagement {/a\
-                repositories {\
-                    google()\
-                    mavenCentral()\
-                    gradlePluginPortal()\
-                }' "$SETTINGS_GROOVY"
-            fi
+  flutter_lints: ^6.0.0
 
-            echo "=== Result ==="
-            cat "$SETTINGS_GROOVY"
-          fi
+  # ─── Auto-generate app icons ────────────────────────
+  flutter_launcher_icons: ^0.14.1
 
-      - name: Fix Android SDK versions
-        working-directory: WEURA
-        run: |
-          set -e
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: false
+  image_path: "assets/logo/app_icon.png"
+  min_sdk_android: 21
+  adaptive_icon_background: "#07070C"
+  adaptive_icon_foreground: "assets/logo/app_icon.png"
 
-          GRADLE_KTS="android/app/build.gradle.kts"
-          GRADLE_GROOVY="android/app/build.gradle"
+flutter:
+  uses-material-design: true
 
-          if [ -f "$GRADLE_KTS" ]; then
-            echo "=== Patching build.gradle.kts ==="
-
-            sed -i 's/compileSdk = flutter\.compileSdkVersion/compileSdk = 36/' "$GRADLE_KTS"
-            sed -i 's/compileSdkVersion flutter\.compileSdkVersion/compileSdk = 36/' "$GRADLE_KTS"
-            sed -i 's/minSdk = flutter\.minSdkVersion/minSdk = 24/' "$GRADLE_KTS"
-            sed -i 's/minSdkVersion flutter\.minSdkVersion/minSdk = 24/' "$GRADLE_KTS"
-            sed -i 's/ndkVersion = flutter\.ndkVersion/ndkVersion = "27.0.12077973"/' "$GRADLE_KTS"
-
-            if ! grep -q "ndkVersion" "$GRADLE_KTS"; then
-              sed -i '/compileSdk = 36/a\    ndkVersion = "27.0.12077973"' "$GRADLE_KTS"
-            fi
-
-            echo "=== Result ==="
-            cat "$GRADLE_KTS"
-
-          elif [ -f "$GRADLE_GROOVY" ]; then
-            echo "=== Patching build.gradle (Groovy) ==="
-
-            sed -i 's/compileSdkVersion flutter\.compileSdkVersion/compileSdkVersion 36/' "$GRADLE_GROOVY"
-            sed -i 's/minSdkVersion flutter\.minSdkVersion/minSdkVersion 24/' "$GRADLE_GROOVY"
-            sed -i 's/ndkVersion flutter\.ndkVersion/ndkVersion "27.0.12077973"/' "$GRADLE_GROOVY"
-
-            echo "=== Result ==="
-            cat "$GRADLE_GROOVY"
-          fi
-
-          echo ""
-          echo "=== Checking AndroidManifest for uses-sdk ==="
-          MANIFEST="android/app/src/main/AndroidManifest.xml"
-          if [ -f "$MANIFEST" ]; then
-            if grep -q "uses-sdk" "$MANIFEST"; then
-              echo "Found uses-sdk — removing it..."
-              sed -i '/<uses-sdk/d' "$MANIFEST"
-            else
-              echo "No uses-sdk line — OK."
-            fi
-          fi
-
-      - name: Fix icon assets structure
-        working-directory: WEURA
-        run: |
-          set -e
-          mkdir -p assets/icons
-          for f in assets/logo/*.svg; do
-            [ -e "$f" ] || continue
-            name=$(basename "$f")
-            if [ "$name" != "weura.svg" ]; then
-              if [ ! -f "assets/icons/$name" ]; then
-                mv "$f" "assets/icons/$name"
-              else
-                rm -f "$f"
-              fi
-            fi
-          done
-          echo "assets/icons:"
-          ls -la assets/icons
-          echo "assets/logo:"
-          ls -la assets/logo
-
-      - name: Patch AndroidManifest permissions
-        working-directory: WEURA
-        run: |
-          set -e
-          MANIFEST="android/app/src/main/AndroidManifest.xml"
-          if [ ! -f "$MANIFEST" ]; then
-            echo "Manifest not found!"
-            exit 1
-          fi
-
-          if ! grep -q "android.permission.RECORD_AUDIO" "$MANIFEST"; then
-            sed -i 's|<manifest[^>]*>|&\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>|' "$MANIFEST"
-          fi
-          if ! grep -q "android.permission.INTERNET" "$MANIFEST"; then
-            sed -i 's|<manifest[^>]*>|&\n    <uses-permission android:name="android.permission.INTERNET"/>|' "$MANIFEST"
-          fi
-          if ! grep -q "android.permission.BLUETOOTH_CONNECT" "$MANIFEST"; then
-            sed -i 's|<manifest[^>]*>|&\n    <uses-permission android:name="android.permission.BLUETOOTH"/>\n    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"/>\n    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>|' "$MANIFEST"
-          fi
-          if ! grep -q "WRITE_EXTERNAL_STORAGE" "$MANIFEST"; then
-            sed -i 's|<manifest[^>]*>|&\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29"/>\n    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>|' "$MANIFEST"
-          fi
-          if ! grep -q "android.speech.RecognitionService" "$MANIFEST"; then
-            sed -i 's|<application|    <queries>\n        <intent>\n            <action android:name="android.speech.RecognitionService" />\n        </intent>\n    </queries>\n\n    <application|' "$MANIFEST"
-          fi
-
-          echo "=== Final Manifest ==="
-          cat "$MANIFEST"
-
-      - name: Install dependencies
-        working-directory: WEURA
-        run: flutter pub get
-
-      - name: Generate app launcher icons
-        working-directory: WEURA
-        run: dart run flutter_launcher_icons
-
-      - name: Analyze
-        working-directory: WEURA
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings
-
-      - name: Build APK (debug)
-        working-directory: WEURA
-        run: |
-          flutter clean
-          flutter pub get
-          flutter build apk --debug --target=app/main.dart
-
-      - name: Verify APK
-        working-directory: WEURA
-        run: |
-          test -f build/app/outputs/flutter-apk/app-debug.apk
-          ls -lh build/app/outputs/flutter-apk/app-debug.apk
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: WEURA-APK-${{ github.run_number }}
-          path: WEURA/build/app/outputs/flutter-apk/app-debug.apk
-          if-no-files-found: error
-          retention-days: 14
+  assets:
+    - assets/icons/
+    - assets/logo/
