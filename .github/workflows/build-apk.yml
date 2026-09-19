@@ -33,12 +33,14 @@ jobs:
         working-directory: WEURA
         run: cp /tmp/pubspec.yaml.bak pubspec.yaml
 
-      - name: Copy logo assets
+      - name: Check assets
         working-directory: WEURA
         run: |
-          mkdir -p assets/logo
-          cp assets/icons/weura.svg assets/logo/weura.svg
-          cp assets/icons/app_icon.png assets/logo/app_icon.png
+          echo "=== assets/icons/ ==="
+          ls -la assets/icons/ || true
+          echo ""
+          echo "=== assets/logo/ ==="
+          ls -la assets/logo/ || true
 
       - name: Fix Android
         working-directory: WEURA/android
