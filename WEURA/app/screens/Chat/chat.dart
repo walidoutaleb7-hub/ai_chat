@@ -804,9 +804,10 @@ class _ChatScreenState extends State<ChatScreen>
     return null;
   }
 
-  String _buildImageUrl(String prompt) {
+  String _buildImageUrl(String prompt, {int? seed}) {
     final encoded = Uri.encodeComponent(prompt);
-    return '$_serverUrl/api/image?prompt=$encoded';
+    final seedPart = (seed != null) ? '&seed=$seed' : '';
+    return '$_serverUrl/api/image?prompt=$encoded$seedPart';
   }
 
   Future<void> _handleImageGeneration(
@@ -869,9 +870,11 @@ class _ChatScreenState extends State<ChatScreen>
     final original = _messages[index];
     if (original.imagePrompt == null) return;
 
-    final newUrl = _buildImageUrl(
-      '${original.imagePrompt} ${DateTime.now().millisecondsSinceEpoch}',
-    );
+    // Pass a fresh seed via query param — keeps the prompt clean
+    // and bypasses the server cache so we get a new image.
+    final seed = DateTime.now().millisecondsSinceEpoch;
+
+    final newUrl = _buildImageUrl(original.imagePrompt!, seed: seed);
 
     setState(() {
       _messages[index] = _ChatMessage(
@@ -4334,7 +4337,6 @@ class _WeuraThinkingPainter extends CustomPainter {
     final center = Offset(size.width / 2, size.height / 2);
     final maxR = math.min(size.width, size.height) / 2;
 
-    // Expanding energy waves
     for (int i = 0; i < 3; i++) {
       final phase = (wave + i / 3.0) % 1.0;
       final r = maxR * 0.30 + phase * maxR * 0.70;
@@ -4349,7 +4351,6 @@ class _WeuraThinkingPainter extends CustomPainter {
       );
     }
 
-    // Rotating rings
     _drawArcRing(
       canvas,
       center,
@@ -4380,7 +4381,6 @@ class _WeuraThinkingPainter extends CustomPainter {
       2,
     );
 
-    // Orbiting particles
     const particleCount = 6;
     for (int i = 0; i < particleCount; i++) {
       final angle =
@@ -4404,7 +4404,6 @@ class _WeuraThinkingPainter extends CustomPainter {
       );
     }
 
-    // Central pulsing core
     final coreR = maxR * (0.30 + pulse * 0.10);
     final corePaint = Paint()
       ..shader = RadialGradient(
@@ -4426,7 +4425,6 @@ class _WeuraThinkingPainter extends CustomPainter {
       Paint()..color = Colors.white.withValues(alpha: 0.98),
     );
 
-    // Sparkles
     for (int i = 0; i < 8; i++) {
       final angle = (i / 8) * 2 * math.pi + rotation * 3;
       final r = maxR * 0.55;
@@ -4495,7 +4493,7 @@ class _WeuraThinkingPainter extends CustomPainter {
 }
 
 // ---------------------------------------------------------------------------
-// Football thinking indicator — strong animation
+// Football thinking indicator
 // ---------------------------------------------------------------------------
 
 class _FootballThinking extends StatefulWidget {
