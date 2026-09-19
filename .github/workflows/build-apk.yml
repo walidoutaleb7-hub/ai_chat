@@ -26,17 +26,9 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Fix icon path
+      - name: Backup pubspec.yaml
         working-directory: WEURA
-        run: |
-          mkdir -p assets/logo
-          if [ -f assets/icons/app_icon.png ]; then
-            cp assets/icons/app_icon.png assets/logo/app_icon.png
-            echo "✅ Copied app_icon.png to assets/logo/"
-          else
-            echo "❌ app_icon.png NOT FOUND in assets/icons/"
-            ls -la assets/icons/ | head -20
-          fi
+        run: cp pubspec.yaml /tmp/pubspec.yaml.bak
 
       - name: Regenerate Android project
         working-directory: WEURA
@@ -44,23 +36,40 @@ jobs:
           rm -rf android
           flutter create . --platforms=android --project-name=weura --org com.weura
 
+      - name: Restore pubspec.yaml
+        working-directory: WEURA
+        run: cp /tmp/pubspec.yaml.bak pubspec.yaml
+
+      - name: Ensure assets exist
+        working-directory: WEURA
+        run: |
+          mkdir -p assets/logo
+          # Copy files that the app looks for under assets/logo/
+          if [ -f assets/icons/app_icon.png ]; then
+            cp assets/icons/app_icon.png assets/logo/app_icon.png
+          fi
+          if [ -f assets/icons/weura.svg ]; then
+            cp assets/icons/weura.svg assets/logo/weura.svg
+          fi
+
+          echo "=== pubspec.yaml (flutter section) ==="
+          sed -n '/^flutter:/,$p' pubspec.yaml
+          echo ""
+          echo "=== assets/icons/ ==="
+          ls -la assets/icons/ || true
+          echo ""
+          echo "=== assets/logo/ ==="
+          ls -la assets/logo/ || true
+
       - name: Fix Android config
         working-directory: WEURA/android
         run: |
-          # Kotlin version (reads metadata 2.2.0)
           sed -i 's/id "org.jetbrains.kotlin.android" version "[^"]*"/id "org.jetbrains.kotlin.android" version "2.1.0"/' settings.gradle
-
-          # compileSdk 36 + minSdk 24
           sed -i 's/^\( *\)compileSdk = .*/\1compileSdk = 36/' app/build.gradle
           sed -i 's/^\( *\)minSdk = .*/\1minSdk = 24/' app/build.gradle
-
-          # INTERNET permission
           if ! grep -q 'android.permission.INTERNET' app/src/main/AndroidManifest.xml; then
             sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <application|' app/src/main/AndroidManifest.xml
           fi
-
-          echo "=== Manifest permissions ==="
-          grep -E 'uses-permission|<application' app/src/main/AndroidManifest.xml || true
 
       - name: Get dependencies
         working-directory: WEURA
@@ -68,7 +77,7 @@ jobs:
 
       - name: Generate launcher icons
         working-directory: WEURA
-        run: dart run flutter_launcher_icons
+        run: dart run flutter_launcher_icons || true
 
       - name: Re-apply Android config after icons
         working-directory: WEURA/android
