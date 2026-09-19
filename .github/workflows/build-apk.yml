@@ -29,8 +29,6 @@ jobs:
       - name: Fix icon path
         working-directory: WEURA
         run: |
-          # app_icon.png is in assets/icons/, but pubspec expects assets/logo/
-          # Copy it so flutter_launcher_icons finds it.
           mkdir -p assets/logo
           if [ -f assets/icons/app_icon.png ]; then
             cp assets/icons/app_icon.png assets/logo/app_icon.png
@@ -81,13 +79,13 @@ jobs:
             sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <application|' app/src/main/AndroidManifest.xml
           fi
 
-      - name: Build APK
+      - name: Build Universal APK
         working-directory: WEURA
-        run: flutter build apk --release --split-per-abi --target=app/main.dart
+        run: flutter build apk --release --target=app/main.dart
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: weura-apk
-          path: WEURA/build/app/outputs/flutter-apk/*.apk
+          path: WEURA/build/app/outputs/flutter-apk/app-release.apk
           retention-days: 30
