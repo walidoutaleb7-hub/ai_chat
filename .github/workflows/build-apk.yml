@@ -1,82 +1,42 @@
-name: weura
-description: WEURA AI — Think Beyond.
-publish_to: "none"
+name: Build WEURA APK
 
-version: 1.0.0+1
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
 
-environment:
-  sdk: ">=3.5.0 <4.0.0"
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-dependencies:
-  flutter:
-    sdk: flutter
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: "17"
 
-  # ─── Localization ───────────────────────────────────
-  flutter_localizations:
-    sdk: flutter
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.24.0"
+          channel: stable
+          cache: true
 
-  # ─── UI ─────────────────────────────────────────────
-  flutter_svg: ^2.2.0
+      - name: Get dependencies
+        working-directory: app
+        run: flutter pub get
 
-  # ─── Networking ─────────────────────────────────────
-  http: ^1.5.0
+      - name: Build APK
+        working-directory: app
+        run: flutter build apk --release --split-per-abi
 
-  # ─── Markdown & Code ────────────────────────────────
-  flutter_markdown_plus: ^1.0.4
-  markdown: ^7.2.2
-  flutter_highlight: ^0.7.0
-
-  # ─── Local persistence ──────────────────────────────
-  shared_preferences: ^2.3.2
-
-  # ─── URL launching ──────────────────────────────────
-  url_launcher: ^6.3.0
-
-  # ─── Voice input (speech-to-text) ───────────────────
-  speech_to_text: ^7.0.0
-
-  # ─── Voice output (text-to-speech) ──────────────────
-  flutter_tts: ^4.2.0
-
-  # ─── Share assistant messages ───────────────────────
-  share_plus: ^10.1.2
-
-  # ─── Save generated images to gallery ───────────────
-  gal: ^2.3.0
-
-  # ─── Pick images from gallery / camera ──────────────
-  image_picker: ^1.1.2
-
-  # ─── Files ──────────────────────────────────────────
-  file_picker: ^8.1.7
-  path_provider: ^2.1.5
-
-  # ─── File parsing ───────────────────────────────────
-  syncfusion_flutter_pdf: ^27.1.48
-  archive: ^3.6.1
-  xml: ^6.5.0
-  excel: ^4.0.6
-
-dev_dependencies:
-  flutter_test:
-    sdk: flutter
-
-  flutter_lints: ^6.0.0
-
-  # ─── Auto-generate app icons ────────────────────────
-  flutter_launcher_icons: ^0.14.1
-
-flutter_launcher_icons:
-  android: "launcher_icon"
-  ios: false
-  image_path: "assets/logo/app_icon.png"
-  min_sdk_android: 21
-  adaptive_icon_background: "#07070C"
-  adaptive_icon_foreground: "assets/logo/app_icon.png"
-
-flutter:
-  uses-material-design: true
-
-  assets:
-    - assets/icons/
-    - assets/logo/
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: weura-apk
+          path: app/build/app/outputs/flutter-apk/*.apk
+          retention-days: 30
