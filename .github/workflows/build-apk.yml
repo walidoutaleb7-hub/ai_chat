@@ -32,7 +32,7 @@ jobs:
 
       - name: Build APK
         working-directory: WEURA
-        run: flutter build apk --release --split-per-abi
+        run: flutter build apk --release --split-per-abi --target=app/main.dart
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
