@@ -19,23 +19,25 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Create Android project in subfolder only
+      - name: Backup pubspec
+        working-directory: WEURA
+        run: cp pubspec.yaml /tmp/pubspec.bak
+
+      - name: Create Android project
         working-directory: WEURA
         run: |
           rm -rf android
-          flutter create --platforms=android --project-name=weura --org com.weura --no-pub android
+          flutter create . --platforms=android --project-name=weura --org com.weura --no-pub
 
-      - name: Verify pubspec untouched
+      - name: Restore pubspec
+        working-directory: WEURA
+        run: cp /tmp/pubspec.bak pubspec.yaml
+
+      - name: Verify pubspec
         working-directory: WEURA
         run: |
           echo "=== pubspec.yaml (flutter section) ==="
           sed -n '/^flutter:/,$p' pubspec.yaml
-          echo ""
-          echo "=== assets/icons/ ==="
-          ls assets/icons/ | head -5
-          echo ""
-          echo "=== assets/logo/ ==="
-          ls assets/logo/ | head -5
 
       - name: Fix Android config
         working-directory: WEURA/android
@@ -44,14 +46,14 @@ jobs:
           grep -nE 'compileSdk|minSdk|kotlin' app/build.gradle settings.gradle || true
           echo ""
 
-          # Kotlin version (whole version match)
+          # Kotlin
           sed -i 's|version "[0-9][0-9.]*"|version "2.1.0"|' settings.gradle 2>/dev/null || true
 
-          # compileSdk: match ENTIRE line after "compileSdk = " or "compileSdkVersion "
+          # compileSdk - match whole line
           sed -i 's|^\(\s*\)compileSdk = .*|\1compileSdk = 36|' app/build.gradle 2>/dev/null || true
           sed -i 's|^\(\s*\)compileSdkVersion .*|\1compileSdkVersion 36|' app/build.gradle 2>/dev/null || true
 
-          # minSdk: same approach
+          # minSdk - match whole line
           sed -i 's|^\(\s*\)minSdk = .*|\1minSdk = 24|' app/build.gradle 2>/dev/null || true
           sed -i 's|^\(\s*\)minSdkVersion .*|\1minSdkVersion 24|' app/build.gradle 2>/dev/null || true
 
