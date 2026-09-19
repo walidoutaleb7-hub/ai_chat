@@ -3,7 +3,7 @@ import express from 'express';
 const router = express.Router();
 
 /* ============================================================
- *  CACHE
+ *  TYPES & CACHES
  * ============================================================ */
 
 type CacheEntry = {
@@ -11,32 +11,24 @@ type CacheEntry = {
   contentType: string;
   expiresAt: number;
 };
-
-type RejectEntry = {
-  expiresAt: number;
-};
+type RejectEntry = { expiresAt: number };
 
 const cache = new Map<string, CacheEntry>();
 const rejectedCache = new Map<string, RejectEntry>();
 
-const CACHE_TTL_MS = 10 * 60 * 1000; // 10 min
+const CACHE_TTL_MS = 10 * 60 * 1000;
 const CACHE_MAX_ENTRIES = 50;
-
-const REJECT_TTL_MS = 30 * 60 * 1000; // 30 min
+const REJECT_TTL_MS = 30 * 60 * 1000;
 const REJECT_MAX_ENTRIES = 200;
 
-/** Removes expired entries + enforces max size on both caches. */
 function pruneCaches(): void {
   const now = Date.now();
-
   for (const [key, entry] of cache.entries()) {
     if (entry.expiresAt <= now) cache.delete(key);
   }
-
   for (const [key, entry] of rejectedCache.entries()) {
     if (entry.expiresAt <= now) rejectedCache.delete(key);
   }
-
   if (cache.size > CACHE_MAX_ENTRIES) {
     const overflow = cache.size - CACHE_MAX_ENTRIES;
     let removed = 0;
@@ -46,7 +38,6 @@ function pruneCaches(): void {
       removed++;
     }
   }
-
   if (rejectedCache.size > REJECT_MAX_ENTRIES) {
     const overflow = rejectedCache.size - REJECT_MAX_ENTRIES;
     let removed = 0;
@@ -69,15 +60,27 @@ const PER_ATTEMPT_TIMEOUT_MS = 40_000;
 const MAX_ATTEMPTS = 2;
 const MAX_PROMPT_LENGTH = 1500;
 
+const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const VISION_MODEL = 'qwen/qwen3.8-27b';
+const VISION_TIMEOUT_MS = 30_000;
+const VISION_MAX_TOKENS = 500;
+
+const MAX_IMAGE_DATA_URL_LENGTH = 6_000_000;
+
 /* ============================================================
- *  SAFETY — hard reject
+ *  SAFETY — HARD REJECT PATTERNS
  * ============================================================ */
 
+/**
+ * Arabic patterns use manual boundaries because \b doesn't work
+ * with Arabic letters (they are not word chars in JS regex).
+ */
 const HARD_REJECT_PATTERNS: RegExp[] = [
-  /\b(عارية|عاري|عريان|مكشوف|جنسي|إباحي|اباحي|نود|بورن)\b/i,
+  // Arabic (manual boundaries)
+  /(?:^|[^\u0600-\u06FF])(عارية|عاري|عريان|مكشوف|جنسي|إباحي|اباحي|نود|بورن)(?:$|[^\u0600-\u06FF])/i,
+  /(?:^|[^\u0600-\u06FF])(جثة|دماء|قتل|ذبح|تعذيب|إرهاب|ارهاب)(?:$|[^\u0600-\u06FF])/i,
+  // English
   /\b(nude|naked|nsfw|porn|sexual|erotic|explicit)\b/i,
-  /\b(porno|sexuel|érotique)\b/i,
-  /\b(جثة|دماء|قتل|ذبح|تعذيب|إرهاب|ارهاب)\b/i,
   /\b(gore|beheading|torture|terrorist|murder)\b/i,
 ];
 
@@ -89,24 +92,16 @@ function hardReject(prompt: string): boolean {
 }
 
 /* ============================================================
- *  GROQ ENHANCER
+ *  PROMPT ENHANCER (Groq)
  * ============================================================ */
-
-type EnhancedPrompt = {
-  ok: boolean;
-  prompt?: string;
-  error?: string;
-};
 
 const SYSTEM_PROMPT = `You are WEURA's image prompt engineer. Translate the user's request (ANY language) to ONE clean English prompt for FLUX.
 
 RULES:
 1. Translate everything to English.
-2. For fictional characters (Batman, Spider-Man, Naruto, Goku, Luffy, Mickey, Mario, Darth Vader, etc.), describe them accurately with their ICONIC costume, colors, symbols.
-3. Spider-Man -> "a superhero in a tight red and blue suit with black web pattern, spider emblem on chest, masked face with white eyes".
-4. Batman -> "a masked superhero in dark grey and black armored suit with bat emblem on chest, cape, pointy bat ears on cowl".
-5. For real athletes: describe respectfully in sports context (no real face).
-6. ALWAYS append: "ultra detailed, 8k, sharp focus, cinematic lighting, masterpiece, professional color grading".
+2. For fictional characters (Batman, Spider-Man, Naruto...), describe them accurately with their ICONIC costume, colors, symbols.
+3. For real athletes: describe respectfully in sports context (no real face).
+4. ALWAYS append: "ultra detailed, 8k, sharp focus, cinematic lighting, masterpiece, professional color grading".
 
 SAFETY - output EXACTLY "REJECT" alone if the request asks for:
 - sexual/nude content of ANY person
@@ -114,77 +109,49 @@ SAFETY - output EXACTLY "REJECT" alone if the request asks for:
 - graphic violence, gore
 - hate symbols, terrorism, religion targeting
 - ANY religious reference
-- real celebrities in sexual contexts
 
-Output ONLY the final English prompt (or "REJECT").
+Output ONLY the final English prompt (or "REJECT").`;
 
-EXAMPLES:
+type EnhancedPrompt = { ok: boolean; prompt?: string; error?: string };
 
-User: "ارسم لي سبايدر مان"
-Output: Spider-Man in his classic red and blue suit with black web pattern, spider emblem on chest, masked face with large white eyes, dynamic web-swinging pose between New York skyscrapers at golden hour, comic-book style, vibrant colors, cinematic lighting, ultra detailed, 8k, masterpiece
-
-User: "ارسم لي باتمان"
-Output: Batman in his iconic dark grey and black armored suit, bat emblem on chest, flowing cape, pointy bat ears on the cowl, standing on a gothic rooftop in Gotham at night, dramatic low-angle shot, deep shadows, ultra detailed, 8k, masterpiece
-
-User: "ارسم لي قطة في الفضاء"
-Output: A cute fluffy cat floating in outer space wearing a small astronaut helmet, colorful nebula background, cinematic composition, ultra detailed, 8k, photorealistic, masterpiece
-
-User: "ارسم فتاة عارية"
-Output: REJECT`;
-
-async function enhancePrompt(
-  userPrompt: string,
-): Promise<EnhancedPrompt> {
+async function enhancePrompt(userPrompt: string): Promise<EnhancedPrompt> {
   if (hardReject(userPrompt)) {
-    return {
-      ok: false,
-      error: 'لا يمكنني إنشاء هذه الصورة. جرّب وصفاً آخر.',
-    };
+    return { ok: false, error: 'لا يمكنني إنشاء هذه الصورة. جرّب وصفاً آخر.' };
   }
 
   const apiKey = process.env.GROQ_API_KEY?.trim();
   if (!apiKey) return { ok: true, prompt: userPrompt };
 
   try {
-    const response = await fetch(
-      'https://api.groq.com/openai/v1/chat/completions',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model:
-            process.env.GROQ_MODEL?.trim() || 'openai/gpt-oss-120b',
-          messages: [
-            { role: 'system', content: SYSTEM_PROMPT },
-            { role: 'user', content: userPrompt },
-          ],
-          temperature: 0.4,
-          max_tokens: 300,
-        }),
-        signal: AbortSignal.timeout(15000),
+    const response = await fetch(GROQ_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
       },
-    );
+      body: JSON.stringify({
+        model: process.env.GROQ_MODEL?.trim() || 'openai/gpt-oss-120b',
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.4,
+        max_tokens: 300,
+        tools: [],
+        tool_choice: 'none',
+      }),
+      signal: AbortSignal.timeout(15000),
+    });
 
-    if (!response.ok) {
-      return { ok: true, prompt: userPrompt };
-    }
+    if (!response.ok) return { ok: true, prompt: userPrompt };
 
     const data: any = await response.json();
-    const content = String(
-      data?.choices?.[0]?.message?.content ?? '',
-    ).trim();
+    const content = String(data?.choices?.[0]?.message?.content ?? '').trim();
 
     if (!content) return { ok: true, prompt: userPrompt };
 
-    // Strict REJECT detection: only if content IS "REJECT".
     if (/^reject\b/i.test(content.trim())) {
-      return {
-        ok: false,
-        error: 'لا يمكنني إنشاء هذه الصورة. جرّب وصفاً آخر.',
-      };
+      return { ok: false, error: 'لا يمكنني إنشاء هذه الصورة. جرّب وصفاً آخر.' };
     }
 
     const cleaned = content
@@ -194,17 +161,14 @@ async function enhancePrompt(
 
     if (!cleaned) return { ok: true, prompt: userPrompt };
 
-    return {
-      ok: true,
-      prompt: cleaned.slice(0, MAX_PROMPT_LENGTH),
-    };
+    return { ok: true, prompt: cleaned.slice(0, MAX_PROMPT_LENGTH) };
   } catch {
     return { ok: true, prompt: userPrompt };
   }
 }
 
 /* ============================================================
- *  CLOUDFLARE WORKERS AI
+ *  FLUX — IMAGE GENERATION
  * ============================================================ */
 
 async function fetchImage(
@@ -212,11 +176,7 @@ async function fetchImage(
 ): Promise<{ buffer: Buffer; contentType: string } | null> {
   const accountId = process.env.CLOUDFLARE_ACCOUNT_ID?.trim();
   const apiToken = process.env.CLOUDFLARE_API_TOKEN?.trim();
-
-  if (!accountId || !apiToken) {
-    console.error('[WEURA] Cloudflare credentials missing.');
-    return null;
-  }
+  if (!accountId || !apiToken) return null;
 
   const url =
     `https://api.cloudflare.com/client/v4/accounts/` +
@@ -229,53 +189,28 @@ async function fetchImage(
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiToken}`,
       },
-      body: JSON.stringify({
-        prompt,
-        steps: 4,
-      }),
+      body: JSON.stringify({ prompt, steps: 4 }),
       signal: AbortSignal.timeout(PER_ATTEMPT_TIMEOUT_MS),
     });
 
-    if (!response.ok) {
-      const errText = await response.text().catch(() => '');
-      console.error(
-        `[WEURA] CF HTTP ${response.status}: ${errText.slice(0, 500)}`,
-      );
-      return null;
-    }
+    if (!response.ok) return null;
 
     const contentType =
       response.headers.get('content-type') ?? 'application/json';
 
     if (contentType.includes('application/json')) {
       const data: any = await response.json();
-
-      if (data?.success === false) {
-        console.error(
-          '[WEURA] CF response error:',
-          JSON.stringify(data.errors ?? data).slice(0, 300),
-        );
-        return null;
-      }
-
+      if (data?.success === false) return null;
       const base64 = data?.result?.image;
-
-      if (typeof base64 !== 'string' || base64.length === 0) {
-        return null;
-      }
-
+      if (typeof base64 !== 'string' || base64.length === 0) return null;
       const buffer = Buffer.from(base64, 'base64');
-
       if (buffer.length < 1024) return null;
-
       return { buffer, contentType: 'image/jpeg' };
     }
 
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
-
     if (buffer.length < 1024) return null;
-
     return { buffer, contentType };
   } catch {
     return null;
@@ -283,17 +218,81 @@ async function fetchImage(
 }
 
 /* ============================================================
- *  ROUTE
+ *  VISION — DESCRIBE IMAGE (for edit feature)
+ * ============================================================ */
+
+const DESCRIBE_SYSTEM_PROMPT = `You are WEURA's image describer.
+
+Describe the image in English as a detailed FLUX prompt.
+Include:
+- subject (person/object/scene)
+- appearance: face features, hair, clothing, colors, expressions
+- pose / action
+- background / setting
+- lighting, style, mood, art style
+
+Be concise but specific (max 150 words).
+Output ONLY the English description. No preamble, no quotes, no markdown.`;
+
+async function describeImage(imageData: string): Promise<string | null> {
+  const apiKey = process.env.GROQ_API_KEY?.trim();
+  if (!apiKey) return null;
+
+  try {
+    const response = await fetch(GROQ_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: VISION_MODEL,
+        messages: [
+          { role: 'system', content: DESCRIBE_SYSTEM_PROMPT },
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: 'Describe this image.' },
+              { type: 'image_url', image_url: { url: imageData } },
+            ],
+          },
+        ],
+        temperature: 0.3,
+        max_tokens: VISION_MAX_TOKENS,
+      }),
+      signal: AbortSignal.timeout(VISION_TIMEOUT_MS),
+    });
+
+    if (!response.ok) {
+      const raw = await response.text().catch(() => '');
+      console.error(
+        `[WEURA] describeImage failed (HTTP ${response.status}):`,
+        raw.slice(0, 200),
+      );
+      return null;
+    }
+
+    const data: any = await response.json();
+    const content = String(
+      data?.choices?.[0]?.message?.content ?? '',
+    ).trim();
+
+    return content || null;
+  } catch (error) {
+    console.error('[WEURA] describeImage error:', error);
+    return null;
+  }
+}
+
+/* ============================================================
+ *  ROUTE — GENERATE IMAGE
  * ============================================================ */
 
 router.get('/image', async (req, res) => {
   const rawPrompt = String(req.query.prompt ?? '').trim();
 
   if (!rawPrompt) {
-    return res.status(400).json({
-      success: false,
-      error: 'Prompt is required.',
-    });
+    return res.status(400).json({ success: false, error: 'Prompt is required.' });
   }
 
   if (rawPrompt.length > MAX_PROMPT_LENGTH * 2) {
@@ -303,7 +302,6 @@ router.get('/image', async (req, res) => {
     });
   }
 
-  // ---- Step 1: check rejected cache ----
   const rejectKey = rawPrompt.toLowerCase();
   const rejected = rejectedCache.get(rejectKey);
   if (rejected && rejected.expiresAt > Date.now()) {
@@ -313,14 +311,9 @@ router.get('/image', async (req, res) => {
     });
   }
 
-  // ---- Step 2: enhance prompt ----
   const enhanced = await enhancePrompt(rawPrompt);
-
   if (!enhanced.ok || !enhanced.prompt) {
-    // Cache the rejection to avoid re-calling Groq.
-    rejectedCache.set(rejectKey, {
-      expiresAt: Date.now() + REJECT_TTL_MS,
-    });
+    rejectedCache.set(rejectKey, { expiresAt: Date.now() + REJECT_TTL_MS });
     return res.status(400).json({
       success: false,
       error: enhanced.error ?? 'Cannot generate this image.',
@@ -328,8 +321,6 @@ router.get('/image', async (req, res) => {
   }
 
   const prompt = enhanced.prompt;
-
-  // ---- Step 3: check image cache ----
   const cacheKey = prompt;
   const now = Date.now();
 
@@ -341,7 +332,6 @@ router.get('/image', async (req, res) => {
     return res.send(cached.buffer);
   }
 
-  // ---- Step 4: generate with retry ----
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const result = await fetchImage(prompt);
 
@@ -357,15 +347,11 @@ router.get('/image', async (req, res) => {
       res.setHeader('Content-Length', String(result.buffer.length));
       res.setHeader('X-WEURA-Cache', 'MISS');
       res.setHeader('X-WEURA-Attempt', String(attempt));
-
       return res.send(result.buffer);
     }
 
-    // Exponential backoff: 1s, then 2s.
     if (attempt < MAX_ATTEMPTS) {
-      await new Promise((r) =>
-        setTimeout(r, 1000 * Math.pow(2, attempt - 1)),
-      );
+      await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
     }
   }
 
@@ -376,7 +362,137 @@ router.get('/image', async (req, res) => {
 });
 
 /* ============================================================
- *  PING (diagnostic)
+ *  ROUTE — EDIT IMAGE (describe → FLUX regenerate)
+ * ============================================================ */
+
+router.post('/image/edit', async (req, res) => {
+  try {
+    const body = req.body as { image?: unknown; prompt?: unknown };
+
+    const imageData =
+      typeof body.image === 'string' ? body.image.trim() : '';
+    const editPrompt =
+      typeof body.prompt === 'string' ? body.prompt.trim() : '';
+
+    // ─── Validation ─────────────────────────────────────────
+    if (!imageData) {
+      return res.status(400).json({
+        success: false,
+        error: 'Image is required.',
+      });
+    }
+
+    if (!imageData.startsWith('data:image/')) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid image format. Expected a data URL.',
+      });
+    }
+
+    if (imageData.length > MAX_IMAGE_DATA_URL_LENGTH) {
+      const mb = (imageData.length / (1024 * 1024)).toFixed(1);
+      return res.status(413).json({
+        success: false,
+        error: `Image is too large (${mb} MB). Maximum ~4 MB.`,
+      });
+    }
+
+    if (!editPrompt) {
+      return res.status(400).json({
+        success: false,
+        error: 'Edit instruction is required.',
+      });
+    }
+
+    if (editPrompt.length > 500) {
+      return res.status(400).json({
+        success: false,
+        error: 'Edit instruction is too long (max 500 chars).',
+      });
+    }
+
+    // ─── Safety check on the edit instruction itself ────────
+    if (hardReject(editPrompt)) {
+      return res.status(400).json({
+        success: false,
+        error: 'لا يمكنني تعديل الصورة بهذا الشكل. جرّب طلباً آخر.',
+      });
+    }
+
+    // ─── Step 1: describe the image ─────────────────────────
+    console.log('[WEURA] /image/edit — describing image...');
+    const description = await describeImage(imageData);
+
+    if (!description) {
+      return res.status(502).json({
+        success: false,
+        error:
+          'Could not analyze the image. The vision model may be rate-limited. ' +
+          'Please try again in a few seconds.',
+      });
+    }
+
+    console.log(
+      `[WEURA] /image/edit — description: ${description.slice(0, 80)}...`,
+    );
+
+    // ─── Step 2: combine description + edit → enhance ───────
+    const combined =
+      `${description}\n\n` +
+      `Modification requested by user: ${editPrompt}\n\n` +
+      `Generate the SAME subject/scene, but apply the modification above.`;
+
+    const enhanced = await enhancePrompt(combined);
+
+    if (!enhanced.ok || !enhanced.prompt) {
+      return res.status(400).json({
+        success: false,
+        error: enhanced.error ?? 'Cannot edit this image.',
+      });
+    }
+
+    console.log(
+      `[WEURA] /image/edit — enhanced prompt: ${enhanced.prompt.slice(0, 100)}...`,
+    );
+
+    // ─── Step 3: generate new image via FLUX ────────────────
+    let result: { buffer: Buffer; contentType: string } | null = null;
+
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      result = await fetchImage(enhanced.prompt);
+      if (result) break;
+
+      if (attempt < MAX_ATTEMPTS) {
+        await new Promise((r) =>
+          setTimeout(r, 1000 * Math.pow(2, attempt - 1)),
+        );
+      }
+    }
+
+    if (!result) {
+      return res.status(502).json({
+        success: false,
+        error: 'Image service is busy. Please try again.',
+      });
+    }
+
+    // ─── Success ────────────────────────────────────────────
+    res.setHeader('Content-Type', result.contentType);
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('X-WEURA-Edited', 'true');
+    res.setHeader('Content-Length', String(result.buffer.length));
+    return res.send(result.buffer);
+  } catch (error) {
+    console.error('[WEURA] Image edit error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Image edit failed.',
+    });
+  }
+});
+
+/* ============================================================
+ *  ROUTE — PING (Cloudflare health check)
  * ============================================================ */
 
 router.get('/image/ping', async (_req, res) => {
@@ -384,10 +500,7 @@ router.get('/image/ping', async (_req, res) => {
   const apiToken = process.env.CLOUDFLARE_API_TOKEN?.trim();
 
   if (!accountId || !apiToken) {
-    return res.json({
-      success: false,
-      error: 'Cloudflare credentials missing.',
-    });
+    return res.json({ success: false, error: 'Cloudflare credentials missing.' });
   }
 
   try {
@@ -401,32 +514,13 @@ router.get('/image/ping', async (_req, res) => {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiToken}`,
       },
-      body: JSON.stringify({
-        prompt: 'a red apple on a wooden table',
-        steps: 4,
-      }),
+      body: JSON.stringify({ prompt: 'a red apple on a wooden table', steps: 4 }),
       signal: AbortSignal.timeout(30000),
     });
 
-    let detail = '';
-
-    if (!response.ok) {
-      detail = (await response.text().catch(() => '')).slice(0, 300);
-    } else {
-      const contentType =
-        response.headers.get('content-type') ?? '';
-      if (contentType.includes('application/json')) {
-        const data: any = await response.json().catch(() => null);
-        if (data?.success === false) {
-          detail = JSON.stringify(data.errors ?? data).slice(0, 300);
-        }
-      }
-    }
-
     return res.json({
-      success: response.ok && !detail,
+      success: response.ok,
       status: response.status,
-      detail: detail || undefined,
     });
   } catch (error) {
     return res.json({
