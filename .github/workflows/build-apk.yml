@@ -19,36 +19,49 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Backup pubspec
-        working-directory: WEURA
-        run: cp pubspec.yaml /tmp/pubspec.yaml.bak
-
-      - name: Create Android project
+      - name: Create Android project in subfolder only
         working-directory: WEURA
         run: |
           rm -rf android
-          flutter create . --platforms=android --project-name=weura --org com.weura --no-pub
+          flutter create --platforms=android --project-name=weura --org com.weura --no-pub android
 
-      - name: Restore pubspec
-        working-directory: WEURA
-        run: cp /tmp/pubspec.yaml.bak pubspec.yaml
-
-      - name: Check assets
+      - name: Verify pubspec untouched
         working-directory: WEURA
         run: |
+          echo "=== pubspec.yaml (flutter section) ==="
+          sed -n '/^flutter:/,$p' pubspec.yaml
+          echo ""
           echo "=== assets/icons/ ==="
-          ls -la assets/icons/ || true
+          ls assets/icons/ | head -5
           echo ""
           echo "=== assets/logo/ ==="
-          ls -la assets/logo/ || true
+          ls assets/logo/ | head -5
 
-      - name: Fix Android
+      - name: Fix Android config
         working-directory: WEURA/android
         run: |
-          sed -i 's/version "1.9.0"/version "2.1.0"/' settings.gradle
-          sed -i 's/compileSdk = [0-9]*/compileSdk = 36/' app/build.gradle
-          sed -i 's/minSdk = [0-9]*/minSdk = 24/' app/build.gradle
-          sed -i 's/minSdkVersion [0-9]*/minSdkVersion 24/' app/build.gradle
+          echo "=== BEFORE ==="
+          grep -nE 'compileSdk|minSdk|kotlin' app/build.gradle settings.gradle || true
+          echo ""
+
+          # Kotlin version (whole version match)
+          sed -i 's|version "[0-9][0-9.]*"|version "2.1.0"|' settings.gradle 2>/dev/null || true
+
+          # compileSdk: match ENTIRE line after "compileSdk = " or "compileSdkVersion "
+          sed -i 's|^\(\s*\)compileSdk = .*|\1compileSdk = 36|' app/build.gradle 2>/dev/null || true
+          sed -i 's|^\(\s*\)compileSdkVersion .*|\1compileSdkVersion 36|' app/build.gradle 2>/dev/null || true
+
+          # minSdk: same approach
+          sed -i 's|^\(\s*\)minSdk = .*|\1minSdk = 24|' app/build.gradle 2>/dev/null || true
+          sed -i 's|^\(\s*\)minSdkVersion .*|\1minSdkVersion 24|' app/build.gradle 2>/dev/null || true
+
+          # INTERNET permission
+          if ! grep -q 'android.permission.INTERNET' app/src/main/AndroidManifest.xml 2>/dev/null; then
+            sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <application|' app/src/main/AndroidManifest.xml 2>/dev/null || true
+          fi
+
+          echo "=== AFTER ==="
+          grep -nE 'compileSdk|minSdk|kotlin' app/build.gradle settings.gradle || true
 
       - name: Get dependencies
         working-directory: WEURA
