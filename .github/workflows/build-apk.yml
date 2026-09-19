@@ -32,29 +32,41 @@ jobs:
           rm -rf android
           flutter create . --platforms=android --project-name=weura --org com.weura
 
-      - name: Fix Android build config
+      - name: Fix Android config
         working-directory: WEURA/android
         run: |
-          # Bump Kotlin (reads metadata 2.2.0)
+          # 1) Bump Kotlin
           sed -i 's/id "org.jetbrains.kotlin.android" version "[^"]*"/id "org.jetbrains.kotlin.android" version "2.1.0"/' settings.gradle
 
-          # Bump compileSdk to 36 (flutter_tts requires it)
+          # 2) compileSdk 36 + minSdk 24
           sed -i 's/^\( *\)compileSdk = .*/\1compileSdk = 36/' app/build.gradle
-          sed -i 's/^\( *\)compileSdkVersion .*/\1compileSdkVersion 36/' app/build.gradle
-
-          # Bump minSdk to 24 (flutter_tts requires it)
           sed -i 's/^\( *\)minSdk = .*/\1minSdk = 24/' app/build.gradle
-          sed -i 's/^\( *\)minSdkVersion .*/\1minSdkVersion 24/' app/build.gradle
 
-          # Show the result for debugging
-          echo "=== settings.gradle (kotlin) ==="
-          grep kotlin settings.gradle || true
-          echo "=== build.gradle (sdk) ==="
-          grep -E 'compileSdk|minSdk' app/build.gradle || true
+          # 3) ⚡ ADD INTERNET PERMISSION (this was missing!)
+          if ! grep -q 'android.permission.INTERNET' app/src/main/AndroidManifest.xml; then
+            sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <application|' app/src/main/AndroidManifest.xml
+          fi
+
+          # 4) Show the results
+          echo "=== AndroidManifest (permissions) ==="
+          grep -E 'uses-permission|<application' app/src/main/AndroidManifest.xml || true
 
       - name: Get dependencies
         working-directory: WEURA
         run: flutter pub get
+
+      - name: Generate launcher icons
+        working-directory: WEURA
+        run: dart run flutter_launcher_icons || true
+
+      - name: Re-apply Android config after icons
+        working-directory: WEURA/android
+        run: |
+          sed -i 's/^\( *\)compileSdk = .*/\1compileSdk = 36/' app/build.gradle
+          sed -i 's/^\( *\)minSdk = .*/\1minSdk = 24/' app/build.gradle
+          if ! grep -q 'android.permission.INTERNET' app/src/main/AndroidManifest.xml; then
+            sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <application|' app/src/main/AndroidManifest.xml
+          fi
 
       - name: Build APK
         working-directory: WEURA
