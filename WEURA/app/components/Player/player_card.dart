@@ -13,10 +13,6 @@ class PlayerCard extends StatelessWidget {
   final Map<String, dynamic> data;
   final VoidCallback? onShare;
 
-  // ---------------------------------------------------------------------------
-  // Build
-  // ---------------------------------------------------------------------------
-
   @override
   Widget build(BuildContext context) {
     final colors = WeuraColors.of(context);
@@ -102,7 +98,6 @@ class PlayerCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Current Club (highlight)
                   if (currentClub.isNotEmpty) ...[
                     _infoRow(
                       colors,
@@ -114,7 +109,6 @@ class PlayerCard extends StatelessWidget {
                     const SizedBox(height: 12),
                   ],
 
-                  // Last Transfer
                   if (lastTransfer.isNotEmpty) ...[
                     _infoRow(
                       colors,
@@ -125,7 +119,6 @@ class PlayerCard extends StatelessWidget {
                     const SizedBox(height: 12),
                   ],
 
-                  // Market Value
                   if (marketValue.isNotEmpty) ...[
                     _infoRow(
                       colors,
@@ -136,7 +129,6 @@ class PlayerCard extends StatelessWidget {
                     const SizedBox(height: 12),
                   ],
 
-                  // Stats
                   if (goals.isNotEmpty ||
                       assists.isNotEmpty ||
                       season.isNotEmpty) ...[
@@ -150,7 +142,6 @@ class PlayerCard extends StatelessWidget {
                     const SizedBox(height: 14),
                   ],
 
-                  // Trophies
                   if (trophies.isNotEmpty) ...[
                     _miniSection(
                       colors,
@@ -160,8 +151,6 @@ class PlayerCard extends StatelessWidget {
                     const SizedBox(height: 12),
                   ],
 
-                  // Latest News (English with EN label)
-                  // Only show if it's DIFFERENT from the description.
                   if (latestNews.isNotEmpty &&
                       !_isDuplicateOf(latestNews, description)) ...[
                     _englishSection(
@@ -172,7 +161,6 @@ class PlayerCard extends StatelessWidget {
                     const SizedBox(height: 12),
                   ],
 
-                  // Bio / Description (English with EN label)
                   if (description.isNotEmpty) ...[
                     _englishSection(
                       colors,
@@ -193,10 +181,6 @@ class PlayerCard extends StatelessWidget {
       ),
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // Header
-  // ---------------------------------------------------------------------------
 
   Widget _buildHeader({
     required WeuraColors colors,
@@ -391,10 +375,6 @@ class PlayerCard extends StatelessWidget {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // English section with EN label
-  // ---------------------------------------------------------------------------
-
   Widget _englishSection(
     WeuraColors colors, {
     required String title,
@@ -453,10 +433,6 @@ class PlayerCard extends StatelessWidget {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Helpers — strings
-  // ---------------------------------------------------------------------------
-
   String _str(dynamic value, [String fallback = '']) {
     if (value == null) return fallback;
     final s = value.toString().trim();
@@ -470,15 +446,34 @@ class PlayerCard extends StatelessWidget {
     return raw;
   }
 
+  /// Trims a long bio without cutting mid-sentence.
+  ///
+  /// Order of preference:
+  ///   1. Last sentence-ending punctuation (". ", "؟ ", "! " etc.)
+  ///   2. Last space (append "..." to signal continuation)
+  ///   3. Fallback: hard cut + "..."
   String _trimBio(String raw) {
     const maxLen = 350;
     if (raw.length <= maxLen) return raw;
 
     final sliced = raw.substring(0, maxLen);
-    final lastDot = sliced.lastIndexOf('. ');
-    if (lastDot > 150) {
-      return sliced.substring(0, lastDot + 1).trim();
+
+    // 1. Prefer a clean sentence end.
+    final endings = ['. ', '؟ ', '! ', '? ', '。', '।'];
+    for (final end in endings) {
+      final idx = sliced.lastIndexOf(end);
+      if (idx > 150) {
+        return sliced.substring(0, idx + end.length).trim();
+      }
     }
+
+    // 2. No sentence end → cut at last space to avoid mid-word break.
+    final lastSpace = sliced.lastIndexOf(' ');
+    if (lastSpace > 200) {
+      return '${sliced.substring(0, lastSpace).trim()}...';
+    }
+
+    // 3. Fallback.
     return '$sliced...';
   }
 
@@ -504,10 +499,6 @@ class PlayerCard extends StatelessWidget {
         .where((s) => s.isNotEmpty)
         .toList();
   }
-
-  // ---------------------------------------------------------------------------
-  // Translations
-  // ---------------------------------------------------------------------------
 
   String _translatePosition(String raw) {
     if (raw.isEmpty) return '';
@@ -733,10 +724,6 @@ class PlayerCard extends StatelessWidget {
     return raw;
   }
 
-  // ---------------------------------------------------------------------------
-  // Helpers — formats
-  // ---------------------------------------------------------------------------
-
   String _cleanHeight(String raw) {
     if (raw.isEmpty) return '';
 
@@ -786,10 +773,6 @@ class PlayerCard extends StatelessWidget {
       return '';
     }
   }
-
-  // ---------------------------------------------------------------------------
-  // Widgets — smaller pieces
-  // ---------------------------------------------------------------------------
 
   Widget _fallbackAvatar(WeuraColors colors, String name) {
     final letter = name.isNotEmpty ? name[0].toUpperCase() : '?';
@@ -888,6 +871,11 @@ class PlayerCard extends StatelessWidget {
     required String goals,
     required String assists,
   }) {
+    final items = <Widget>[];
+    if (season.isNotEmpty) items.add(_statItem(colors, season, 'الموسم'));
+    if (goals.isNotEmpty) items.add(_statItem(colors, goals, 'أهداف'));
+    if (assists.isNotEmpty) items.add(_statItem(colors, assists, 'صناعة'));
+
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
       decoration: BoxDecoration(
@@ -898,20 +886,22 @@ class PlayerCard extends StatelessWidget {
         ),
       ),
       child: Row(
-        children: [
-          if (season.isNotEmpty)
-            Expanded(child: _statItem(colors, season, 'الموسم')),
-          if (goals.isNotEmpty)
-            Expanded(child: _statItem(colors, goals, 'أهداف')),
-          if (assists.isNotEmpty)
-            Expanded(child: _statItem(colors, assists, 'صناعة')),
-        ],
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: items
+            .map(
+              (w) => Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: w,
+              ),
+            )
+            .toList(),
       ),
     );
   }
 
   Widget _statItem(WeuraColors colors, String value, String label) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Text(
           value,
@@ -960,10 +950,6 @@ class PlayerCard extends StatelessWidget {
       ],
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // Helpers — photo
-  // ---------------------------------------------------------------------------
 
   String _pickPhoto(Map<String, dynamic> player) {
     final candidates = [
