@@ -46,8 +46,8 @@ jobs:
           grep -nE 'compileSdk|minSdk|kotlin' app/build.gradle settings.gradle || true
           echo ""
 
-          # Kotlin
-          sed -i 's|version "[0-9][0-9.]*"|version "2.1.0"|' settings.gradle 2>/dev/null || true
+          # Kotlin ONLY - target the specific plugin id
+          sed -i 's|id "org.jetbrains.kotlin.android" version "[^"]*"|id "org.jetbrains.kotlin.android" version "2.1.0"|' settings.gradle 2>/dev/null || true
 
           # compileSdk - match whole line
           sed -i 's|^\(\s*\)compileSdk = .*|\1compileSdk = 36|' app/build.gradle 2>/dev/null || true
