@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../core/Settings/app_settings.dart';
 import '../../core/Theme/weura_theme.dart';
@@ -29,7 +28,6 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
   String? _error;
   bool _didComplete = false;
 
-  /// 'ar' or 'en'
   String _requestedLang = 'ar';
 
   @override
@@ -62,10 +60,6 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
     super.dispose();
   }
 
-  // ---------------------------------------------------------------------------
-  // Flow
-  // ---------------------------------------------------------------------------
-
   Future<void> _start() async {
     if (_didComplete) return;
 
@@ -76,7 +70,7 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
     if (!ok) {
       setState(() {
         _isAvailable = false;
-        _error = 'التعرف على الصوت غير متوفر في هذا الجهاز.';
+        _error = 'Voice recognition is not available on this device.';
       });
       return;
     }
@@ -95,13 +89,11 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
     }
 
     final activeLocale = localeId ?? fallbackLocale;
-    final activeLang =
-        localeId != null ? _requestedLang : fallbackLang;
+    final activeLang = localeId != null ? _requestedLang : fallbackLang;
 
     if (activeLocale == null) {
       setState(() {
-        _error = 'لا توجد لغة تعرف صوتي متوفرة في هذا الجهاز.\n'
-            'ثبّت حزمة الصوت من متجر Play.';
+        _error = 'No speech recognition language is available on this device.';
         _isListening = false;
       });
       return;
@@ -113,8 +105,8 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
 
       if (localeId == null && fallbackLang != null) {
         _error = activeLang == 'en'
-            ? 'العربية غير مثبتة في جهازك. جاري الاستماع بالإنجليزية.'
-            : 'الإنجليزية غير مثبتة. جاري الاستماع بالعربية.';
+            ? 'Arabic is not installed. Listening in English.'
+            : 'English is not installed. Listening in Arabic.';
       }
     });
 
@@ -141,7 +133,6 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
     if (_requestedLang == prefix) return;
 
     await _voice.cancel();
-
     if (!mounted) return;
 
     setState(() {
@@ -152,7 +143,6 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
     });
 
     await Future<void>.delayed(const Duration(milliseconds: 200));
-
     if (!mounted) return;
 
     await _start();
@@ -175,10 +165,6 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
     widget.onSend(text);
     Navigator.of(context).pop();
   }
-
-  // ---------------------------------------------------------------------------
-  // Build
-  // ---------------------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
@@ -214,7 +200,6 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
                 const SizedBox(height: 18),
                 _buildMic(colors),
                 const SizedBox(height: 18),
-
                 if (_controller.text.isNotEmpty)
                   _transcriptBox(colors)
                 else if (_error != null)
@@ -229,9 +214,7 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
                       fontSize: 13,
                     ),
                   ),
-
                 const SizedBox(height: 18),
-
                 Row(
                   children: [
                     Expanded(
@@ -246,9 +229,9 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
                       child: _filledButton(
                         colors: colors,
                         label: canSend ? 'إرسال' : 'إيقاف',
-                        asset: canSend
-                            ? 'assets/icons/send.svg'
-                            : 'assets/icons/stop.svg',
+                        icon: canSend
+                            ? Icons.arrow_upward_rounded
+                            : Icons.stop_rounded,
                         enabled: canSend || _isListening,
                         onTap: () {
                           if (canSend) {
@@ -261,20 +244,6 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
                     ),
                   ],
                 ),
-
-                const SizedBox(height: 10),
-
-                GestureDetector(
-                  onTap: () => _showArabicHelp(colors),
-                  child: Text(
-                    'اللغة العربية غير مثبتة؟ اضغط هنا',
-                    style: TextStyle(
-                      color: colors.accentGlow,
-                      fontSize: 11,
-                      decoration: TextDecoration.underline,
-                    ),
-                  ),
-                ),
               ],
             ),
           ),
@@ -282,10 +251,6 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
       ),
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // Sub-widgets
-  // ---------------------------------------------------------------------------
 
   Widget _languageToggle(WeuraColors colors) {
     return Container(
@@ -298,17 +263,9 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _langChip(
-            colors: colors,
-            label: 'العربية',
-            code: 'ar',
-          ),
+          _langChip(colors: colors, label: 'العربية', code: 'ar'),
           const SizedBox(width: 4),
-          _langChip(
-            colors: colors,
-            label: 'English',
-            code: 'en',
-          ),
+          _langChip(colors: colors, label: 'English', code: 'en'),
         ],
       ),
     );
@@ -341,8 +298,7 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
             style: TextStyle(
               color: selected ? Colors.white : colors.textSecondary,
               fontSize: 13,
-              fontWeight:
-                  selected ? FontWeight.w700 : FontWeight.w500,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
             ),
           ),
         ),
@@ -388,14 +344,10 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
                   ),
                 ),
                 child: Center(
-                  child: SvgPicture.asset(
-                    'assets/icons/microphone.svg',
-                    width: 28,
-                    height: 28,
-                    colorFilter: ColorFilter.mode(
-                      baseColor,
-                      BlendMode.srcIn,
-                    ),
+                  child: Icon(
+                    Icons.mic_none_rounded,
+                    size: 30,
+                    color: baseColor,
                   ),
                 ),
               ),
@@ -508,7 +460,7 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
   Widget _filledButton({
     required WeuraColors colors,
     required String label,
-    required String asset,
+    required IconData icon,
     required bool enabled,
     required VoidCallback onTap,
   }) {
@@ -527,14 +479,7 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              ColorFiltered(
-                colorFilter: ColorFilter.mode(fg, BlendMode.srcIn),
-                child: SvgPicture.asset(
-                  asset,
-                  width: 18,
-                  height: 18,
-                ),
-              ),
+              Icon(icon, size: 18, color: fg),
               const SizedBox(width: 8),
               Text(
                 label,
@@ -548,47 +493,6 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
           ),
         ),
       ),
-    );
-  }
-
-  // ---------------------------------------------------------------------------
-  // Help dialog
-  // ---------------------------------------------------------------------------
-
-  void _showArabicHelp(WeuraColors colors) {
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        return Directionality(
-          textDirection: TextDirection.rtl,
-          child: AlertDialog(
-            backgroundColor: colors.surfaceAlt,
-            title: Text(
-              'تنشيط اللغة العربية',
-              style: TextStyle(color: colors.textPrimary),
-            ),
-            content: Text(
-              'باش يتعرف WEURA على صوتك بالعربية:\n\n'
-              '1. افتح إعدادات التلفون\n'
-              '2. Google → الإدخال الصوتي\n'
-              '3. اللغات → أضف العربية (السعودية)\n'
-              '4. حمّل الحزمة (10 MB)\n\n'
-              'بعدها رجع للتطبيق وجرب مرة ثانية.',
-              style: TextStyle(
-                color: colors.textSecondary,
-                fontSize: 13,
-                height: 1.6,
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('حسناً'),
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 }
