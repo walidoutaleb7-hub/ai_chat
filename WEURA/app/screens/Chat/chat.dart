@@ -2016,6 +2016,10 @@ class _ChatScreenState extends State<ChatScreen>
     );
   }
 
+  // ===========================================================================
+  // BUILD
+  // ===========================================================================
+
   @override
   Widget build(BuildContext context) {
     final colors = WeuraColors.of(context);
@@ -2023,6 +2027,7 @@ class _ChatScreenState extends State<ChatScreen>
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: colors.background,
+      resizeToAvoidBottomInset: false,
       drawer: _buildDrawer(colors),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
@@ -2100,14 +2105,19 @@ class _ChatScreenState extends State<ChatScreen>
                 _attachedImageChip(colors, _attachedImage!),
               if (_attachedFile != null)
                 _attachedFileChip(colors, _attachedFile!),
-              WeuraComposer(
-                enabled: true,
-                isLoading: _isLoading,
-                onSend: _sendMessage,
-                onAttach: () => _showAttachmentSheet(colors),
-                onMode: () => _showModePicker(colors),
-                onVoice: () => _handleVoice(colors),
-                onStop: _cancelRequest,
+              Padding(
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(context).viewInsets.bottom,
+                ),
+                child: WeuraComposer(
+                  enabled: true,
+                  isLoading: _isLoading,
+                  onSend: _sendMessage,
+                  onAttach: () => _showAttachmentSheet(colors),
+                  onMode: () => _showModePicker(colors),
+                  onVoice: () => _handleVoice(colors),
+                  onStop: _cancelRequest,
+                ),
               ),
             ],
           ),
@@ -5017,6 +5027,7 @@ class _FootballPainter extends CustomPainter {
 
 // ---------------------------------------------------------------------------
 // Cinematic chat background — aurora + stars + grid + glow + vignette
+// (Theme-aware: adapts to light/dark)
 // ---------------------------------------------------------------------------
 
 class _ChatBackground extends StatefulWidget {
@@ -5065,6 +5076,29 @@ class _ChatBackgroundState extends State<_ChatBackground>
   @override
   Widget build(BuildContext context) {
     final colors = widget.colors;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // Theme-aware palette
+    final gradientTop = isDark
+        ? const Color(0xFF04060B)
+        : const Color(0xFFF8FAFF);
+    final gradientMid = isDark
+        ? const Color(0xFF060912)
+        : const Color(0xFFF0F4FF);
+    final gradientBottom = isDark
+        ? const Color(0xFF04060B)
+        : const Color(0xFFF8FAFF);
+
+    final starColor = isDark
+        ? Colors.white
+        : const Color(0xFF1A2540);
+
+    final gridColor = isDark
+        ? colors.accentGlow.withValues(alpha: 0.035)
+        : colors.accentGlow.withValues(alpha: 0.06);
+
+    final glowOpacity = isDark ? 1.0 : 0.55;
+    final vignetteOpacity = isDark ? 0.35 : 0.06;
 
     return RepaintBoundary(
       child: Container(
@@ -5073,16 +5107,17 @@ class _ChatBackgroundState extends State<_ChatBackground>
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              const Color(0xFF04060B),
-              const Color(0xFF060912),
+              gradientTop,
+              gradientMid,
               colors.background,
-              const Color(0xFF04060B),
+              gradientBottom,
             ],
             stops: const [0.0, 0.3, 0.65, 1.0],
           ),
         ),
         child: Stack(
           children: [
+            // Aurora blobs
             AnimatedBuilder(
               animation: _auroraController,
               builder: (context, _) {
@@ -5092,10 +5127,13 @@ class _ChatBackgroundState extends State<_ChatBackground>
                     progress: _auroraController.value,
                     blue: colors.accent,
                     glow: colors.accentGlow,
+                    intensity: isDark ? 1.0 : 0.55,
                   ),
                 );
               },
             ),
+
+            // Floating stars
             AnimatedBuilder(
               animation: Listenable.merge([
                 _starsController,
@@ -5107,17 +5145,20 @@ class _ChatBackgroundState extends State<_ChatBackground>
                   painter: _StarsPainter(
                     drift: _starsController.value,
                     twinkle: _twinkleController.value,
-                    color: colors.accentGlow,
+                    color: starColor,
+                    intensity: isDark ? 1.0 : 0.45,
                   ),
                 );
               },
             ),
+
+            // Faint diagonal grid
             CustomPaint(
               size: Size.infinite,
-              painter: _GridOverlayPainter(
-                color: colors.accentGlow.withValues(alpha: 0.035),
-              ),
+              painter: _GridOverlayPainter(color: gridColor),
             ),
+
+            // Bottom glow
             Positioned(
               left: 0,
               right: 0,
@@ -5130,8 +5171,10 @@ class _ChatBackgroundState extends State<_ChatBackground>
                       center: const Alignment(0, 1.2),
                       radius: 0.9,
                       colors: [
-                        colors.accent.withValues(alpha: 0.18),
-                        colors.accent.withValues(alpha: 0.06),
+                        colors.accent
+                            .withValues(alpha: 0.18 * glowOpacity),
+                        colors.accent
+                            .withValues(alpha: 0.06 * glowOpacity),
                         Colors.transparent,
                       ],
                       stops: const [0.0, 0.5, 1.0],
@@ -5140,6 +5183,8 @@ class _ChatBackgroundState extends State<_ChatBackground>
                 ),
               ),
             ),
+
+            // Top glow
             Positioned(
               left: 0,
               right: 0,
@@ -5152,7 +5197,8 @@ class _ChatBackgroundState extends State<_ChatBackground>
                       center: const Alignment(0, -1.5),
                       radius: 1.1,
                       colors: [
-                        colors.accentGlow.withValues(alpha: 0.10),
+                        colors.accentGlow
+                            .withValues(alpha: 0.10 * glowOpacity),
                         Colors.transparent,
                       ],
                     ),
@@ -5160,6 +5206,8 @@ class _ChatBackgroundState extends State<_ChatBackground>
                 ),
               ),
             ),
+
+            // Vignette
             Positioned.fill(
               child: IgnorePointer(
                 child: Container(
@@ -5169,7 +5217,7 @@ class _ChatBackgroundState extends State<_ChatBackground>
                       radius: 1.0,
                       colors: [
                         Colors.transparent,
-                        Colors.black.withValues(alpha: 0.35),
+                        Colors.black.withValues(alpha: vignetteOpacity),
                       ],
                       stops: const [0.55, 1.0],
                     ),
@@ -5189,11 +5237,13 @@ class _AuroraPainter extends CustomPainter {
     required this.progress,
     required this.blue,
     required this.glow,
+    this.intensity = 1.0,
   });
 
   final double progress;
   final Color blue;
   final Color glow;
+  final double intensity;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -5205,7 +5255,7 @@ class _AuroraPainter extends CustomPainter {
       cx: size.width * (0.30 + 0.15 * math.sin(t)),
       cy: size.height * (0.20 + 0.10 * math.cos(t * 0.8)),
       radius: size.width * 0.60,
-      color: blue.withValues(alpha: 0.16),
+      color: blue.withValues(alpha: 0.16 * intensity),
     );
 
     _blob(
@@ -5214,7 +5264,7 @@ class _AuroraPainter extends CustomPainter {
       cx: size.width * (0.75 + 0.10 * math.cos(t * 0.7)),
       cy: size.height * (0.45 + 0.12 * math.sin(t * 0.9)),
       radius: size.width * 0.55,
-      color: glow.withValues(alpha: 0.14),
+      color: glow.withValues(alpha: 0.14 * intensity),
     );
 
     _blob(
@@ -5223,7 +5273,8 @@ class _AuroraPainter extends CustomPainter {
       cx: size.width * (0.50 + 0.18 * math.sin(t * 0.5 + 1.2)),
       cy: size.height * (0.80 + 0.08 * math.cos(t * 0.6)),
       radius: size.width * 0.65,
-      color: const Color(0xFF8B5CF6).withValues(alpha: 0.10),
+      color: const Color(0xFF8B5CF6)
+          .withValues(alpha: 0.10 * intensity),
     );
   }
 
@@ -5250,7 +5301,8 @@ class _AuroraPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _AuroraPainter oldDelegate) {
-    return oldDelegate.progress != progress;
+    return oldDelegate.progress != progress ||
+        oldDelegate.intensity != intensity;
   }
 }
 
@@ -5259,11 +5311,13 @@ class _StarsPainter extends CustomPainter {
     required this.drift,
     required this.twinkle,
     required this.color,
+    this.intensity = 1.0,
   });
 
   final double drift;
   final double twinkle;
   final Color color;
+  final double intensity;
 
   static final List<_StarSeed> _stars = _generateStars();
 
@@ -5299,20 +5353,24 @@ class _StarsPainter extends CustomPainter {
       canvas.drawCircle(
         pos,
         star.size * 3.5,
-        Paint()..color = color.withValues(alpha: 0.10 * tw),
+        Paint()
+          ..color = color.withValues(alpha: 0.10 * tw * intensity),
       );
 
       canvas.drawCircle(
         pos,
         star.size,
-        Paint()..color = Colors.white.withValues(alpha: 0.85 * tw),
+        Paint()
+          ..color = color.withValues(alpha: 0.85 * tw * intensity),
       );
     }
   }
 
   @override
   bool shouldRepaint(covariant _StarsPainter oldDelegate) {
-    return oldDelegate.drift != drift || oldDelegate.twinkle != twinkle;
+    return oldDelegate.drift != drift ||
+        oldDelegate.twinkle != twinkle ||
+        oldDelegate.intensity != intensity;
   }
 }
 
