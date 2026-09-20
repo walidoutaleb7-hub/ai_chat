@@ -8,7 +8,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter_highlight/themes/atom-one-dark.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:gal/gal.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
@@ -1567,6 +1566,10 @@ class _ChatScreenState extends State<ChatScreen>
     );
   }
 
+  // ===========================================================================
+  // DRAWER
+  // ===========================================================================
+
   Widget _buildDrawer(WeuraColors colors) {
     return Drawer(
       backgroundColor: colors.surfaceElevated,
@@ -1581,13 +1584,13 @@ class _ChatScreenState extends State<ChatScreen>
             _drawerSectionTitle(colors, 'Workspace'),
             _drawerItem(
               colors: colors,
-              icon: 'assets/icons/history.svg',
+              icon: Icons.history_rounded,
               label: 'History',
               onTap: _openHistory,
             ),
             _drawerItem(
               colors: colors,
-              icon: 'assets/icons/mode.svg',
+              icon: Icons.memory_rounded,
               label: 'Memory',
               onTap: _openMemory,
             ),
@@ -1595,7 +1598,7 @@ class _ChatScreenState extends State<ChatScreen>
             _drawerSectionTitle(colors, 'App'),
             _drawerItem(
               colors: colors,
-              icon: 'assets/icons/settings.svg',
+              icon: Icons.settings_outlined,
               label: 'Settings',
               onTap: _openSettings,
             ),
@@ -1626,7 +1629,6 @@ class _ChatScreenState extends State<ChatScreen>
           Container(
             width: 44,
             height: 44,
-            padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
               color: colors.surface,
               borderRadius: BorderRadius.circular(13),
@@ -1634,7 +1636,17 @@ class _ChatScreenState extends State<ChatScreen>
                 color: colors.accentGlow.withValues(alpha: 0.22),
               ),
             ),
-            child: SvgPicture.asset('assets/logo/weura.svg'),
+            child: Center(
+              child: Text(
+                'W',
+                style: TextStyle(
+                  color: colors.accentGlow,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  height: 1,
+                ),
+              ),
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -1684,10 +1696,10 @@ class _ChatScreenState extends State<ChatScreen>
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                SvgPicture.asset(
-                  'assets/icons/plus.svg',
-                  width: 20,
-                  height: 20,
+                Icon(
+                  Icons.add_rounded,
+                  size: 22,
+                  color: colors.textPrimary,
                 ),
                 const SizedBox(width: 8),
                 Text(
@@ -1726,7 +1738,7 @@ class _ChatScreenState extends State<ChatScreen>
 
   Widget _drawerItem({
     required WeuraColors colors,
-    required String icon,
+    required IconData icon,
     required String label,
     required VoidCallback onTap,
   }) {
@@ -1744,7 +1756,7 @@ class _ChatScreenState extends State<ChatScreen>
             ),
             child: Row(
               children: [
-                SvgPicture.asset(icon, width: 22, height: 22),
+                Icon(icon, size: 22, color: colors.textPrimary),
                 const SizedBox(width: 14),
                 Text(
                   label,
@@ -1761,6 +1773,10 @@ class _ChatScreenState extends State<ChatScreen>
       ),
     );
   }
+
+  // ===========================================================================
+  // SHEETS
+  // ===========================================================================
 
   void _showAttachmentSheet(WeuraColors colors) {
     showModalBottomSheet<void>(
@@ -1789,7 +1805,7 @@ class _ChatScreenState extends State<ChatScreen>
                 const SizedBox(height: 14),
                 _attachmentOption(
                   colors: colors,
-                  asset: 'assets/icons/home.svg',
+                  icon: Icons.photo_library_outlined,
                   title: 'Photos',
                   subtitle: 'Attach an image (analyze or edit)',
                   onTap: () {
@@ -1799,7 +1815,7 @@ class _ChatScreenState extends State<ChatScreen>
                 ),
                 _attachmentOption(
                   colors: colors,
-                  asset: 'assets/icons/camera.svg',
+                  icon: Icons.camera_alt_outlined,
                   title: 'Camera',
                   subtitle: 'Capture and attach an image',
                   onTap: () {
@@ -1809,7 +1825,7 @@ class _ChatScreenState extends State<ChatScreen>
                 ),
                 _attachmentOption(
                   colors: colors,
-                  asset: 'assets/icons/file.svg',
+                  icon: Icons.insert_drive_file_outlined,
                   title: 'Files',
                   subtitle: 'PDF, DOCX, XLSX, TXT, CSV',
                   onTap: () {
@@ -1827,7 +1843,7 @@ class _ChatScreenState extends State<ChatScreen>
 
   Widget _attachmentOption({
     required WeuraColors colors,
-    required String asset,
+    required IconData icon,
     required String title,
     required String subtitle,
     required VoidCallback onTap,
@@ -1836,10 +1852,18 @@ class _ChatScreenState extends State<ChatScreen>
       onTap: onTap,
       contentPadding:
           const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-      leading: SizedBox(
+      leading: Container(
         width: 40,
         height: 40,
-        child: SvgPicture.asset(asset),
+        decoration: BoxDecoration(
+          color: colors.accentSoft,
+          borderRadius: BorderRadius.circular(11),
+        ),
+        child: Icon(
+          icon,
+          size: 22,
+          color: colors.accentGlow,
+        ),
       ),
       title: Text(
         title,
@@ -1852,10 +1876,10 @@ class _ChatScreenState extends State<ChatScreen>
         subtitle,
         style: TextStyle(color: colors.textMuted, fontSize: 12),
       ),
-      trailing: SvgPicture.asset(
-        'assets/icons/send.svg',
-        width: 18,
-        height: 18,
+      trailing: Icon(
+        Icons.arrow_forward_ios_rounded,
+        size: 16,
+        color: colors.textMuted,
       ),
     );
   }
@@ -1894,10 +1918,12 @@ class _ChatScreenState extends State<ChatScreen>
                     tileColor: selected
                         ? colors.accent.withValues(alpha: 0.10)
                         : null,
-                    leading: SvgPicture.asset(
-                      'assets/icons/mode.svg',
-                      width: 23,
-                      height: 23,
+                    leading: Icon(
+                      _modeIcon(mode),
+                      size: 22,
+                      color: selected
+                          ? colors.accentGlow
+                          : colors.textPrimary,
                     ),
                     title: Text(
                       _modeName(mode),
@@ -1907,10 +1933,10 @@ class _ChatScreenState extends State<ChatScreen>
                       ),
                     ),
                     trailing: selected
-                        ? SvgPicture.asset(
-                            'assets/icons/check.svg',
-                            width: 21,
-                            height: 21,
+                        ? Icon(
+                            Icons.check_rounded,
+                            size: 22,
+                            color: colors.accentGlow,
                           )
                         : null,
                     onTap: () {
@@ -1925,6 +1951,29 @@ class _ChatScreenState extends State<ChatScreen>
         );
       },
     );
+  }
+
+  IconData _modeIcon(AIMode mode) {
+    switch (mode) {
+      case AIMode.auto:
+        return Icons.auto_awesome_rounded;
+      case AIMode.smart:
+        return Icons.psychology_rounded;
+      case AIMode.fast:
+        return Icons.flash_on_rounded;
+      case AIMode.research:
+        return Icons.travel_explore_rounded;
+      case AIMode.code:
+        return Icons.code_rounded;
+      case AIMode.creative:
+        return Icons.brush_rounded;
+      case AIMode.vision:
+        return Icons.visibility_rounded;
+      case AIMode.files:
+        return Icons.folder_open_rounded;
+      case AIMode.translation:
+        return Icons.translate_rounded;
+    }
   }
 
   String _modeName(AIMode mode) {
@@ -1983,10 +2032,10 @@ class _ChatScreenState extends State<ChatScreen>
           onPressed: () {
             _scaffoldKey.currentState?.openDrawer();
           },
-          icon: SvgPicture.asset(
-            'assets/icons/menu.svg',
-            width: 23,
-            height: 23,
+          icon: Icon(
+            Icons.menu_rounded,
+            size: 24,
+            color: colors.textPrimary,
           ),
         ),
         title: Text(
@@ -2001,10 +2050,10 @@ class _ChatScreenState extends State<ChatScreen>
           IconButton(
             tooltip: 'AI Mode',
             onPressed: () => _showModePicker(colors),
-            icon: SvgPicture.asset(
-              'assets/icons/mode.svg',
-              width: 23,
-              height: 23,
+            icon: Icon(
+              Icons.tune_rounded,
+              size: 24,
+              color: colors.textPrimary,
             ),
           ),
         ],
@@ -2162,15 +2211,14 @@ class _ChatScreenState extends State<ChatScreen>
             Container(
               width: 36,
               height: 36,
-              padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 color: colors.accentSoft,
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: SvgPicture.asset(
-                'assets/icons/file.svg',
-                width: 20,
-                height: 20,
+              child: Icon(
+                Icons.insert_drive_file_outlined,
+                size: 20,
+                color: colors.accentGlow,
               ),
             ),
             const SizedBox(width: 10),
@@ -2234,10 +2282,10 @@ class _ChatScreenState extends State<ChatScreen>
                   color: colors.accentGlow.withValues(alpha: 0.18),
                 ),
               ),
-              child: SvgPicture.asset(
-                'assets/icons/mode.svg',
-                width: 31,
-                height: 31,
+              child: Icon(
+                Icons.auto_awesome_rounded,
+                size: 32,
+                color: colors.accentGlow,
               ),
             ),
             const SizedBox(height: 20),
@@ -2524,10 +2572,10 @@ class _ChatScreenState extends State<ChatScreen>
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      SvgPicture.asset(
-                        'assets/icons/history.svg',
-                        width: 16,
-                        height: 16,
+                      Icon(
+                        Icons.refresh_rounded,
+                        size: 18,
+                        color: colors.accentGlow,
                       ),
                       const SizedBox(width: 6),
                       Text(
@@ -4261,9 +4309,7 @@ class _WeuraThinkingState extends State<_WeuraThinking>
                 ),
               ),
             ),
-
             const SizedBox(height: 10),
-
             AnimatedBuilder(
               animation: _shimmerController,
               builder: (context, _) {
@@ -4296,9 +4342,7 @@ class _WeuraThinkingState extends State<_WeuraThinking>
                 );
               },
             ),
-
             const SizedBox(height: 6),
-
             Row(
               mainAxisSize: MainAxisSize.min,
               children: List.generate(3, (i) {
@@ -4748,9 +4792,7 @@ class _FootballThinkingState extends State<_FootballThinking>
                 ),
               ),
             ),
-
             const SizedBox(height: 14),
-
             AnimatedBuilder(
               animation: _shimmerController,
               builder: (context, _) {
@@ -4783,9 +4825,7 @@ class _FootballThinkingState extends State<_FootballThinking>
                 );
               },
             ),
-
             const SizedBox(height: 6),
-
             Row(
               mainAxisSize: MainAxisSize.min,
               children: List.generate(3, (i) {
@@ -5056,7 +5096,6 @@ class _ChatBackgroundState extends State<_ChatBackground>
                 );
               },
             ),
-
             AnimatedBuilder(
               animation: Listenable.merge([
                 _starsController,
@@ -5073,14 +5112,12 @@ class _ChatBackgroundState extends State<_ChatBackground>
                 );
               },
             ),
-
             CustomPaint(
               size: Size.infinite,
               painter: _GridOverlayPainter(
                 color: colors.accentGlow.withValues(alpha: 0.035),
               ),
             ),
-
             Positioned(
               left: 0,
               right: 0,
@@ -5103,7 +5140,6 @@ class _ChatBackgroundState extends State<_ChatBackground>
                 ),
               ),
             ),
-
             Positioned(
               left: 0,
               right: 0,
@@ -5124,7 +5160,6 @@ class _ChatBackgroundState extends State<_ChatBackground>
                 ),
               ),
             ),
-
             Positioned.fill(
               child: IgnorePointer(
                 child: Container(
