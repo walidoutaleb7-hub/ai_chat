@@ -137,14 +137,11 @@ const TRANSLATOR_SYSTEM_PROMPT = [
   '- If you do not know the player, return exactly: UNKNOWN',
 ].join('\n');
 
-/**
- * Normalizes Arabic diacritics + spaces so "كريم  بنزيمة" === "كريم بنزيمة".
- */
 function normalizeName(raw: string): string {
   return raw
     .trim()
     .replace(/\s+/g, ' ')
-    .replace(/[\u064B-\u065F\u0670]/g, ''); // remove tashkeel
+    .replace(/[\u064B-\u065F\u0670]/g, '');
 }
 
 async function translatePlayerName(raw: string): Promise<string> {
@@ -153,20 +150,16 @@ async function translatePlayerName(raw: string): Promise<string> {
 
   const lower = clean.toLowerCase();
 
-  // 1. Exact match (fast path, case-insensitive)
   if (FAST_ALIASES[clean]) return FAST_ALIASES[clean];
   for (const [ar, en] of Object.entries(FAST_ALIASES)) {
     if (normalizeName(ar).toLowerCase() === lower) return en;
   }
 
-  // 2. Already Latin → return as-is.
   if (/^[\x00-\x7F\s.\-']+$/.test(clean)) return clean;
 
-  // 3. Cache lookup (before any network call)
   const cached = TRANSLATION_CACHE.get(clean);
   if (cached && cached.expiresAt > Date.now()) return cached.english;
 
-  // 4. Ask Groq to translate.
   const apiKey = process.env.GROQ_API_KEY?.trim();
   if (!apiKey) return clean;
 
@@ -300,7 +293,7 @@ async function tavilySearch(
 }
 
 /* ============================================================
- *  CLUB DETECTION (from description text)
+ *  CLUB DETECTION
  * ============================================================ */
 
 const CLUB_ALIASES: Record<string, string> = {
@@ -519,22 +512,17 @@ const EXTRACTOR_SYSTEM_PROMPT = [
   '  ✗ "negotiating with X"',
   '  ✗ Any RUMOR or SPECULATION',
   '',
-  'If you only find rumors → set currentClub to "" and let the',
-  'backend use TheSportsDB description as fallback.',
-  '',
   '═══ RULE 2 — lastTransfer ═══',
   'Format: "FromClub to ToClub (Year)".',
   'Only the transfer that brought him to the CURRENT club.',
-  'Do NOT combine transfers from different years.',
   'If unsure, leave "".',
   '',
   '═══ RULE 3 — latestNews ═══',
   'ONE short sentence in ENGLISH (max 200 chars).',
-  'Use the NEWEST search result. Not a rumor, not old news.',
+  'Use the NEWEST search result. Not a rumor.',
   '',
   '═══ RULE 4 — trophies ═══',
   'Array of STRINGS. Major trophies only.',
-  'Example: ["5x Champions League", "Euro 2016", "Nations League 2019"].',
   '',
   '═══ JSON SCHEMA ═══',
   '{',
@@ -718,7 +706,6 @@ router.get('/player', async (req, res) => {
   }
 
   try {
-    /* ---- 1. TheSportsDB ---- */
     let player: any = null;
 
     try {
@@ -770,7 +757,6 @@ router.get('/player', async (req, res) => {
       });
     }
 
-    /* ---- 2. Tavily ---- */
     const currentYear = new Date().getFullYear();
     const prevYear = currentYear - 1;
     const currentMonth = new Date().toLocaleString('en-US', {
@@ -810,7 +796,6 @@ router.get('/player', async (req, res) => {
       return db.localeCompare(da);
     });
 
-    /* ---- 3. Groq extractor (strict) ---- */
     const freshData = await extractPlayerData(
       englishName,
       player?.strNationality ?? '',
@@ -818,12 +803,10 @@ router.get('/player', async (req, res) => {
       uniqueResults.slice(0, 10),
     );
 
-    /* ---- 4. Fallback from description ---- */
     const fallback = extractFallbackFromDescription(
       player?.strDescriptionEN ?? '',
     );
 
-    /* ---- 5. Final merge with STRICT rules ---- */
     const finalData = freshData ?? {
       currentClub: '',
       currentClubCountry: '',
@@ -834,16 +817,8 @@ router.get('/player', async (req, res) => {
       latestNews: '',
     };
 
+    // ✅ Tavily (recent) has priority. TheSportsDB is fallback ONLY.
     if (!finalData.currentClub && fallback.currentClub) {
-      finalData.currentClub = fallback.currentClub;
-    }
-
-    if (
-      finalData.currentClub &&
-      fallback.currentClub &&
-      finalData.currentClub.toLowerCase() !==
-        fallback.currentClub.toLowerCase()
-    ) {
       finalData.currentClub = fallback.currentClub;
     }
 
@@ -864,7 +839,6 @@ router.get('/player', async (req, res) => {
       finalData.latestNews = '';
     }
 
-    /* ---- 6. Merge ---- */
     const nationality = String(player?.strNationality ?? '');
     const flag = flagEmoji(nationality);
 
