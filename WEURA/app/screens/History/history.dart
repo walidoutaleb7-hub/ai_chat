@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../core/History/chat_history.dart';
 import '../../core/Settings/app_settings.dart';
@@ -32,8 +31,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     super.dispose();
   }
 
-  bool get _isArabic =>
-      AppSettingsManager.instance.language == 'Arabic';
+  bool get _isArabic => AppSettingsManager.instance.language == 'Arabic';
 
   String _t(String en, String ar) => _isArabic ? ar : en;
 
@@ -128,8 +126,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               child: Text(_t('Cancel', 'إلغاء')),
             ),
             TextButton(
-              onPressed: () =>
-                  Navigator.pop(dialogContext, controller.text),
+              onPressed: () => Navigator.pop(dialogContext, controller.text),
               child: Text(_t('Save', 'حفظ')),
             ),
           ],
@@ -219,10 +216,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
         leading: IconButton(
           tooltip: _t('Back', 'رجوع'),
           onPressed: () => Navigator.pop(context),
-          icon: SvgPicture.asset(
-            'assets/icons/back.svg',
-            width: 23,
-            height: 23,
+          icon: Icon(
+            Icons.arrow_back_rounded,
+            size: 24,
+            color: colors.textPrimary,
           ),
         ),
         title: Text(
@@ -237,10 +234,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
             IconButton(
               tooltip: _t('Delete all', 'حذف الكل'),
               onPressed: () => _deleteAll(colors),
-              icon: SvgPicture.asset(
-                'assets/icons/close.svg',
-                width: 22,
-                height: 22,
+              icon: Icon(
+                Icons.delete_outline_rounded,
+                size: 24,
+                color: colors.textPrimary,
               ),
             ),
         ],
@@ -272,13 +269,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         'ابحث في المحادثات...',
                       ),
                       hintStyle: TextStyle(color: colors.textFaint),
-                      prefixIcon: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: SvgPicture.asset(
-                          'assets/icons/search.svg',
-                          width: 20,
-                          height: 20,
-                        ),
+                      prefixIcon: Icon(
+                        Icons.search_rounded,
+                        size: 22,
+                        color: colors.textMuted,
                       ),
                       suffixIcon: _search.isNotEmpty
                           ? IconButton(
@@ -286,10 +280,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                 _searchController.clear();
                                 setState(() => _search = '');
                               },
-                              icon: SvgPicture.asset(
-                                'assets/icons/close.svg',
-                                width: 18,
-                                height: 18,
+                              icon: Icon(
+                                Icons.close_rounded,
+                                size: 20,
+                                color: colors.textMuted,
                               ),
                             )
                           : null,
@@ -306,15 +300,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   child: chats.isEmpty
                       ? _emptyState(colors)
                       : ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(
-                            16,
-                            4,
-                            16,
-                            24,
-                          ),
+                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
                           itemCount: chats.length,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(height: 8),
+                          separatorBuilder: (_, __) => const SizedBox(height: 8),
                           itemBuilder: (context, index) {
                             return _chatTile(colors, chats[index]);
                           },
@@ -346,11 +334,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   color: colors.accentSoft,
                   borderRadius: BorderRadius.circular(13),
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.all(11),
-                  child: SvgPicture.asset(
-                    'assets/icons/history.svg',
-                  ),
+                child: Icon(
+                  Icons.chat_bubble_outline_rounded,
+                  size: 22,
+                  color: colors.accentGlow,
                 ),
               ),
               const SizedBox(width: 13),
@@ -401,10 +388,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               ),
               PopupMenuButton<String>(
                 color: colors.surfaceAlt,
-                icon: Icon(
-                  Icons.more_vert,
-                  color: colors.textMuted,
-                ),
+                icon: Icon(Icons.more_vert, color: colors.textMuted),
                 onSelected: (value) {
                   if (value == 'rename') {
                     _renameChat(chat, colors);
@@ -445,12 +429,22 @@ class _HistoryScreenState extends State<HistoryScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Opacity(
-              opacity: 0.3,
-              child: SvgPicture.asset(
-                'assets/icons/history.svg',
-                width: 55,
-                height: 55,
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                color: colors.accentSoft,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(
+                  color: colors.accentGlow.withValues(alpha: 0.18),
+                ),
+              ),
+              child: Icon(
+                isSearching
+                    ? Icons.search_off_rounded
+                    : Icons.history_rounded,
+                size: 36,
+                color: colors.accentGlow,
               ),
             ),
             const SizedBox(height: 18),
@@ -467,10 +461,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
             const SizedBox(height: 8),
             Text(
               isSearching
-                  ? _t(
-                      'Try a different search term.',
-                      'جرب كلمة بحث أخرى.',
-                    )
+                  ? _t('Try a different search term.', 'جرب كلمة بحث أخرى.')
                   : _t(
                       'Your conversations will appear here.',
                       'ستظهر محادثاتك هنا.',
