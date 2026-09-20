@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../core/Settings/app_settings.dart';
 import '../../core/Theme/weura_theme.dart';
@@ -72,16 +71,12 @@ class _WeuraComposerState extends State<WeuraComposer> {
     _focusNode.requestFocus();
   }
 
-  /// Called when the user presses the keyboard "Send" button
-  /// (only active when sendOnEnter is true).
   void _handleSubmitted(String value) {
     if (value.trim().isNotEmpty) {
       _send();
     }
   }
 
-  /// Manual key handler: on desktop/web, Enter sends when sendOnEnter.
-  /// On mobile, we rely on TextInputAction.
   KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
     if (event.logicalKey != LogicalKeyboardKey.enter) {
@@ -168,7 +163,7 @@ class _WeuraComposerState extends State<WeuraComposer> {
                 children: [
                   _svgButton(
                     colors: colors,
-                    asset: 'assets/icons/attachment.svg',
+                    icon: Icons.attach_file_rounded,
                     tooltip: 'Attach',
                     onPressed: widget.enabled && !widget.isLoading
                         ? widget.onAttach
@@ -176,7 +171,7 @@ class _WeuraComposerState extends State<WeuraComposer> {
                   ),
                   _svgButton(
                     colors: colors,
-                    asset: 'assets/icons/mode.svg',
+                    icon: Icons.tune_rounded,
                     tooltip: 'AI mode',
                     onPressed: widget.enabled && !widget.isLoading
                         ? widget.onMode
@@ -188,7 +183,7 @@ class _WeuraComposerState extends State<WeuraComposer> {
                   else ...[
                     _svgButton(
                       colors: colors,
-                      asset: 'assets/icons/microphone.svg',
+                      icon: Icons.mic_none_rounded,
                       tooltip: 'Voice',
                       onPressed: widget.enabled ? widget.onVoice : null,
                     ),
@@ -206,7 +201,7 @@ class _WeuraComposerState extends State<WeuraComposer> {
 
   Widget _svgButton({
     required WeuraColors colors,
-    required String asset,
+    required IconData icon,
     required String tooltip,
     required VoidCallback? onPressed,
   }) {
@@ -219,10 +214,10 @@ class _WeuraComposerState extends State<WeuraComposer> {
       icon: AnimatedOpacity(
         duration: const Duration(milliseconds: 150),
         opacity: active ? 1 : 0.28,
-        child: SvgPicture.asset(
-          asset,
-          width: 23,
-          height: 23,
+        child: Icon(
+          icon,
+          size: 24,
+          color: colors.textPrimary,
         ),
       ),
     );
@@ -250,10 +245,10 @@ class _WeuraComposerState extends State<WeuraComposer> {
             child: Center(
               child: Opacity(
                 opacity: _canSend ? 1 : 0.3,
-                child: SvgPicture.asset(
-                  'assets/icons/send.svg',
-                  width: 23,
-                  height: 23,
+                child: const Icon(
+                  Icons.arrow_upward_rounded,
+                  size: 23,
+                  color: Colors.white,
                 ),
               ),
             ),
@@ -282,10 +277,10 @@ class _WeuraComposerState extends State<WeuraComposer> {
               ),
             ),
             child: Center(
-              child: SvgPicture.asset(
-                'assets/icons/stop.svg',
-                width: 23,
-                height: 23,
+              child: Icon(
+                Icons.stop_rounded,
+                size: 23,
+                color: colors.accentGlow,
               ),
             ),
           ),
