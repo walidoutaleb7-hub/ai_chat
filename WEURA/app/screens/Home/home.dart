@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../core/Theme/weura_theme.dart';
 import '../Chat/chat.dart';
@@ -125,14 +124,14 @@ class _HomeScreenState extends State<HomeScreen>
         children: [
           _iconButton(
             colors: colors,
-            asset: 'assets/icons/history.svg',
+            icon: Icons.history_rounded,
             tooltip: 'History',
             onTap: _openHistory,
           ),
           const SizedBox(width: 4),
           _iconButton(
             colors: colors,
-            asset: 'assets/icons/user.svg',
+            icon: Icons.person_outline_rounded,
             tooltip: 'Memory',
             onTap: _openMemory,
           ),
@@ -140,14 +139,25 @@ class _HomeScreenState extends State<HomeScreen>
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              SizedBox(
+              Container(
                 width: 27,
                 height: 27,
-                child: SvgPicture.asset(
-                  'assets/icons/weura.svg',
-                  colorFilter: const ColorFilter.mode(
-                    Colors.white,
-                    BlendMode.srcIn,
+                decoration: BoxDecoration(
+                  color: colors.accentSoft,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: colors.accentGlow.withValues(alpha: 0.35),
+                  ),
+                ),
+                child: Center(
+                  child: Text(
+                    'W',
+                    style: TextStyle(
+                      color: colors.accentGlow,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w900,
+                      height: 1,
+                    ),
                   ),
                 ),
               ),
@@ -166,7 +176,7 @@ class _HomeScreenState extends State<HomeScreen>
           const Spacer(),
           _iconButton(
             colors: colors,
-            asset: 'assets/icons/settings.svg',
+            icon: Icons.settings_outlined,
             tooltip: 'Settings',
             onTap: _openSettings,
           ),
@@ -223,7 +233,6 @@ class _HomeScreenState extends State<HomeScreen>
     return Container(
       width: 86,
       height: 86,
-      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: colors.surface,
@@ -238,11 +247,15 @@ class _HomeScreenState extends State<HomeScreen>
           ),
         ],
       ),
-      child: SvgPicture.asset(
-        'assets/icons/weura.svg',
-        colorFilter: const ColorFilter.mode(
-          Colors.white,
-          BlendMode.srcIn,
+      child: Center(
+        child: Text(
+          'W',
+          style: TextStyle(
+            color: colors.accentGlow,
+            fontSize: 40,
+            fontWeight: FontWeight.w900,
+            height: 1,
+          ),
         ),
       ),
     );
@@ -291,14 +304,10 @@ class _HomeScreenState extends State<HomeScreen>
             IconButton(
               tooltip: 'New chat',
               onPressed: () => _openChat(),
-              icon: SvgPicture.asset(
-                'assets/icons/plus.svg',
-                width: 22,
-                height: 22,
-                colorFilter: ColorFilter.mode(
-                  colors.textPrimary,
-                  BlendMode.srcIn,
-                ),
+              icon: Icon(
+                Icons.add_rounded,
+                size: 24,
+                color: colors.textPrimary,
               ),
             ),
             Expanded(
@@ -344,14 +353,10 @@ class _HomeScreenState extends State<HomeScreen>
                     child: Center(
                       child: Opacity(
                         opacity: _canSend ? 1 : 0.3,
-                        child: SvgPicture.asset(
-                          'assets/icons/send.svg',
-                          width: 22,
-                          height: 22,
-                          colorFilter: const ColorFilter.mode(
-                            Colors.white,
-                            BlendMode.srcIn,
-                          ),
+                        child: const Icon(
+                          Icons.arrow_upward_rounded,
+                          size: 22,
+                          color: Colors.white,
                         ),
                       ),
                     ),
@@ -367,7 +372,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   Widget _iconButton({
     required WeuraColors colors,
-    required String asset,
+    required IconData icon,
     required String tooltip,
     required VoidCallback onTap,
   }) {
@@ -375,14 +380,10 @@ class _HomeScreenState extends State<HomeScreen>
       tooltip: tooltip,
       onPressed: onTap,
       splashRadius: 22,
-      icon: SvgPicture.asset(
-        asset,
-        width: 23,
-        height: 23,
-        colorFilter: ColorFilter.mode(
-          colors.textPrimary,
-          BlendMode.srcIn,
-        ),
+      icon: Icon(
+        icon,
+        size: 23,
+        color: colors.textPrimary,
       ),
     );
   }
