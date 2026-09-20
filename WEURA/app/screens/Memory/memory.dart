@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../core/Memory/memory_manager.dart';
 import '../../core/Settings/app_settings.dart';
@@ -31,8 +30,7 @@ class _MemoryScreenState extends State<MemoryScreen> {
     super.dispose();
   }
 
-  bool get _isArabic =>
-      AppSettingsManager.instance.language == 'Arabic';
+  bool get _isArabic => AppSettingsManager.instance.language == 'Arabic';
 
   String _t(String en, String ar) => _isArabic ? ar : en;
 
@@ -47,17 +45,11 @@ class _MemoryScreenState extends State<MemoryScreen> {
     return _manager.search(_search);
   }
 
-  // ---------------------------------------------------------------------------
-  // Add / Edit
-  // ---------------------------------------------------------------------------
-
   Future<void> _showMemoryDialog(
     WeuraColors colors, {
     WeuraMemory? memory,
   }) async {
-    final controller = TextEditingController(
-      text: memory?.content ?? '',
-    );
+    final controller = TextEditingController(text: memory?.content ?? '');
 
     final result = await showDialog<String>(
       context: context,
@@ -77,10 +69,7 @@ class _MemoryScreenState extends State<MemoryScreen> {
             maxLength: 500,
             style: TextStyle(color: colors.textPrimary),
             decoration: InputDecoration(
-              hintText: _t(
-                'What should WEURA remember?',
-                'شو تحب WEURA يتفكر؟',
-              ),
+              hintText: _t('What should WEURA remember?', 'شو تحب WEURA يتفكر؟'),
               hintStyle: TextStyle(color: colors.textFaint),
               filled: true,
               fillColor: colors.surface,
@@ -96,8 +85,7 @@ class _MemoryScreenState extends State<MemoryScreen> {
               child: Text(_t('Cancel', 'إلغاء')),
             ),
             TextButton(
-              onPressed: () =>
-                  Navigator.pop(dialogContext, controller.text),
+              onPressed: () => Navigator.pop(dialogContext, controller.text),
               child: Text(_t('Save', 'حفظ')),
             ),
           ],
@@ -118,15 +106,9 @@ class _MemoryScreenState extends State<MemoryScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(
-          SnackBar(content: Text(e.toString())),
-        );
+        ..showSnackBar(SnackBar(content: Text(e.toString())));
     }
   }
-
-  // ---------------------------------------------------------------------------
-  // Delete
-  // ---------------------------------------------------------------------------
 
   Future<void> _confirmDeleteMemory(
     WeuraMemory memory,
@@ -204,19 +186,11 @@ class _MemoryScreenState extends State<MemoryScreen> {
     if (mounted) setState(() {});
   }
 
-  // ---------------------------------------------------------------------------
-  // Date
-  // ---------------------------------------------------------------------------
-
   String _date(DateTime value) {
     final hour = value.hour.toString().padLeft(2, '0');
     final minute = value.minute.toString().padLeft(2, '0');
     return '${value.day}/${value.month}/${value.year} • $hour:$minute';
   }
-
-  // ---------------------------------------------------------------------------
-  // Build
-  // ---------------------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
@@ -232,10 +206,10 @@ class _MemoryScreenState extends State<MemoryScreen> {
         leading: IconButton(
           tooltip: _t('Back', 'رجوع'),
           onPressed: () => Navigator.pop(context),
-          icon: SvgPicture.asset(
-            'assets/icons/back.svg',
-            width: 23,
-            height: 23,
+          icon: Icon(
+            Icons.arrow_back_rounded,
+            size: 24,
+            color: colors.textPrimary,
           ),
         ),
         title: Row(
@@ -275,10 +249,10 @@ class _MemoryScreenState extends State<MemoryScreen> {
             IconButton(
               tooltip: _t('Clear memory', 'مسح الكل'),
               onPressed: () => _clearMemory(colors),
-              icon: SvgPicture.asset(
-                'assets/icons/close.svg',
-                width: 22,
-                height: 22,
+              icon: Icon(
+                Icons.delete_outline_rounded,
+                size: 24,
+                color: colors.textPrimary,
               ),
             ),
         ],
@@ -286,14 +260,10 @@ class _MemoryScreenState extends State<MemoryScreen> {
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showMemoryDialog(colors),
         backgroundColor: colors.accent,
-        child: SvgPicture.asset(
-          'assets/icons/plus.svg',
-          width: 22,
-          height: 22,
-          colorFilter: const ColorFilter.mode(
-            Colors.white,
-            BlendMode.srcIn,
-          ),
+        child: const Icon(
+          Icons.add_rounded,
+          size: 28,
+          color: Colors.white,
         ),
       ),
       body: _isLoading
@@ -311,7 +281,6 @@ class _MemoryScreenState extends State<MemoryScreen> {
               ? _emptyState(colors)
               : Column(
                   children: [
-                    // Search bar
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
                       child: TextField(
@@ -325,15 +294,11 @@ class _MemoryScreenState extends State<MemoryScreen> {
                             'Search memory...',
                             'ابحث في الذاكرة...',
                           ),
-                          hintStyle:
-                              TextStyle(color: colors.textFaint),
-                          prefixIcon: Padding(
-                            padding: const EdgeInsets.all(12),
-                            child: SvgPicture.asset(
-                              'assets/icons/search.svg',
-                              width: 20,
-                              height: 20,
-                            ),
+                          hintStyle: TextStyle(color: colors.textFaint),
+                          prefixIcon: Icon(
+                            Icons.search_rounded,
+                            size: 22,
+                            color: colors.textMuted,
                           ),
                           suffixIcon: _search.isNotEmpty
                               ? IconButton(
@@ -341,10 +306,10 @@ class _MemoryScreenState extends State<MemoryScreen> {
                                     _searchController.clear();
                                     setState(() => _search = '');
                                   },
-                                  icon: SvgPicture.asset(
-                                    'assets/icons/close.svg',
-                                    width: 18,
-                                    height: 18,
+                                  icon: Icon(
+                                    Icons.close_rounded,
+                                    size: 20,
+                                    color: colors.textMuted,
                                   ),
                                 )
                               : null,
@@ -371,10 +336,7 @@ class _MemoryScreenState extends State<MemoryScreen> {
                               separatorBuilder: (_, __) =>
                                   const SizedBox(height: 10),
                               itemBuilder: (context, index) {
-                                return _memoryCard(
-                                  colors,
-                                  items[index],
-                                );
+                                return _memoryCard(colors, items[index]);
                               },
                             ),
                     ),
@@ -382,10 +344,6 @@ class _MemoryScreenState extends State<MemoryScreen> {
                 ),
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // Card
-  // ---------------------------------------------------------------------------
 
   Widget _memoryCard(WeuraColors colors, WeuraMemory memory) {
     return Container(
@@ -405,11 +363,10 @@ class _MemoryScreenState extends State<MemoryScreen> {
               color: colors.accentSoft,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Padding(
-              padding: const EdgeInsets.all(10),
-              child: SvgPicture.asset(
-                'assets/icons/mode.svg',
-              ),
+            child: Icon(
+              Icons.lightbulb_outline_rounded,
+              size: 22,
+              color: colors.accentGlow,
             ),
           ),
           const SizedBox(width: 13),
@@ -468,10 +425,6 @@ class _MemoryScreenState extends State<MemoryScreen> {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Empty states
-  // ---------------------------------------------------------------------------
-
   Widget _emptyState(WeuraColors colors) {
     return Center(
       child: Padding(
@@ -479,12 +432,20 @@ class _MemoryScreenState extends State<MemoryScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Opacity(
-              opacity: 0.3,
-              child: SvgPicture.asset(
-                'assets/icons/mode.svg',
-                width: 56,
-                height: 56,
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                color: colors.accentSoft,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(
+                  color: colors.accentGlow.withValues(alpha: 0.18),
+                ),
+              ),
+              child: Icon(
+                Icons.lightbulb_outline_rounded,
+                size: 36,
+                color: colors.accentGlow,
               ),
             ),
             const SizedBox(height: 18),
@@ -526,13 +487,10 @@ class _MemoryScreenState extends State<MemoryScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Opacity(
-              opacity: 0.3,
-              child: SvgPicture.asset(
-                'assets/icons/search.svg',
-                width: 48,
-                height: 48,
-              ),
+            Icon(
+              Icons.search_off_rounded,
+              size: 52,
+              color: colors.textMuted,
             ),
             const SizedBox(height: 14),
             Text(
@@ -545,10 +503,7 @@ class _MemoryScreenState extends State<MemoryScreen> {
             ),
             const SizedBox(height: 6),
             Text(
-              _t(
-                'Try a different search term.',
-                'جرب كلمة بحث أخرى.',
-              ),
+              _t('Try a different search term.', 'جرب كلمة بحث أخرى.'),
               style: TextStyle(
                 color: colors.textMuted,
                 fontSize: 13,
