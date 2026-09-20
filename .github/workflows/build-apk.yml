@@ -33,11 +33,13 @@ jobs:
         working-directory: WEURA
         run: cp /tmp/pubspec.bak pubspec.yaml
 
-      - name: Verify pubspec
+      - name: Get dependencies
         working-directory: WEURA
-        run: |
-          echo "=== pubspec.yaml (flutter section) ==="
-          sed -n '/^flutter:/,$p' pubspec.yaml
+        run: flutter pub get
+
+      - name: Generate launcher icons
+        working-directory: WEURA
+        run: dart run flutter_launcher_icons
 
       - name: Fix Android config
         working-directory: WEURA/android
@@ -46,28 +48,19 @@ jobs:
           grep -nE 'compileSdk|minSdk|kotlin' app/build.gradle settings.gradle || true
           echo ""
 
-          # Kotlin ONLY - target the specific plugin id
           sed -i 's|id "org.jetbrains.kotlin.android" version "[^"]*"|id "org.jetbrains.kotlin.android" version "2.1.0"|' settings.gradle 2>/dev/null || true
 
-          # compileSdk - match whole line
           sed -i 's|^\(\s*\)compileSdk = .*|\1compileSdk = 36|' app/build.gradle 2>/dev/null || true
           sed -i 's|^\(\s*\)compileSdkVersion .*|\1compileSdkVersion 36|' app/build.gradle 2>/dev/null || true
-
-          # minSdk - match whole line
           sed -i 's|^\(\s*\)minSdk = .*|\1minSdk = 24|' app/build.gradle 2>/dev/null || true
           sed -i 's|^\(\s*\)minSdkVersion .*|\1minSdkVersion 24|' app/build.gradle 2>/dev/null || true
 
-          # INTERNET permission
           if ! grep -q 'android.permission.INTERNET' app/src/main/AndroidManifest.xml 2>/dev/null; then
             sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <application|' app/src/main/AndroidManifest.xml 2>/dev/null || true
           fi
 
           echo "=== AFTER ==="
           grep -nE 'compileSdk|minSdk|kotlin' app/build.gradle settings.gradle || true
-
-      - name: Get dependencies
-        working-directory: WEURA
-        run: flutter pub get
 
       - name: Build APK
         working-directory: WEURA
