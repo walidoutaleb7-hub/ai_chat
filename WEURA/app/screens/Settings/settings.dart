@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../core/AI/ai_router.dart';
 import '../../core/Settings/app_settings.dart';
@@ -247,8 +246,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: const Text('Cancel'),
             ),
             TextButton(
-              onPressed: () =>
-                  Navigator.pop(dialogContext, controller.text),
+              onPressed: () => Navigator.pop(dialogContext, controller.text),
               child: const Text('Save'),
             ),
           ],
@@ -258,9 +256,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     if (result == null) return;
     await _settings.setUserName(result);
-    _showChanged(
-      result.trim().isEmpty ? 'Name cleared' : 'Name saved',
-    );
+    _showChanged(result.trim().isEmpty ? 'Name cleared' : 'Name saved');
   }
 
   // ---------------------------------------------------------------------------
@@ -364,12 +360,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
       applicationIcon: Container(
         width: 48,
         height: 48,
-        padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
           color: colors.accent,
           borderRadius: BorderRadius.circular(14),
         ),
-        child: SvgPicture.asset('assets/logo/weura.svg'),
+        child: const Center(
+          child: Text(
+            'W',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+              height: 1,
+            ),
+          ),
+        ),
       ),
       children: const [
         Text(
@@ -467,10 +472,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Navigator.pop(context);
             }
           },
-          icon: SvgPicture.asset(
-            'assets/icons/back.svg',
-            width: 23,
-            height: 23,
+          icon: Icon(
+            Icons.arrow_back_rounded,
+            size: 24,
+            color: colors.textPrimary,
           ),
         ),
         title: Text(
@@ -484,10 +489,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           IconButton(
             tooltip: 'Reset settings',
             onPressed: () => _confirmResetSettings(colors),
-            icon: SvgPicture.asset(
-              'assets/icons/history.svg',
-              width: 22,
-              height: 22,
+            icon: Icon(
+              Icons.restore_rounded,
+              size: 24,
+              color: colors.textPrimary,
             ),
           ),
         ],
@@ -495,7 +500,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 10, 16, 40),
         children: [
-          // ─── Appearance ───────────────────────────────────────────────
+          // ─── Appearance ──────────────────────────────
           _sectionTitle(colors, 'Appearance'),
           _card(colors, [
             _settingTile(
@@ -521,7 +526,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ]),
           const SizedBox(height: 24),
 
-          // ─── AI ───────────────────────────────────────────────────────
+          // ─── AI ──────────────────────────────────────
           _sectionTitle(colors, 'AI'),
           _card(colors, [
             _settingTile(
@@ -557,7 +562,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ]),
           const SizedBox(height: 24),
 
-          // ─── Voice ────────────────────────────────────────────────────
+          // ─── Voice ───────────────────────────────────
           _sectionTitle(colors, 'Voice'),
           _card(colors, [
             _switchTile(
@@ -578,7 +583,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ]),
           const SizedBox(height: 24),
 
-          // ─── Chat ─────────────────────────────────────────────────────
+          // ─── Chat ────────────────────────────────────
           _sectionTitle(colors, 'Chat'),
           _card(colors, [
             _switchTile(
@@ -599,7 +604,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ]),
           const SizedBox(height: 24),
 
-          // ─── Connection ───────────────────────────────────────────────
+          // ─── Connection ──────────────────────────────
           _sectionTitle(colors, 'Connection'),
           _card(colors, [
             _settingTile(
@@ -611,7 +616,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ]),
           const SizedBox(height: 24),
 
-          // ─── Privacy ──────────────────────────────────────────────────
+          // ─── Privacy ─────────────────────────────────
           _sectionTitle(colors, 'Privacy'),
           _card(colors, [
             _settingTile(
@@ -624,7 +629,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ]),
           const SizedBox(height: 24),
 
-          // ─── About ────────────────────────────────────────────────────
+          // ─── About ───────────────────────────────────
           _sectionTitle(colors, 'About'),
           _card(colors, [
             _settingTile(
@@ -692,7 +697,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         style: TextStyle(color: colors.textMuted, fontSize: 12),
       ),
       trailing: Icon(
-        Icons.chevron_right,
+        Icons.chevron_right_rounded,
+        size: 24,
         color: colors.textFaint,
       ),
     );
@@ -792,7 +798,11 @@ class _SelectionSheet<T> extends StatelessWidget {
                   style: TextStyle(color: colors.textPrimary),
                 ),
                 trailing: option.value == value
-                    ? Icon(Icons.check, color: colors.accentGlow)
+                    ? Icon(
+                        Icons.check_rounded,
+                        size: 22,
+                        color: colors.accentGlow,
+                      )
                     : null,
                 onTap: () {
                   Navigator.pop(context, option.value);
