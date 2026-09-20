@@ -55,10 +55,6 @@ class _HomeScreenState extends State<HomeScreen>
 
   bool get _canSend => _controller.text.trim().isNotEmpty;
 
-  // ---------------------------------------------------------------------------
-  // Navigation
-  // ---------------------------------------------------------------------------
-
   void _openChat([String? message]) {
     final text = message ?? _controller.text.trim();
 
@@ -98,10 +94,6 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Build
-  // ---------------------------------------------------------------------------
-
   @override
   Widget build(BuildContext context) {
     final colors = WeuraColors.of(context);
@@ -125,10 +117,6 @@ class _HomeScreenState extends State<HomeScreen>
       ),
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // Top bar
-  // ---------------------------------------------------------------------------
 
   Widget _topBar(WeuraColors colors) {
     return Padding(
@@ -156,7 +144,11 @@ class _HomeScreenState extends State<HomeScreen>
                 width: 27,
                 height: 27,
                 child: SvgPicture.asset(
-                  'assets/logo/weura.svg',
+                  'assets/icons/weura.svg',
+                  colorFilter: const ColorFilter.mode(
+                    Colors.white,
+                    BlendMode.srcIn,
+                  ),
                 ),
               ),
               const SizedBox(width: 9),
@@ -182,10 +174,6 @@ class _HomeScreenState extends State<HomeScreen>
       ),
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // Main content
-  // ---------------------------------------------------------------------------
 
   Widget _mainContent(WeuraColors colors) {
     return Center(
@@ -251,7 +239,11 @@ class _HomeScreenState extends State<HomeScreen>
         ],
       ),
       child: SvgPicture.asset(
-        'assets/logo/weura.svg',
+        'assets/icons/weura.svg',
+        colorFilter: const ColorFilter.mode(
+          Colors.white,
+          BlendMode.srcIn,
+        ),
       ),
     );
   }
@@ -284,10 +276,6 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Composer
-  // ---------------------------------------------------------------------------
-
   Widget _composer(WeuraColors colors) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
@@ -307,6 +295,10 @@ class _HomeScreenState extends State<HomeScreen>
                 'assets/icons/plus.svg',
                 width: 22,
                 height: 22,
+                colorFilter: ColorFilter.mode(
+                  colors.textPrimary,
+                  BlendMode.srcIn,
+                ),
               ),
             ),
             Expanded(
@@ -356,6 +348,10 @@ class _HomeScreenState extends State<HomeScreen>
                           'assets/icons/send.svg',
                           width: 22,
                           height: 22,
+                          colorFilter: const ColorFilter.mode(
+                            Colors.white,
+                            BlendMode.srcIn,
+                          ),
                         ),
                       ),
                     ),
@@ -368,10 +364,6 @@ class _HomeScreenState extends State<HomeScreen>
       ),
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // Icon button
-  // ---------------------------------------------------------------------------
 
   Widget _iconButton({
     required WeuraColors colors,
@@ -387,6 +379,10 @@ class _HomeScreenState extends State<HomeScreen>
         asset,
         width: 23,
         height: 23,
+        colorFilter: ColorFilter.mode(
+          colors.textPrimary,
+          BlendMode.srcIn,
+        ),
       ),
     );
   }
