@@ -33,34 +33,44 @@ jobs:
         working-directory: WEURA
         run: cp /tmp/pubspec.bak pubspec.yaml
 
+      - name: Fix Android config
+        working-directory: WEURA/android
+        run: |
+          # Kotlin
+          sed -i 's|id "org.jetbrains.kotlin.android" version "[^"]*"|id "org.jetbrains.kotlin.android" version "2.1.0"|' settings.gradle 2>/dev/null || true
+
+          # SDK
+          sed -i 's|^\(\s*\)compileSdk = .*|\1compileSdk = 36|' app/build.gradle 2>/dev/null || true
+          sed -i 's|^\(\s*\)compileSdkVersion .*|\1compileSdkVersion 36|' app/build.gradle 2>/dev/null || true
+          sed -i 's|^\(\s*\)minSdk = .*|\1minSdk = 24|' app/build.gradle 2>/dev/null || true
+          sed -i 's|^\(\s*\)minSdkVersion .*|\1minSdkVersion 24|' app/build.gradle 2>/dev/null || true
+
+          # ✅ PERMISSIONS — INTERNET + RECORD_AUDIO
+          MANIFEST="app/src/main/AndroidManifest.xml"
+          if ! grep -q 'android.permission.INTERNET' "$MANIFEST"; then
+            sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>\n    <uses-permission android:name="android.permission.CAMERA"/>\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>\n    <application|' "$MANIFEST"
+          fi
+
+          echo "=== Manifest permissions ==="
+          grep 'uses-permission' "$MANIFEST" || true
+
       - name: Get dependencies
         working-directory: WEURA
         run: flutter pub get
 
       - name: Generate launcher icons
         working-directory: WEURA
-        run: dart run flutter_launcher_icons
+        run: dart run flutter_launcher_icons || true
 
-      - name: Fix Android config
+      - name: Re-apply Android config
         working-directory: WEURA/android
         run: |
-          echo "=== BEFORE ==="
-          grep -nE 'compileSdk|minSdk|kotlin' app/build.gradle settings.gradle || true
-          echo ""
-
-          sed -i 's|id "org.jetbrains.kotlin.android" version "[^"]*"|id "org.jetbrains.kotlin.android" version "2.1.0"|' settings.gradle 2>/dev/null || true
-
           sed -i 's|^\(\s*\)compileSdk = .*|\1compileSdk = 36|' app/build.gradle 2>/dev/null || true
-          sed -i 's|^\(\s*\)compileSdkVersion .*|\1compileSdkVersion 36|' app/build.gradle 2>/dev/null || true
           sed -i 's|^\(\s*\)minSdk = .*|\1minSdk = 24|' app/build.gradle 2>/dev/null || true
-          sed -i 's|^\(\s*\)minSdkVersion .*|\1minSdkVersion 24|' app/build.gradle 2>/dev/null || true
-
-          if ! grep -q 'android.permission.INTERNET' app/src/main/AndroidManifest.xml 2>/dev/null; then
-            sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <application|' app/src/main/AndroidManifest.xml 2>/dev/null || true
+          MANIFEST="app/src/main/AndroidManifest.xml"
+          if ! grep -q 'android.permission.INTERNET' "$MANIFEST"; then
+            sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>\n    <uses-permission android:name="android.permission.CAMERA"/>\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>\n    <application|' "$MANIFEST"
           fi
-
-          echo "=== AFTER ==="
-          grep -nE 'compileSdk|minSdk|kotlin' app/build.gradle settings.gradle || true
 
       - name: Build APK
         working-directory: WEURA
