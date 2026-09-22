@@ -4,30 +4,44 @@ import 'package:flutter/material.dart';
 
 import '../../core/Theme/weura_theme.dart';
 
-/// Animated aurora mesh background for WEURA.
-/// Uses 3 soft moving blobs of color that blend together.
-class WeuraBackground extends StatefulWidget {
-  const WeuraBackground({
+/// Subtle, theme-aware background for WEURA screens.
+///
+/// Performance:
+///   - 1 AnimationController only (slow aurora, 30s)
+///   - Static gradient + 2 slow glows + vignette
+///   - No stars, no grid → cheap on low-end devices
+///
+/// Usage:
+///   Scaffold(
+///     body: WeuraScreenBackground(
+///       colors: WeuraColors.of(context),
+///       child: SafeArea(child: ...),
+///     ),
+///   )
+class WeuraScreenBackground extends StatefulWidget {
+  const WeuraScreenBackground({
     super.key,
-    required this.child,
+    required this.colors,
+    this.child,
     this.intensity = 1.0,
   });
 
-  final Widget child;
+  final WeuraColors colors;
+  final Widget? child;
   final double intensity;
 
   @override
-  State<WeuraBackground> createState() => _WeuraBackgroundState();
+  State<WeuraScreenBackground> createState() => _WeuraScreenBackgroundState();
 }
 
-class _WeuraBackgroundState extends State<WeuraBackground>
+class _WeuraScreenBackgroundState extends State<WeuraScreenBackground>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
+  late final AnimationController _auroraController;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
+    _auroraController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 30),
     )..repeat();
@@ -35,129 +49,133 @@ class _WeuraBackgroundState extends State<WeuraBackground>
 
   @override
   void dispose() {
-    _controller.dispose();
+    _auroraController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final colors = WeuraColors.of(context);
+    final colors = widget.colors;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Stack(
-      children: [
-        // Base background color
-        Positioned.fill(
-          child: Container(color: colors.background),
-        ),
+    final top = isDark ? const Color(0xFF04060B) : const Color(0xFFF8FAFF);
+    final mid = isDark ? const Color(0xFF060912) : const Color(0xFFF0F4FF);
+    final bottom = colors.background;
 
-        // Animated aurora
-        Positioned.fill(
-          child: RepaintBoundary(
-            child: AnimatedBuilder(
-              animation: _controller,
+    final glowOpacity = (isDark ? 1.0 : 0.45) * widget.intensity;
+    final vignetteOpacity = isDark ? 0.25 : 0.04;
+
+    return RepaintBoundary(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [top, mid, bottom],
+            stops: const [0.0, 0.35, 1.0],
+          ),
+        ),
+        child: Stack(
+          children: [
+            // Single slow-moving aurora glow (only 2 blobs)
+            AnimatedBuilder(
+              animation: _auroraController,
               builder: (context, _) {
                 return CustomPaint(
-                  painter: _AuroraPainter(
-                    progress: _controller.value,
-                    accent: colors.accent,
+                  size: Size.infinite,
+                  painter: _ScreenGlowPainter(
+                    progress: _auroraController.value,
+                    blue: colors.accent,
                     glow: colors.accentGlow,
-                    intensity: widget.intensity,
-                    isDark: isDark,
+                    intensity: glowOpacity,
                   ),
                 );
               },
             ),
-          ),
-        ),
 
-        // Content
-        widget.child,
-      ],
+            // Subtle vignette
+            Positioned.fill(
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: RadialGradient(
+                      center: Alignment.center,
+                      radius: 1.0,
+                      colors: [
+                        Colors.transparent,
+                        Colors.black.withValues(alpha: vignetteOpacity),
+                      ],
+                      stops: const [0.6, 1.0],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+            if (widget.child != null) Positioned.fill(child: widget.child!),
+          ],
+        ),
+      ),
     );
   }
 }
 
-class _AuroraPainter extends CustomPainter {
-  _AuroraPainter({
+class _ScreenGlowPainter extends CustomPainter {
+  _ScreenGlowPainter({
     required this.progress,
-    required this.accent,
+    required this.blue,
     required this.glow,
     required this.intensity,
-    required this.isDark,
   });
 
   final double progress;
-  final Color accent;
+  final Color blue;
   final Color glow;
   final double intensity;
-  final bool isDark;
 
   @override
   void paint(Canvas canvas, Size size) {
     final t = progress * 2 * math.pi;
 
-    // Base intensity (lighter in light mode)
-    final baseOpacity = (isDark ? 0.28 : 0.16) * intensity;
+    _blob(
+      canvas,
+      size,
+      cx: size.width * (0.20 + 0.20 * math.sin(t)),
+      cy: size.height * (0.15 + 0.10 * math.cos(t * 0.8)),
+      radius: size.width * 0.70,
+      color: blue.withValues(alpha: 0.12 * intensity),
+    );
 
-    // ── Blob 1: top-left, moves slowly right ──
-    _paintBlob(
-      canvas: canvas,
-      center: Offset(
-        size.width * (0.15 + 0.10 * math.sin(t)),
-        size.height * (0.10 + 0.05 * math.cos(t * 0.7)),
-      ),
+    _blob(
+      canvas,
+      size,
+      cx: size.width * (0.85 + 0.10 * math.cos(t * 0.7)),
+      cy: size.height * (0.75 + 0.10 * math.sin(t * 0.9)),
       radius: size.width * 0.65,
-      color: glow.withValues(alpha: baseOpacity),
-    );
-
-    // ── Blob 2: bottom-right, opposite motion ──
-    _paintBlob(
-      canvas: canvas,
-      center: Offset(
-        size.width * (0.85 + 0.10 * math.cos(t * 0.9)),
-        size.height * (0.90 + 0.06 * math.sin(t * 0.6)),
-      ),
-      radius: size.width * 0.75,
-      color: accent.withValues(alpha: baseOpacity * 0.9),
-    );
-
-    // ── Blob 3: center-top, tiny accent ──
-    _paintBlob(
-      canvas: canvas,
-      center: Offset(
-        size.width * (0.55 + 0.15 * math.sin(t * 0.5 + 1.2)),
-        size.height * (0.35 + 0.10 * math.cos(t * 0.8)),
-      ),
-      radius: size.width * 0.55,
-      color: glow.withValues(alpha: baseOpacity * 0.5),
+      color: glow.withValues(alpha: 0.10 * intensity),
     );
   }
 
-  void _paintBlob({
-    required Canvas canvas,
-    required Offset center,
+  void _blob(
+    Canvas canvas,
+    Size size, {
+    required double cx,
+    required double cy,
     required double radius,
     required Color color,
   }) {
     final paint = Paint()
       ..shader = RadialGradient(
-        colors: [
-          color,
-          color.withValues(alpha: color.a * 0.4),
-          color.withValues(alpha: 0.0),
-        ],
-        stops: const [0.0, 0.5, 1.0],
+        colors: [color, color.withValues(alpha: 0.0)],
       ).createShader(
-        Rect.fromCircle(center: center, radius: radius),
+        Rect.fromCircle(center: Offset(cx, cy), radius: radius),
       );
 
-    canvas.drawCircle(center, radius, paint);
+    canvas.drawCircle(Offset(cx, cy), radius, paint);
   }
 
   @override
-  bool shouldRepaint(covariant _AuroraPainter oldDelegate) {
-    return oldDelegate.progress != progress ||
-        oldDelegate.isDark != isDark;
+  bool shouldRepaint(covariant _ScreenGlowPainter oldDelegate) {
+    return oldDelegate.progress != progress;
   }
 }
