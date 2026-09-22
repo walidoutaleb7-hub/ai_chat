@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../components/UI/screen_background.dart';
 import '../../core/Theme/weura_theme.dart';
 import '../Chat/chat.dart';
+import '../Deen/quran_screen.dart';
 import '../History/history.dart';
 import '../Memory/memory.dart';
 import '../Settings/settings.dart';
@@ -17,6 +18,9 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _animationController;
+
+  final GlobalKey<ScaffoldState> _scaffoldKey =
+      GlobalKey<ScaffoldState>();
 
   final TextEditingController _controller = TextEditingController();
   final FocusNode _focusNode = FocusNode();
@@ -76,19 +80,29 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+  void _openQuran() {
+    Navigator.of(context).pop();
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const QuranScreen()),
+    );
+  }
+
   void _openHistory() {
+    Navigator.of(context).pop();
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const HistoryScreen()),
     );
   }
 
   void _openMemory() {
+    Navigator.of(context).pop();
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const MemoryScreen()),
     );
   }
 
   void _openSettings() {
+    Navigator.of(context).pop();
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const SettingsScreen()),
     );
@@ -99,7 +113,9 @@ class _HomeScreenState extends State<HomeScreen>
     final colors = WeuraColors.of(context);
 
     return Scaffold(
+      key: _scaffoldKey,
       backgroundColor: colors.background,
+      drawer: _buildDrawer(colors),
       body: WeuraScreenBackground(
         colors: colors,
         child: SafeArea(
@@ -121,23 +137,244 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  Widget _topBar(WeuraColors colors) {
+  // ===========================================================================
+  // DRAWER
+  // ===========================================================================
+
+  Widget _buildDrawer(WeuraColors colors) {
+    return Drawer(
+      backgroundColor: colors.surfaceElevated,
+      width: 285,
+      child: SafeArea(
+        child: Column(
+          children: [
+            _drawerHeader(colors),
+            const SizedBox(height: 14),
+            _drawerNewChatButton(colors),
+            const SizedBox(height: 18),
+            _drawerSectionTitle(colors, 'Workspace'),
+            _drawerItem(
+              colors: colors,
+              icon: Icons.menu_book_rounded,
+              label: 'Quran',
+              onTap: _openQuran,
+            ),
+            _drawerItem(
+              colors: colors,
+              icon: Icons.history_rounded,
+              label: 'History',
+              onTap: _openHistory,
+            ),
+            _drawerItem(
+              colors: colors,
+              icon: Icons.memory_rounded,
+              label: 'Memory',
+              onTap: _openMemory,
+            ),
+            const SizedBox(height: 18),
+            _drawerSectionTitle(colors, 'App'),
+            _drawerItem(
+              colors: colors,
+              icon: Icons.settings_outlined,
+              label: 'Settings',
+              onTap: _openSettings,
+            ),
+            const Spacer(),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                'WEURA AI • v1.0.0\nThink Beyond.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: colors.textFaint,
+                  fontSize: 11,
+                  height: 1.5,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _drawerHeader(WeuraColors colors) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
       child: Row(
         children: [
-          _iconButton(
-            colors: colors,
-            icon: Icons.history_rounded,
-            tooltip: 'History',
-            onTap: _openHistory,
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: colors.surface,
+              borderRadius: BorderRadius.circular(13),
+              border: Border.all(
+                color: colors.accentGlow.withValues(alpha: 0.22),
+              ),
+            ),
+            child: Center(
+              child: Text(
+                'W',
+                style: TextStyle(
+                  color: colors.accentGlow,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  height: 1,
+                ),
+              ),
+            ),
           ),
-          const SizedBox(width: 4),
-          _iconButton(
-            colors: colors,
-            icon: Icons.person_outline_rounded,
-            tooltip: 'Memory',
-            onTap: _openMemory,
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'WEURA',
+                  style: TextStyle(
+                    color: colors.textPrimary,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Think Beyond.',
+                  style: TextStyle(
+                    color: colors.textMuted,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _drawerNewChatButton(WeuraColors colors) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () {
+            Navigator.of(context).pop();
+            _openChat();
+          },
+          borderRadius: BorderRadius.circular(13),
+          child: Ink(
+            height: 48,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(13),
+              color: colors.surface,
+              border: Border.all(color: colors.border),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.add_rounded,
+                  size: 22,
+                  color: colors.textPrimary,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'New Chat',
+                  style: TextStyle(
+                    color: colors.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _drawerSectionTitle(WeuraColors colors, String title) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 6, 20, 8),
+        child: Text(
+          title.toUpperCase(),
+          style: TextStyle(
+            color: colors.textFaint,
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.2,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _drawerItem({
+    required WeuraColors colors,
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(11),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 13,
+            ),
+            child: Row(
+              children: [
+                Icon(icon, size: 22, color: colors.textPrimary),
+                const SizedBox(width: 14),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: colors.textSecondary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ===========================================================================
+  // TOP BAR
+  // ===========================================================================
+
+  Widget _topBar(WeuraColors colors) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+      child: Row(
+        children: [
+          // Menu (drawer)
+          IconButton(
+            tooltip: 'Menu',
+            onPressed: () {
+              _scaffoldKey.currentState?.openDrawer();
+            },
+            splashRadius: 22,
+            icon: Icon(
+              Icons.menu_rounded,
+              size: 24,
+              color: colors.textPrimary,
+            ),
           ),
           const Spacer(),
           Row(
@@ -178,16 +415,31 @@ class _HomeScreenState extends State<HomeScreen>
             ],
           ),
           const Spacer(),
-          _iconButton(
-            colors: colors,
-            icon: Icons.settings_outlined,
+          // Settings quick access
+          IconButton(
             tooltip: 'Settings',
-            onTap: _openSettings,
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const SettingsScreen(),
+                ),
+              );
+            },
+            splashRadius: 22,
+            icon: Icon(
+              Icons.settings_outlined,
+              size: 23,
+              color: colors.textPrimary,
+            ),
           ),
         ],
       ),
     );
   }
+
+  // ===========================================================================
+  // MAIN CONTENT
+  // ===========================================================================
 
   Widget _mainContent(WeuraColors colors) {
     return Center(
@@ -293,6 +545,10 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+  // ===========================================================================
+  // COMPOSER
+  // ===========================================================================
+
   Widget _composer(WeuraColors colors) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
@@ -370,24 +626,6 @@ class _HomeScreenState extends State<HomeScreen>
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _iconButton({
-    required WeuraColors colors,
-    required IconData icon,
-    required String tooltip,
-    required VoidCallback onTap,
-  }) {
-    return IconButton(
-      tooltip: tooltip,
-      onPressed: onTap,
-      splashRadius: 22,
-      icon: Icon(
-        icon,
-        size: 23,
-        color: colors.textPrimary,
       ),
     );
   }
