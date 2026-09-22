@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../components/UI/screen_background.dart';
 import '../../core/AI/ai_router.dart';
 import '../../core/Settings/app_settings.dart';
 import '../../core/Theme/weura_theme.dart';
@@ -37,10 +38,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _refresh() {
     if (mounted) setState(() {});
   }
-
-  // ---------------------------------------------------------------------------
-  // Names
-  // ---------------------------------------------------------------------------
 
   String get _themeName {
     switch (_settings.themeMode) {
@@ -88,10 +85,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         return 'Translation';
     }
   }
-
-  // ---------------------------------------------------------------------------
-  // Pickers
-  // ---------------------------------------------------------------------------
 
   Future<void> _selectTheme(WeuraColors colors) async {
     final result = await showModalBottomSheet<ThemeMode>(
@@ -246,7 +239,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: const Text('Cancel'),
             ),
             TextButton(
-              onPressed: () => Navigator.pop(dialogContext, controller.text),
+              onPressed: () =>
+                  Navigator.pop(dialogContext, controller.text),
               child: const Text('Save'),
             ),
           ],
@@ -258,10 +252,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await _settings.setUserName(result);
     _showChanged(result.trim().isEmpty ? 'Name cleared' : 'Name saved');
   }
-
-  // ---------------------------------------------------------------------------
-  // Dialogs
-  // ---------------------------------------------------------------------------
 
   void _showChanged(String message) {
     if (!mounted) return;
@@ -451,10 +441,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Build
-  // ---------------------------------------------------------------------------
-
   @override
   Widget build(BuildContext context) {
     final colors = WeuraColors.of(context);
@@ -462,7 +448,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Scaffold(
       backgroundColor: colors.background,
       appBar: AppBar(
-        backgroundColor: colors.background,
+        backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
           onPressed: () {
@@ -497,156 +483,154 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 40),
-        children: [
-          // ─── Appearance ──────────────────────────────
-          _sectionTitle(colors, 'Appearance'),
-          _card(colors, [
-            _settingTile(
-              colors,
-              title: 'Appearance',
-              subtitle: _themeName,
-              onTap: () => _selectTheme(colors),
-            ),
-            _divider(colors),
-            _settingTile(
-              colors,
-              title: 'Language',
-              subtitle: _settings.language,
-              onTap: () => _selectLanguage(colors),
-            ),
-            _divider(colors),
-            _settingTile(
-              colors,
-              title: 'Text direction',
-              subtitle: _settings.direction,
-              onTap: () => _selectDirection(colors),
-            ),
-          ]),
-          const SizedBox(height: 24),
+      extendBodyBehindAppBar: true,
+      body: WeuraScreenBackground(
+        colors: colors,
+        child: ListView(
+          padding: EdgeInsets.fromLTRB(
+            16,
+            MediaQuery.of(context).padding.top + kToolbarHeight + 10,
+            16,
+            40,
+          ),
+          children: [
+            _sectionTitle(colors, 'Appearance'),
+            _card(colors, [
+              _settingTile(
+                colors,
+                title: 'Appearance',
+                subtitle: _themeName,
+                onTap: () => _selectTheme(colors),
+              ),
+              _divider(colors),
+              _settingTile(
+                colors,
+                title: 'Language',
+                subtitle: _settings.language,
+                onTap: () => _selectLanguage(colors),
+              ),
+              _divider(colors),
+              _settingTile(
+                colors,
+                title: 'Text direction',
+                subtitle: _settings.direction,
+                onTap: () => _selectDirection(colors),
+              ),
+            ]),
+            const SizedBox(height: 24),
 
-          // ─── AI ──────────────────────────────────────
-          _sectionTitle(colors, 'AI'),
-          _card(colors, [
-            _settingTile(
-              colors,
-              title: 'Your name',
-              subtitle: _settings.hasUserName
-                  ? _settings.userName
-                  : 'Not set',
-              onTap: () => _editUserName(colors),
-            ),
-            _divider(colors),
-            _settingTile(
-              colors,
-              title: 'Default AI mode',
-              subtitle: _modeName(_settings.mode),
-              onTap: () => _selectMode(colors),
-            ),
-            _divider(colors),
-            _settingTile(
-              colors,
-              title: 'Response detail',
-              subtitle: _responseDetailName,
-              onTap: () => _selectResponseDetail(colors),
-            ),
-            _divider(colors),
-            _switchTile(
-              colors,
-              title: 'Memory',
-              subtitle: 'Allow WEURA to use saved memories',
-              value: _settings.memoryEnabled,
-              onChanged: _settings.setMemoryEnabled,
-            ),
-          ]),
-          const SizedBox(height: 24),
+            _sectionTitle(colors, 'AI'),
+            _card(colors, [
+              _settingTile(
+                colors,
+                title: 'Your name',
+                subtitle: _settings.hasUserName
+                    ? _settings.userName
+                    : 'Not set',
+                onTap: () => _editUserName(colors),
+              ),
+              _divider(colors),
+              _settingTile(
+                colors,
+                title: 'Default AI mode',
+                subtitle: _modeName(_settings.mode),
+                onTap: () => _selectMode(colors),
+              ),
+              _divider(colors),
+              _settingTile(
+                colors,
+                title: 'Response detail',
+                subtitle: _responseDetailName,
+                onTap: () => _selectResponseDetail(colors),
+              ),
+              _divider(colors),
+              _switchTile(
+                colors,
+                title: 'Memory',
+                subtitle: 'Allow WEURA to use saved memories',
+                value: _settings.memoryEnabled,
+                onChanged: _settings.setMemoryEnabled,
+              ),
+            ]),
+            const SizedBox(height: 24),
 
-          // ─── Voice ───────────────────────────────────
-          _sectionTitle(colors, 'Voice'),
-          _card(colors, [
-            _switchTile(
-              colors,
-              title: 'Voice input',
-              subtitle: 'Use your microphone for messages',
-              value: _settings.voiceInputEnabled,
-              onChanged: _settings.setVoiceInputEnabled,
-            ),
-            _divider(colors),
-            _switchTile(
-              colors,
-              title: 'Voice output',
-              subtitle: 'Read AI responses aloud',
-              value: _settings.voiceOutputEnabled,
-              onChanged: _settings.setVoiceOutputEnabled,
-            ),
-          ]),
-          const SizedBox(height: 24),
+            _sectionTitle(colors, 'Voice'),
+            _card(colors, [
+              _switchTile(
+                colors,
+                title: 'Voice input',
+                subtitle: 'Use your microphone for messages',
+                value: _settings.voiceInputEnabled,
+                onChanged: _settings.setVoiceInputEnabled,
+              ),
+              _divider(colors),
+              _switchTile(
+                colors,
+                title: 'Voice output',
+                subtitle: 'Read AI responses aloud',
+                value: _settings.voiceOutputEnabled,
+                onChanged: _settings.setVoiceOutputEnabled,
+              ),
+            ]),
+            const SizedBox(height: 24),
 
-          // ─── Chat ────────────────────────────────────
-          _sectionTitle(colors, 'Chat'),
-          _card(colors, [
-            _switchTile(
-              colors,
-              title: 'Auto-save history',
-              subtitle: 'Automatically save conversations',
-              value: _settings.autoSaveHistory,
-              onChanged: _settings.setAutoSaveHistory,
-            ),
-            _divider(colors),
-            _switchTile(
-              colors,
-              title: 'Send on Enter',
-              subtitle: 'Press Enter to send a message',
-              value: _settings.sendOnEnter,
-              onChanged: _settings.setSendOnEnter,
-            ),
-          ]),
-          const SizedBox(height: 24),
+            _sectionTitle(colors, 'Chat'),
+            _card(colors, [
+              _switchTile(
+                colors,
+                title: 'Auto-save history',
+                subtitle: 'Automatically save conversations',
+                value: _settings.autoSaveHistory,
+                onChanged: _settings.setAutoSaveHistory,
+              ),
+              _divider(colors),
+              _switchTile(
+                colors,
+                title: 'Send on Enter',
+                subtitle: 'Press Enter to send a message',
+                value: _settings.sendOnEnter,
+                onChanged: _settings.setSendOnEnter,
+              ),
+            ]),
+            const SizedBox(height: 24),
 
-          // ─── Connection ──────────────────────────────
-          _sectionTitle(colors, 'Connection'),
-          _card(colors, [
-            _settingTile(
-              colors,
-              title: 'AI connection',
-              subtitle: 'Groq • Cerebras • Tavily',
-              onTap: () => _showConnectionInfo(colors),
-            ),
-          ]),
-          const SizedBox(height: 24),
+            _sectionTitle(colors, 'Connection'),
+            _card(colors, [
+              _settingTile(
+                colors,
+                title: 'AI connection',
+                subtitle: 'Groq • Cerebras • Tavily',
+                onTap: () => _showConnectionInfo(colors),
+              ),
+            ]),
+            const SizedBox(height: 24),
 
-          // ─── Privacy ─────────────────────────────────
-          _sectionTitle(colors, 'Privacy'),
-          _card(colors, [
-            _settingTile(
-              colors,
-              title: 'Clear local data',
-              subtitle: 'Remove locally stored WEURA data',
-              destructive: true,
-              onTap: () => _confirmClearData(colors),
-            ),
-          ]),
-          const SizedBox(height: 24),
+            _sectionTitle(colors, 'Privacy'),
+            _card(colors, [
+              _settingTile(
+                colors,
+                title: 'Clear local data',
+                subtitle: 'Remove locally stored WEURA data',
+                destructive: true,
+                onTap: () => _confirmClearData(colors),
+              ),
+            ]),
+            const SizedBox(height: 24),
 
-          // ─── About ───────────────────────────────────
-          _sectionTitle(colors, 'About'),
-          _card(colors, [
-            _settingTile(
-              colors,
-              title: 'About WEURA',
-              subtitle: 'WEURA AI • Version 1.0.0',
-              onTap: () => _showAbout(colors),
-            ),
-          ]),
-        ],
+            _sectionTitle(colors, 'About'),
+            _card(colors, [
+              _settingTile(
+                colors,
+                title: 'About WEURA',
+                subtitle: 'WEURA AI • Version 1.0.0',
+                onTap: () => _showAbout(colors),
+              ),
+            ]),
+          ],
+        ),
       ),
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // Widgets
-  // ---------------------------------------------------------------------------
 
   Widget _sectionTitle(WeuraColors colors, String title) {
     return Padding(
@@ -666,7 +650,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget _card(WeuraColors colors, List<Widget> children) {
     return Container(
       decoration: BoxDecoration(
-        color: colors.surface,
+        color: colors.surface.withValues(alpha: 0.85),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: colors.border),
       ),
@@ -743,10 +727,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 }
-
-// ---------------------------------------------------------------------------
-// Selection sheet
-// ---------------------------------------------------------------------------
 
 class _SelectionOption<T> {
   const _SelectionOption({
