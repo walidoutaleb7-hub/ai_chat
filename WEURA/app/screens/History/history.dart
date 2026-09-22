@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../components/UI/screen_background.dart';
 import '../../core/History/chat_history.dart';
 import '../../core/Settings/app_settings.dart';
 import '../../core/Theme/weura_theme.dart';
@@ -126,7 +127,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
               child: Text(_t('Cancel', 'إلغاء')),
             ),
             TextButton(
-              onPressed: () => Navigator.pop(dialogContext, controller.text),
+              onPressed: () =>
+                  Navigator.pop(dialogContext, controller.text),
               child: Text(_t('Save', 'حفظ')),
             ),
           ],
@@ -211,7 +213,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return Scaffold(
       backgroundColor: colors.background,
       appBar: AppBar(
-        backgroundColor: colors.background,
+        backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
           tooltip: _t('Back', 'رجوع'),
@@ -242,74 +244,88 @@ class _HistoryScreenState extends State<HistoryScreen> {
             ),
         ],
       ),
-      body: _isLoading
-          ? Center(
-              child: SizedBox(
-                width: 28,
-                height: 28,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: colors.accentGlow,
+      extendBodyBehindAppBar: true,
+      body: WeuraScreenBackground(
+        colors: colors,
+        child: _isLoading
+            ? Center(
+                child: SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: colors.accentGlow,
+                  ),
                 ),
-              ),
-            )
-          : Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                  child: TextField(
-                    controller: _searchController,
-                    onChanged: (value) {
-                      setState(() => _search = value);
-                    },
-                    style: TextStyle(color: colors.textPrimary),
-                    decoration: InputDecoration(
-                      hintText: _t(
-                        'Search conversations...',
-                        'ابحث في المحادثات...',
-                      ),
-                      hintStyle: TextStyle(color: colors.textFaint),
-                      prefixIcon: Icon(
-                        Icons.search_rounded,
-                        size: 22,
-                        color: colors.textMuted,
-                      ),
-                      suffixIcon: _search.isNotEmpty
-                          ? IconButton(
-                              onPressed: () {
-                                _searchController.clear();
-                                setState(() => _search = '');
-                              },
-                              icon: Icon(
-                                Icons.close_rounded,
-                                size: 20,
-                                color: colors.textMuted,
-                              ),
-                            )
-                          : null,
-                      filled: true,
-                      fillColor: colors.surface,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none,
+              )
+            : Column(
+                children: [
+                  SizedBox(
+                    height: MediaQuery.of(context).padding.top +
+                        kToolbarHeight,
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                    child: TextField(
+                      controller: _searchController,
+                      onChanged: (value) {
+                        setState(() => _search = value);
+                      },
+                      style: TextStyle(color: colors.textPrimary),
+                      decoration: InputDecoration(
+                        hintText: _t(
+                          'Search conversations...',
+                          'ابحث في المحادثات...',
+                        ),
+                        hintStyle: TextStyle(color: colors.textFaint),
+                        prefixIcon: Icon(
+                          Icons.search_rounded,
+                          size: 22,
+                          color: colors.textMuted,
+                        ),
+                        suffixIcon: _search.isNotEmpty
+                            ? IconButton(
+                                onPressed: () {
+                                  _searchController.clear();
+                                  setState(() => _search = '');
+                                },
+                                icon: Icon(
+                                  Icons.close_rounded,
+                                  size: 20,
+                                  color: colors.textMuted,
+                                ),
+                              )
+                            : null,
+                        filled: true,
+                        fillColor: colors.surface.withValues(alpha: 0.9),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: BorderSide.none,
+                        ),
                       ),
                     ),
                   ),
-                ),
-                Expanded(
-                  child: chats.isEmpty
-                      ? _emptyState(colors)
-                      : ListView.separated(
-                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-                          itemCount: chats.length,
-                          separatorBuilder: (_, __) => const SizedBox(height: 8),
-                          itemBuilder: (context, index) {
-                            return _chatTile(colors, chats[index]);
-                          },
-                        ),
-                ),
-              ],
-            ),
+                  Expanded(
+                    child: chats.isEmpty
+                        ? _emptyState(colors)
+                        : ListView.separated(
+                            padding: const EdgeInsets.fromLTRB(
+                              16,
+                              4,
+                              16,
+                              24,
+                            ),
+                            itemCount: chats.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 8),
+                            itemBuilder: (context, index) {
+                              return _chatTile(colors, chats[index]);
+                            },
+                          ),
+                  ),
+                ],
+              ),
+      ),
     );
   }
 
@@ -318,7 +334,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     final dateLabel = _formatDate(chat.updatedAt);
 
     return Material(
-      color: colors.surface,
+      color: colors.surface.withValues(alpha: 0.85),
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
@@ -461,7 +477,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
             const SizedBox(height: 8),
             Text(
               isSearching
-                  ? _t('Try a different search term.', 'جرب كلمة بحث أخرى.')
+                  ? _t(
+                      'Try a different search term.',
+                      'جرب كلمة بحث أخرى.',
+                    )
                   : _t(
                       'Your conversations will appear here.',
                       'ستظهر محادثاتك هنا.',
