@@ -2067,7 +2067,10 @@ class _ChatScreenState extends State<ChatScreen>
       body: Stack(
         children: [
           Positioned.fill(
-            child: _ChatBackground(colors: colors),
+            child: TickerMode(
+              enabled: _messages.isNotEmpty || _isLoading,
+              child: _ChatBackground(colors: colors),
+            ),
           ),
           Column(
             children: [
@@ -5026,8 +5029,8 @@ class _FootballPainter extends CustomPainter {
 }
 
 // ---------------------------------------------------------------------------
-// Cinematic chat background — aurora + stars + grid + glow + vignette
-// (Theme-aware: adapts to light/dark)
+// Cinematic chat background — aurora + stars + glow + vignette
+// (Theme-aware, performance-optimized: 40 stars, 2 aurora blobs, no grid)
 // ---------------------------------------------------------------------------
 
 class _ChatBackground extends StatefulWidget {
@@ -5078,7 +5081,6 @@ class _ChatBackgroundState extends State<_ChatBackground>
     final colors = widget.colors;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // Theme-aware palette
     final gradientTop = isDark
         ? const Color(0xFF04060B)
         : const Color(0xFFF8FAFF);
@@ -5092,10 +5094,6 @@ class _ChatBackgroundState extends State<_ChatBackground>
     final starColor = isDark
         ? Colors.white
         : const Color(0xFF1A2540);
-
-    final gridColor = isDark
-        ? colors.accentGlow.withValues(alpha: 0.035)
-        : colors.accentGlow.withValues(alpha: 0.06);
 
     final glowOpacity = isDark ? 1.0 : 0.55;
     final vignetteOpacity = isDark ? 0.35 : 0.06;
@@ -5117,7 +5115,7 @@ class _ChatBackgroundState extends State<_ChatBackground>
         ),
         child: Stack(
           children: [
-            // Aurora blobs
+            // Aurora blobs (2 instead of 3)
             AnimatedBuilder(
               animation: _auroraController,
               builder: (context, _) {
@@ -5133,7 +5131,7 @@ class _ChatBackgroundState extends State<_ChatBackground>
               },
             ),
 
-            // Floating stars
+            // Stars (40 instead of 80)
             AnimatedBuilder(
               animation: Listenable.merge([
                 _starsController,
@@ -5150,12 +5148,6 @@ class _ChatBackgroundState extends State<_ChatBackground>
                   ),
                 );
               },
-            ),
-
-            // Faint diagonal grid
-            CustomPaint(
-              size: Size.infinite,
-              painter: _GridOverlayPainter(color: gridColor),
             ),
 
             // Bottom glow
@@ -5266,16 +5258,6 @@ class _AuroraPainter extends CustomPainter {
       radius: size.width * 0.55,
       color: glow.withValues(alpha: 0.14 * intensity),
     );
-
-    _blob(
-      canvas,
-      size,
-      cx: size.width * (0.50 + 0.18 * math.sin(t * 0.5 + 1.2)),
-      cy: size.height * (0.80 + 0.08 * math.cos(t * 0.6)),
-      radius: size.width * 0.65,
-      color: const Color(0xFF8B5CF6)
-          .withValues(alpha: 0.10 * intensity),
-    );
   }
 
   void _blob(
@@ -5323,7 +5305,7 @@ class _StarsPainter extends CustomPainter {
 
   static List<_StarSeed> _generateStars() {
     final rnd = math.Random(42);
-    return List.generate(80, (i) {
+    return List.generate(40, (i) {
       return _StarSeed(
         x: rnd.nextDouble(),
         y: rnd.nextDouble(),
@@ -5388,33 +5370,4 @@ class _StarSeed {
   final double size;
   final double phase;
   final double speed;
-}
-
-class _GridOverlayPainter extends CustomPainter {
-  _GridOverlayPainter({required this.color});
-
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = 0.6;
-
-    const spacing = 60.0;
-    const angleOffset = 0.35;
-
-    for (double x = -size.height; x < size.width; x += spacing) {
-      canvas.drawLine(
-        Offset(x + size.height * angleOffset, 0),
-        Offset(x, size.height),
-        paint,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _GridOverlayPainter oldDelegate) {
-    return oldDelegate.color != color;
-  }
 }
