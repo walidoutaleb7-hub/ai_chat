@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../components/UI/screen_background.dart';
+import '../../components/UI/weura_background.dart';
 import '../../core/Memory/memory_manager.dart';
 import '../../core/Settings/app_settings.dart';
 import '../../core/Theme/weura_theme.dart';
@@ -333,7 +333,7 @@ class _MemoryScreenState extends State<MemoryScreen> {
                                 : null,
                             filled: true,
                             fillColor:
-                                colors.surface.withValues(alpha: 0.9),
+                                colors.surface.withValues(alpha: 0.85),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(16),
                               borderSide: BorderSide.none,
@@ -526,10 +526,7 @@ class _MemoryScreenState extends State<MemoryScreen> {
             ),
             const SizedBox(height: 6),
             Text(
-              _t(
-                'Try a different search term.',
-                'جرب كلمة بحث أخرى.',
-              ),
+              _t('Try a different search term.', 'جرب كلمة بحث أخرى.'),
               style: TextStyle(
                 color: colors.textMuted,
                 fontSize: 13,
