@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../components/UI/screen_background.dart';
 import '../../core/Theme/weura_theme.dart';
 import '../Chat/chat.dart';
 import '../History/history.dart';
@@ -99,18 +100,21 @@ class _HomeScreenState extends State<HomeScreen>
 
     return Scaffold(
       backgroundColor: colors.background,
-      body: SafeArea(
-        child: FadeTransition(
-          opacity: CurvedAnimation(
-            parent: _animationController,
-            curve: Curves.easeOut,
-          ),
-          child: Column(
-            children: [
-              _topBar(colors),
-              Expanded(child: _mainContent(colors)),
-              _composer(colors),
-            ],
+      body: WeuraScreenBackground(
+        colors: colors,
+        child: SafeArea(
+          child: FadeTransition(
+            opacity: CurvedAnimation(
+              parent: _animationController,
+              curve: Curves.easeOut,
+            ),
+            child: Column(
+              children: [
+                _topBar(colors),
+                Expanded(child: _mainContent(colors)),
+                _composer(colors),
+              ],
+            ),
           ),
         ),
       ),
