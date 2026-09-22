@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../components/UI/screen_background.dart';
 import '../../core/Memory/memory_manager.dart';
 import '../../core/Settings/app_settings.dart';
 import '../../core/Theme/weura_theme.dart';
@@ -69,7 +70,10 @@ class _MemoryScreenState extends State<MemoryScreen> {
             maxLength: 500,
             style: TextStyle(color: colors.textPrimary),
             decoration: InputDecoration(
-              hintText: _t('What should WEURA remember?', 'شو تحب WEURA يتفكر؟'),
+              hintText: _t(
+                'What should WEURA remember?',
+                'شو تحب WEURA يتفكر؟',
+              ),
               hintStyle: TextStyle(color: colors.textFaint),
               filled: true,
               fillColor: colors.surface,
@@ -85,7 +89,8 @@ class _MemoryScreenState extends State<MemoryScreen> {
               child: Text(_t('Cancel', 'إلغاء')),
             ),
             TextButton(
-              onPressed: () => Navigator.pop(dialogContext, controller.text),
+              onPressed: () =>
+                  Navigator.pop(dialogContext, controller.text),
               child: Text(_t('Save', 'حفظ')),
             ),
           ],
@@ -201,7 +206,7 @@ class _MemoryScreenState extends State<MemoryScreen> {
     return Scaffold(
       backgroundColor: colors.background,
       appBar: AppBar(
-        backgroundColor: colors.background,
+        backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
           tooltip: _t('Back', 'رجوع'),
@@ -257,6 +262,7 @@ class _MemoryScreenState extends State<MemoryScreen> {
             ),
         ],
       ),
+      extendBodyBehindAppBar: true,
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showMemoryDialog(colors),
         backgroundColor: colors.accent,
@@ -266,82 +272,99 @@ class _MemoryScreenState extends State<MemoryScreen> {
           color: Colors.white,
         ),
       ),
-      body: _isLoading
-          ? Center(
-              child: SizedBox(
-                width: 28,
-                height: 28,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: colors.accentGlow,
+      body: WeuraScreenBackground(
+        colors: colors,
+        child: _isLoading
+            ? Center(
+                child: SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: colors.accentGlow,
+                  ),
                 ),
-              ),
-            )
-          : _manager.memories.isEmpty
-              ? _emptyState(colors)
-              : Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                      child: TextField(
-                        controller: _searchController,
-                        onChanged: (value) {
-                          setState(() => _search = value);
-                        },
-                        style: TextStyle(color: colors.textPrimary),
-                        decoration: InputDecoration(
-                          hintText: _t(
-                            'Search memory...',
-                            'ابحث في الذاكرة...',
-                          ),
-                          hintStyle: TextStyle(color: colors.textFaint),
-                          prefixIcon: Icon(
-                            Icons.search_rounded,
-                            size: 22,
-                            color: colors.textMuted,
-                          ),
-                          suffixIcon: _search.isNotEmpty
-                              ? IconButton(
-                                  onPressed: () {
-                                    _searchController.clear();
-                                    setState(() => _search = '');
-                                  },
-                                  icon: Icon(
-                                    Icons.close_rounded,
-                                    size: 20,
-                                    color: colors.textMuted,
-                                  ),
-                                )
-                              : null,
-                          filled: true,
-                          fillColor: colors.surface,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(16),
-                            borderSide: BorderSide.none,
+              )
+            : _manager.memories.isEmpty
+                ? Padding(
+                    padding: EdgeInsets.only(
+                      top: MediaQuery.of(context).padding.top +
+                          kToolbarHeight,
+                    ),
+                    child: _emptyState(colors),
+                  )
+                : Column(
+                    children: [
+                      SizedBox(
+                        height: MediaQuery.of(context).padding.top +
+                            kToolbarHeight,
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                        child: TextField(
+                          controller: _searchController,
+                          onChanged: (value) {
+                            setState(() => _search = value);
+                          },
+                          style: TextStyle(color: colors.textPrimary),
+                          decoration: InputDecoration(
+                            hintText: _t(
+                              'Search memory...',
+                              'ابحث في الذاكرة...',
+                            ),
+                            hintStyle: TextStyle(color: colors.textFaint),
+                            prefixIcon: Icon(
+                              Icons.search_rounded,
+                              size: 22,
+                              color: colors.textMuted,
+                            ),
+                            suffixIcon: _search.isNotEmpty
+                                ? IconButton(
+                                    onPressed: () {
+                                      _searchController.clear();
+                                      setState(() => _search = '');
+                                    },
+                                    icon: Icon(
+                                      Icons.close_rounded,
+                                      size: 20,
+                                      color: colors.textMuted,
+                                    ),
+                                  )
+                                : null,
+                            filled: true,
+                            fillColor:
+                                colors.surface.withValues(alpha: 0.9),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              borderSide: BorderSide.none,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    Expanded(
-                      child: items.isEmpty
-                          ? _noResultsState(colors)
-                          : ListView.separated(
-                              padding: const EdgeInsets.fromLTRB(
-                                16,
-                                4,
-                                16,
-                                100,
+                      Expanded(
+                        child: items.isEmpty
+                            ? _noResultsState(colors)
+                            : ListView.separated(
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  4,
+                                  16,
+                                  100,
+                                ),
+                                itemCount: items.length,
+                                separatorBuilder: (_, __) =>
+                                    const SizedBox(height: 10),
+                                itemBuilder: (context, index) {
+                                  return _memoryCard(
+                                    colors,
+                                    items[index],
+                                  );
+                                },
                               ),
-                              itemCount: items.length,
-                              separatorBuilder: (_, __) =>
-                                  const SizedBox(height: 10),
-                              itemBuilder: (context, index) {
-                                return _memoryCard(colors, items[index]);
-                              },
-                            ),
-                    ),
-                  ],
-                ),
+                      ),
+                    ],
+                  ),
+      ),
     );
   }
 
@@ -349,7 +372,7 @@ class _MemoryScreenState extends State<MemoryScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: colors.surface,
+        color: colors.surface.withValues(alpha: 0.85),
         borderRadius: BorderRadius.circular(17),
         border: Border.all(color: colors.border),
       ),
@@ -503,7 +526,10 @@ class _MemoryScreenState extends State<MemoryScreen> {
             ),
             const SizedBox(height: 6),
             Text(
-              _t('Try a different search term.', 'جرب كلمة بحث أخرى.'),
+              _t(
+                'Try a different search term.',
+                'جرب كلمة بحث أخرى.',
+              ),
               style: TextStyle(
                 color: colors.textMuted,
                 fontSize: 13,
