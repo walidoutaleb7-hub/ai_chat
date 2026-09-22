@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../components/UI/screen_background.dart';
+import '../../components/UI/weura_background.dart';
 import '../../core/AI/ai_router.dart';
 import '../../core/Settings/app_settings.dart';
 import '../../core/Theme/weura_theme.dart';
