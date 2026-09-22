@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../components/UI/screen_background.dart';
+import '../../components/UI/weura_background.dart';
 import '../../core/History/chat_history.dart';
 import '../../core/Settings/app_settings.dart';
 import '../../core/Theme/weura_theme.dart';
@@ -297,7 +297,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                               )
                             : null,
                         filled: true,
-                        fillColor: colors.surface.withValues(alpha: 0.9),
+                        fillColor: colors.surface.withValues(alpha: 0.85),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(16),
                           borderSide: BorderSide.none,
@@ -477,10 +477,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
             const SizedBox(height: 8),
             Text(
               isSearching
-                  ? _t(
-                      'Try a different search term.',
-                      'جرب كلمة بحث أخرى.',
-                    )
+                  ? _t('Try a different search term.', 'جرب كلمة بحث أخرى.')
                   : _t(
                       'Your conversations will appear here.',
                       'ستظهر محادثاتك هنا.',
