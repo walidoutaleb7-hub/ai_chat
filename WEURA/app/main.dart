@@ -30,7 +30,12 @@ class WeuraApp extends StatelessWidget {
       builder: (context, _) {
         final settings = AppSettingsManager.instance;
 
+        // Key forces full rebuild when language/direction/theme changes.
+        // Without this, switching language did nothing on screen.
         return MaterialApp(
+          key: ValueKey(
+            '${settings.language}-${settings.direction}-${settings.themeMode}',
+          ),
           debugShowCheckedModeBanner: false,
           title: 'WEURA AI',
           themeMode: settings.themeMode,
