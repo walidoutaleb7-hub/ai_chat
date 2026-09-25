@@ -55,13 +55,28 @@ function pruneResponseCache(): void {
 
 setInterval(pruneResponseCache, 5 * 60 * 1000).unref();
 
-function buildCacheKey(userMessage: string): string {
-  return userMessage.trim().toLowerCase().slice(0, 200);
+/**
+ * ✅ FIXED: cache key now includes memory + mode.
+ *
+ * BEFORE: only the last user message was used → memory/mode changes were
+ * ignored, causing cross-user cache leaks (a user could receive a cached
+ * reply that contains another user's memory like their name).
+ */
+function buildCacheKey(
+  userMessage: string,
+  memory: string,
+  mode: string | null,
+): string {
+  const msgPart = userMessage.trim().toLowerCase().slice(0, 150);
+  const memPart = memory ? memory.trim().slice(0, 80) : '';
+  const modePart = (mode ?? 'auto').trim();
+  return `${msgPart}|${modePart}|${memPart}`;
 }
 
 function pickTTL(userMessage: string, searchUsed: boolean): number {
   const lower = userMessage.toLowerCase();
 
+  // Time-specific questions → NEVER cache.
   if (/\b(time|الساعة|الوقت|دقيقة|ساعة|كم الساعة|شحال الساعة)\b/i.test(lower)) {
     return 0;
   }
@@ -149,8 +164,7 @@ SEARCH NEEDED (need_search = true):
 - Current events, news, "what happened", "latest", "today"
 - Sports: current managers, players' current clubs, transfers, standings,
   match results, awards (Ballon d'Or, etc.), stats
-- **ANY football / soccer question** (matches, players, clubs, leagues,
-  cups, transfers, results, standings, historical results)
+- **ANY football / soccer question**
 - Prices, stocks, market data
 - Weather
 - Anything with a year (2020-2030) + event
@@ -172,18 +186,16 @@ NO SEARCH (need_search = false):
 - Language / translation help
 - Coding questions
 
-CRITICAL: For ANY football-related question → need_search = true,
-even if it looks historical (e.g. "شكون فاز بكأس العالم 1998؟").
-Football sources are the ONLY way to answer accurately.
+CRITICAL: For ANY football-related question → need_search = true.
 
 ═══ OUTPUT ═══
-Return ONLY valid JSON (no markdown, no explanation):
+Return ONLY valid JSON:
 
 {
   "need_search": true | false,
   "reason": "short reason (max 80 chars)",
-  "search_query": "optimized query for web search (empty if need_search=false)",
-  "angle": "how to approach the answer (max 100 chars, in user's language)"
+  "search_query": "optimized query (empty if need_search=false)",
+  "angle": "how to approach the answer (max 100 chars)"
 }`;
 
 type ReflectionResult = {
@@ -359,40 +371,22 @@ function isIdentityQuestion(message: string): boolean {
   return patterns.some((p) => p.test(text));
 }
 
-/**
- * Detects personal questions like "do you know me?".
- *
- * Uses \b boundaries (not ^...$) so longer variants like
- * "واش تعرفني؟" or "do you know me to you" still match.
- */
 function isPersonalQuestion(message: string): boolean {
   const text = message.trim().toLowerCase();
   if (text.length === 0) return false;
 
-  // Any of these substrings → personal question.
   const markers = [
-    'تعرفني',
-    'تتذكرني',
-    'تفتكرني',
-    'شكون انا',
-    'شكون أنا',
-    'من انا',
-    'من أنا',
-    'واش تعرفني',
-    'واش تتذكرني',
-    'تعرفني ولا لا',
-    'تتذكرني ولا لا',
-    'do you know me',
-    'do you remember me',
-    'who am i',
-    'who am i to you',
-    'remember me',
+    'تعرفني', 'تتذكرني', 'تفتكرني',
+    'شكون انا', 'شكون أنا', 'من انا', 'من أنا',
+    'واش تعرفني', 'واش تتذكرني',
+    'تعرفني ولا لا', 'تتذكرني ولا لا',
+    'do you know me', 'do you remember me',
+    'who am i', 'who am i to you', 'remember me',
   ];
 
   for (const m of markers) {
     if (text.includes(m.toLowerCase())) return true;
   }
-
   return false;
 }
 
@@ -445,7 +439,7 @@ function buildSoulBlock(): string {
     `CONTEXT & FOLLOW-UPS:\n` +
     `- You have the previous messages. Use them.\n` +
     `- Pronouns (هذا/ذلك/هو/it/that) → last topic. NEVER ask "what do you mean?".\n` +
-    `- Short follow-ups (زيد / وضّح / go on) → continue. Never ask what they meant.\n\n` +
+    `- Short follow-ups (زيد / وضّح / go on) → continue.\n\n` +
     `FACTS & AWARDS (CRITICAL):\n` +
     `- For ANY question about AWARDS, MANAGERS, current club/player status, news,\n` +
     `  prices, or current events → rely ONLY on the search results when provided.\n` +
@@ -455,27 +449,18 @@ function buildSoulBlock(): string {
     `- Do NOT invent dates, names, or winners.\n\n` +
     `FOOTBALL (CRITICAL):\n` +
     `- For ANY football question → search results are MANDATORY.\n` +
-    `- Sources: RSSSF (history from 1886), FBref, Transfermarkt, 11v11,\n` +
-    `  worldfootball, zerozero, kicker, marca, BBC Sport, ESPN, The Athletic.\n` +
+    `- Sources: RSSSF, FBref, Transfermarkt, 11v11, worldfootball, zerozero,\n` +
+    `  kicker, marca, BBC Sport, ESPN, The Athletic, footballdatabase.\n` +
     `- NEVER invent scores, transfers, lineups, stats, dates, or players.\n` +
-    `- If the search results don't have the answer → say so honestly.\n` +
-    `- Be precise: exact score, exact date, exact club.\n` +
     `- If the question is about a RUMOR vs CONFIRMED transfer:\n` +
-    `  - Only CONFIRMED sources ("signed", "completed", "official") count.\n` +
-    `  - "Interested", "linked", "target" → NOT confirmed.\n\n` +
-    `COMPARISON, OPINION, ANALYSIS, HOW-TO (IMPORTANT):\n` +
+    `  - Only CONFIRMED sources ("signed", "completed", "official") count.\n\n` +
+    `COMPARISON, OPINION, ANALYSIS, HOW-TO:\n` +
     `- These are NEVER "current facts". Answer from your own knowledge.\n` +
-    `- NEVER reply "هذه المعلومة غير موجودة في المصادر المتاحة" for:\n` +
-    `    • Comparisons (X vs Y, قارن بين، الفرق بين)\n` +
-    `    • Opinions / advice (شنو رايك، تنصحني، should I)\n` +
-    `    • Explanations / analysis (اشرح، حلل، علاش، كيفاش)\n` +
-    `    • How-to / tutorials (علمني، كيفاش نكتب)\n` +
-    `    • Career / study / job market questions\n` +
-    `    • Coding / technical questions\n` +
+    `- NEVER reply "هذه المعلومة غير موجودة في المصادر المتاحة" for these.\n` +
     `- You DO know these things. Give a real, structured answer.\n\n` +
     `OPENING (optional):\n` +
     `- MAY add ONE short, natural follow-up if it adds value.\n` +
-    `- ✗ NEVER: "Let me know if..." / "هل تحتاج أي مساعدة أخرى؟" / "بالتوفيق".\n\n` +
+    `- ✗ NEVER: "Let me know if..." / "بالتوفيق".\n\n` +
     `DIALECT — MIRROR EXACTLY:\n` +
     `- "مرحبا" / "كيف حالك" → MSA → reply in فصحى.\n` +
     `- "واش راك" / "كيفاش" / "بصح" / "خويا" → Darija → reply in Darija.\n` +
@@ -485,15 +470,10 @@ function buildSoulBlock(): string {
     `- "As an AI..." / "بصفتي ذكاء اصطناعي..."\n` +
     `- "I understand" standalone.\n` +
     `- Repeat or paraphrase the user's question back.\n` +
-    `- "furthermore/moreover/additionally".\n` +
     `- Emoji decoration. Max ONE emoji per 4-5 messages.\n` +
-    `- Bullet list when one sentence would do.\n` +
-    `- Bracketed citations like [1], [2] UNLESS a SEARCH RESULTS block is present.\n` +
-    `- Fake enthusiasm ("Wow!", "Amazing!").\n\n` +
+    `- Bracketed citations like [1], [2] UNLESS a SEARCH RESULTS block is present.\n\n` +
     `CODE OUTPUT RULES:\n` +
-    `- When the user asks for code → output ONLY the code + a brief explanation.\n` +
-    `- Do NOT simulate running the code.\n` +
-    `- Do NOT show "expected output" unless the user explicitly asks.\n\n` +
+    `- When the user asks for code → output ONLY the code + a brief explanation.\n\n` +
     `SUCCESS: The user closes the app thinking: "كأنني نهدر مع صاحبي."`
   );
 }
@@ -553,21 +533,16 @@ function buildSearchContext(
 
   const footballRules = isFootball
     ? `\n⚽ FOOTBALL MODE — SPECIAL RULES:\n` +
-      `A. Sources are from 12 official football sites (RSSSF, FBref, 11v11,\n` +
-      `   Transfermarkt, worldfootball, zerozero, kicker, marca, BBC Sport,\n` +
-      `   ESPN, The Athletic, footballdatabase).\n` +
-      `B. RSSSF, 11v11, worldfootball, footballdatabase → HISTORICAL (1932+).\n` +
-      `   Use them for old matches, old tournaments, old stats.\n` +
-      `C. Transfermarkt, kicker, marca, BBC, ESPN, The Athletic → MODERN.\n` +
-      `   Use them for current clubs, transfers, standings, news.\n` +
-      `D. For any current fact (transfer, club, result, standings):\n` +
-      `   - Only count CONFIRMED sources ("signed", "official", "completed").\n` +
-      `   - Rumors ("linked", "interested", "target") are NOT confirmed.\n` +
-      `E. For scores / results: give EXACT numbers (e.g. "3-1").\n` +
+      `A. Sources: RSSSF, FBref, 11v11, Transfermarkt, worldfootball, zerozero,\n` +
+      `   kicker, marca, BBC Sport, ESPN, The Athletic, footballdatabase.\n` +
+      `B. RSSSF/11v11/worldfootball/footballdatabase → HISTORICAL (1932+).\n` +
+      `C. Transfermarkt/kicker/marca/BBC/ESPN/The Athletic → MODERN.\n` +
+      `D. Only count CONFIRMED sources ("signed", "official", "completed").\n` +
+      `E. For scores/results: give EXACT numbers (e.g. "3-1").\n` +
       `F. For awards: use the NEWEST source.\n` +
       `G. If sources disagree → use the NEWEST one.\n` +
-      `H. If ALL sources are older than 12 months AND the question is about\n` +
-      `   "current" → say "لم أجد معلومات حديثة."\n`
+      `H. If ALL sources > 12 months AND question is "current" →\n` +
+      `   say "لم أجد معلومات حديثة."\n`
     : '';
 
   return (
@@ -576,29 +551,18 @@ function buildSearchContext(
     angleLine +
     footballRules +
     `\nGENERAL RULES:\n` +
-    `1. Base facts ONLY on results above. No training data for facts.\n` +
+    `1. Base facts ONLY on results above.\n` +
     `2. NEVER invent names, scores, dates, transfers, quotes.\n` +
-    `3. If not in results AND question is a CURRENT FACT (news, transfer,\n` +
-    `   current role, price, match result) → "هذه المعلومة غير موجودة في\n` +
-    `   المصادر المتاحة."\n` +
-    `   \n` +
-    `   DO NOT use this fallback for:\n` +
-    `   - Identity / user / conversation questions\n` +
-    `   - COMPARISON questions ("قارن بين", "الفرق بين", X vs Y)\n` +
-    `   - OPINION / ADVICE ("شنو رايك", "تنصحني", should I)\n` +
-    `   - ANALYSIS / EXPLANATION ("اشرح", "حلل", "علاش", "كيفاش")\n` +
-    `   - HOW-TO / TUTORIAL / LEARNING\n` +
-    `   - CAREER / STUDY / JOB MARKET\n` +
-    `   - CODING / TECHNICAL\n` +
-    `4. Cite ONLY numbers that exist ([1], [2]...). Never [4] if only 3 exist.\n` +
+    `3. If not in results AND question is a CURRENT FACT →\n` +
+    `   "هذه المعلومة غير موجودة في المصادر المتاحة."\n` +
+    `   DO NOT use this for: identity/user/conversation/comparison/\n` +
+    `   opinion/analysis/how-to/career/coding questions.\n` +
+    `4. Cite ONLY numbers that exist ([1], [2]...).\n` +
     `5. "المصادر:" section at end ONLY if you cited.\n` +
-    `6. If user asks "آخر"/"latest" and best match > 3 months → "لم أجد معلومات حديثة."\n` +
-    `7. Match user's language. Start with answer. Use Markdown.\n` +
-    `8. For AWARDS (Ballon d'Or, FIFA Best, etc.) → answer EXACTLY what the newest source says.\n` +
-    `9. If sources disagree → use the NEWEST one.\n` +
-    `10. DATE FILTER: Look at each source's "Published" date.\n` +
-    `    - For "current X" questions → sources older than 12 months are WRONG.\n` +
-    `11. NEVER mix information from different time periods.\n`
+    `6. Match user's language. Start with answer. Use Markdown.\n` +
+    `7. If sources disagree → use the NEWEST one.\n` +
+    `8. DATE FILTER: for "current X" → sources older than 12 months are WRONG.\n` +
+    `9. NEVER mix information from different time periods.\n`
   );
 }
 
@@ -768,7 +732,8 @@ router.post('/chat', async (req, res) => {
       !isCasual &&
       lastUserMessage.trim().length >= 5;
 
-    const cacheKey = buildCacheKey(lastUserMessage);
+    // ✅ FIXED: cache key includes memory + mode to prevent cross-user leaks.
+    const cacheKey = buildCacheKey(lastUserMessage, memory, mode);
 
     if (useCache) {
       const cached = RESPONSE_CACHE.get(cacheKey);
