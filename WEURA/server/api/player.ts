@@ -592,7 +592,7 @@ async function extractPlayerData(
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: process.env.GROQ_EXTRACTOR_MODEL?.trim() || 'llama-3.1-8b-instant',
+        model: process.env.GROQ_EXTRACTOR_MODEL?.trim() || 'llama-3.3-70b-versatile',
         messages: [
           { role: 'system', content: EXTRACTOR_SYSTEM_PROMPT },
           { role: 'user', content: userMessage },
