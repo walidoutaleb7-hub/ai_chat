@@ -245,7 +245,12 @@ async function reflectOnQuery(
     memorySnippet = `\nUser memory (short):\n${snippet}`;
   }
 
+  const currentDate = new Date().toISOString().split('T')[0];
+  const currentYear = new Date().getFullYear();
+
   const userPrompt =
+    `Today's date: ${currentDate} (year ${currentYear}).\n` +
+    `IMPORTANT: When generating search_query, ALWAYS use the CURRENT year (${currentYear}), NEVER an older year from your training data.\n\n` +
     `User message:\n"${userMessage}"${memorySnippet}\n\n` +
     `Decide: search or not? Return JSON.`;
 
