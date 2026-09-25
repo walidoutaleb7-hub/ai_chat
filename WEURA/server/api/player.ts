@@ -606,11 +606,18 @@ async function extractPlayerData(
       signal: AbortSignal.timeout(30000),
     });
 
-    if (!response.ok) return null;
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '');
+      console.error(`[WEURA] Extractor HTTP ${response.status}: ${errText.slice(0, 500)}`);
+      return null;
+    }
 
     const data: any = await response.json();
     const content = String(data?.choices?.[0]?.message?.content ?? '').trim();
-    if (!content) return null;
+    if (!content) {
+      console.error('[WEURA] Extractor empty content:', JSON.stringify(data).slice(0, 300));
+      return null;
+    }
 
     let parsed: any;
     try {
