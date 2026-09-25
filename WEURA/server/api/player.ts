@@ -650,8 +650,8 @@ async function extractPlayerData(
       trophies,
       latestNews: String(parsed.latestNews ?? '').trim(),
     };
-  } catch {
-    return null;
+  } catch (error) {
+    console.error("[WEURA] Extractor exception:", error); return null;
   }
 }
 
