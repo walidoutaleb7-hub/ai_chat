@@ -65,6 +65,12 @@ const TRUSTED_FOOTBALL = [
   'bbc.com',
   'espn.com',
   'theathletic.com',
+  // General news + reference (for current events that sports-only sites miss)
+  'wikipedia.org',
+  'reuters.com',
+  'apnews.com',
+  'skysports.com',
+  'goal.com',
 ];
 
 const TRUSTED_TECH = [
@@ -128,7 +134,7 @@ async function runSearch(
 
   if (options.timeSensitive && !options.footballHistory) {
     body.topic = 'news';
-    body.days = options.football ? 365 : 180;
+    body.days = options.football ? 90 : 180;
   } else {
     body.topic = 'general';
   }
@@ -136,29 +142,57 @@ async function runSearch(
   const domains = buildDomainList(options);
   if (domains) body.include_domains = domains;
 
-  const response = await fetch(TAVILY_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(15000),
-  });
+  // ── Helper to run a single Tavily call ──────────────────
+  async function callTavily(reqBody: Record<string, unknown>) {
+    const response = await fetch(TAVILY_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(reqBody),
+      signal: AbortSignal.timeout(15000),
+    });
 
-  if (!response.ok) {
-    const errText = await response.text().catch(() => '');
-    console.error(
-      `[WEURA] Tavily error ${response.status}:`,
-      errText.slice(0, 300),
-    );
-    return [];
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '');
+      console.error(
+        `[WEURA] Tavily error ${response.status}:`,
+        errText.slice(0, 300),
+      );
+      return [];
+    }
+
+    const data = await response.json();
+    return Array.isArray((data as any)?.results)
+      ? (data as any).results
+      : [];
   }
 
-  const data = await response.json();
-  const results = Array.isArray((data as any)?.results)
-    ? (data as any).results
-    : [];
+  let rawResults = await callTavily(body);
+
+  // ── Fallback: if domain filter returned too few, retry without it ──
+  if (rawResults.length < 3 && domains) {
+    console.warn(
+      `[WEURA] Only ${rawResults.length} results with domain filter. Retrying without include_domains...`,
+    );
+    const fallbackBody = { ...body };
+    delete fallbackBody.include_domains;
+    const fallbackResults = await callTavily(fallbackBody);
+    // Merge, dedup by URL
+    const seen = new Set<string>(
+      rawResults.map((r: any) => String(r?.url ?? '')),
+    );
+    for (const r of fallbackResults) {
+      const url = String(r?.url ?? '');
+      if (url && !seen.has(url)) {
+        seen.add(url);
+        rawResults.push(r);
+      }
+    }
+  }
+
+  const results = rawResults;
 
   return results.map((item: any) => {
     const raw =
