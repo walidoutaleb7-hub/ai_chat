@@ -95,20 +95,44 @@ function hardReject(prompt: string): boolean {
  *  PROMPT ENHANCER (Groq)
  * ============================================================ */
 
-const SYSTEM_PROMPT = `You are WEURA's image prompt engineer. Translate the user's request (ANY language) to ONE clean English prompt for FLUX.
+const SYSTEM_PROMPT = `You are WEURA's image prompt engineer.
 
-RULES:
-1. Translate everything to English.
-2. For fictional characters (Batman, Spider-Man, Naruto...), describe them accurately with their ICONIC costume, colors, symbols.
-3. For real athletes: describe respectfully in sports context (no real face).
-4. ALWAYS append: "ultra detailed, 8k, sharp focus, cinematic lighting, masterpiece, professional color grading".
+TASK: Convert the user's request (ANY language: Arabic, Darija, French, English)
+into ONE clean, vivid English prompt for FLUX image generation.
 
-SAFETY - output EXACTLY "REJECT" alone if the request asks for:
+═══ TRANSLATION RULES ═══
+1. Translate EVERYTHING to English. No Arabic, no French in output.
+2. Preserve the user's intent, subject, mood, and style.
+3. Arabic/Darija examples:
+   • "قطة تلعب بكرة في حديقة" → "A cute cat playing with a ball in a lush garden"
+   • "غروب الشمس على البحر" → "Sunset over a calm ocean, warm golden light"
+   • "رجل يقرأ كتاب في مقهى" → "A man reading a book in a cozy coffee shop"
+   • "ولد يركب دراجة" → "A young boy riding a bicycle, dynamic motion"
+   • "امرأة ترتدي حجاب أزرق" → "A woman wearing a blue hijab, elegant, soft lighting"
+
+═══ ENHANCEMENT RULES ═══
+1. Add concrete visual details: colors, lighting, mood, composition, angle.
+2. For fictional characters (Batman, Spider-Man, Naruto, Goku...):
+   - Describe their ICONIC costume, colors, symbols, and environment.
+   - Example: "Batman" → "Batman in his iconic black cape and cowl, standing on a
+     gothic rooftop in Gotham City at night, dramatic shadows, cinematic"
+3. For real athletes/celebrities: describe respectfully in a sports/professional
+   context. NEVER describe a real face (policy) — use the back, silhouette, or
+   action shot instead.
+4. If the user specifies a style (anime, realistic, oil painting, 3D, sketch),
+   MANDATORY to include it.
+
+═══ MANDATORY SUFFIX ═══
+ALWAYS append at the end:
+", ultra detailed, 8k, sharp focus, cinematic lighting, masterpiece, professional color grading"
+
+═══ SAFETY ═══
+Output EXACTLY "REJECT" (alone) if the request asks for:
 - sexual/nude content of ANY person
-- sexual content involving minors (ALWAYS)
-- graphic violence, gore
-- hate symbols, terrorism, religion targeting
-- ANY religious reference
+- sexual content involving minors (ALWAYS, no exceptions)
+- graphic violence, gore, torture
+- hate symbols, terrorism, or targeting any religion
+- ANY religious figure or reference
 
 Output ONLY the final English prompt (or "REJECT").`;
 
@@ -130,15 +154,13 @@ async function enhancePrompt(userPrompt: string): Promise<EnhancedPrompt> {
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: process.env.GROQ_MODEL?.trim() || 'openai/gpt-oss-120b',
+        model: process.env.GROQ_IMAGE_MODEL?.trim() || 'openai/gpt-oss-120b',
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: userPrompt },
         ],
-        temperature: 0.4,
-        max_tokens: 300,
-        tools: [],
-        tool_choice: 'none',
+        temperature: 0.6,
+        max_tokens: 500,
       }),
       signal: AbortSignal.timeout(15000),
     });
@@ -283,6 +305,126 @@ async function describeImage(imageData: string): Promise<string | null> {
     return null;
   }
 }
+
+/* ============================================================
+ *  INTENT CLASSIFIER — generate vs search
+ * ============================================================ */
+
+const INTENT_SYSTEM_PROMPT = `You classify image requests into 2 intents.
+
+INTENT "generate":
+  User wants a NEW image CREATED by AI.
+  AR keywords: صمم، صمّم، ارسم، ارسملي، أنشئ، ابتكر، تخيل، سوّي لي صورة
+  EN keywords: draw, create, generate, imagine, design, paint, make
+  FR keywords: dessine, crée, génère, imagine
+  Examples:
+    - "صمم لي صورة باتمان" → generate
+    - "ارسم قطة تلعب" → generate
+    - "Draw Batman on a rooftop" → generate
+    - "حبيت صورة خيالية للفضاء" → generate
+
+INTENT "search":
+  User wants to FIND an existing image online.
+  AR keywords: حبيت، بغيت، أريد، وريني، صور لي، ابحث، لقّي، هات لي
+  EN keywords: find, search, show me, look for, get me
+  FR keywords: montre-moi, trouve, cherche
+  Examples:
+    - "حبيت فوطو لباتمان" → search
+    - "وريني صور باتمان" → search
+    - "Show me Batman photos" → search
+    - "هات لي صور ميسي" → search
+
+RULES:
+- If request mentions "خيالي" / "فني" / "anime" / "imaginary" / "fiction" / "surreal" → generate
+- If request mentions a real person + "photo" / "فوطو" / "صورة حقيقية" → search
+- If request mentions "رسم" / "لوحة" / "drawing" / "painting" / "artwork" → generate
+- If AMBIGUOUS → default to "generate"
+
+Return ONLY valid JSON:
+{"intent":"generate"|"search","reason":"max 40 chars","search_query":"optimized English query for image search, or empty if generate"}`;
+
+type IntentResult = {
+  intent: 'generate' | 'search';
+  reason: string;
+  searchQuery: string;
+};
+
+async function classifyIntent(userPrompt: string): Promise<IntentResult> {
+  const fallback: IntentResult = { intent: 'generate', reason: 'default', searchQuery: '' };
+
+  const apiKey = process.env.GROQ_API_KEY?.trim();
+  if (!apiKey) return fallback;
+
+  try {
+    const response = await fetch(GROQ_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: process.env.GROQ_IMAGE_MODEL?.trim() || 'openai/gpt-oss-120b',
+        messages: [
+          { role: 'system', content: INTENT_SYSTEM_PROMPT },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.1,
+        max_tokens: 200,
+        response_format: { type: 'json_object' },
+      }),
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (!response.ok) return fallback;
+
+    const data: any = await response.json();
+    const content = String(data?.choices?.[0]?.message?.content ?? '').trim();
+    if (!content) return fallback;
+
+    const parsed = JSON.parse(content);
+    const intent = parsed?.intent === 'search' ? 'search' : 'generate';
+    return {
+      intent,
+      reason: String(parsed?.reason ?? '').slice(0, 80),
+      searchQuery: String(parsed?.search_query ?? '').slice(0, 200),
+    };
+  } catch (error) {
+    console.error('[WEURA] classifyIntent error:', error);
+    return fallback;
+  }
+}
+
+/* ============================================================
+ *  ROUTE — CLASSIFY INTENT
+ * ============================================================ */
+
+router.post('/image/classify', async (req, res) => {
+  try {
+    const prompt = String((req.body as any)?.prompt ?? '').trim();
+    if (!prompt) {
+      return res.status(400).json({ success: false, error: 'Prompt is required.' });
+    }
+    if (prompt.length > 500) {
+      return res.status(400).json({ success: false, error: 'Prompt too long.' });
+    }
+
+    const result = await classifyIntent(prompt);
+
+    console.log(
+      `[WEURA] /image/classify "${prompt.slice(0, 60)}" → ${result.intent} (${result.reason})`,
+    );
+
+    return res.json({
+      success: true,
+      intent: result.intent,
+      reason: result.reason,
+      search_query: result.searchQuery,
+    });
+  } catch (error) {
+    console.error('[WEURA] /image/classify error:', error);
+    return res.status(500).json({ success: false, error: 'Classification failed.' });
+  }
+});
 
 /* ============================================================
  *  ROUTE — GENERATE IMAGE
