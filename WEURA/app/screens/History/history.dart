@@ -19,6 +19,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   bool _isLoading = true;
   String _search = '';
+  bool _isOpening = false;
+  
 
   @override
   void initState() {
@@ -45,6 +47,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
   List<ChatSession> get _filteredChats => _manager.search(_search);
 
   Future<void> _openChat(ChatSession chat) async {
+  // ✅ FIXED: prevent double-tap from pushing multiple ChatScreens.
+  if (_isOpening) return;
+  _isOpening = true;
+
+  try {
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => ChatScreen(sessionId: chat.id),
@@ -52,7 +59,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
     if (!mounted) return;
     await _load();
+  } finally {
+    _isOpening = false;
   }
+}
 
   Future<void> _confirmDelete(ChatSession chat, WeuraColors colors) async {
     final confirmed = await showDialog<bool>(
