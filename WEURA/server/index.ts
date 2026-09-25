@@ -10,7 +10,11 @@ import visionRouter from './api/vision';
 import playerRouter from './api/player';
 import filesRouter from './api/files';
 
-import { rateLimit, requestId } from './api/security_middleware';
+import {
+  rateLimit,
+  requestId,
+  validateChatBody,
+} from './api/security_middleware';
 
 const app = express();
 
@@ -119,9 +123,16 @@ app.use(healthRouter);
 // Rate limit applies to all /api routes.
 app.use('/api', rateLimit);
 
-// NOTE: chat.ts does its own validation + sanitization.
-// We intentionally do NOT add validateChatBody here to avoid
-// double-validation bugs.
+// ✅ FIXED: validateChatBody now runs before chatRouter for /api/chat only.
+//
+// Previously it was defined in security_middleware.ts but never mounted,
+// so the /chat endpoint relied only on chat.ts's internal validation.
+// Mounting it here adds an extra defensive layer and lets us reuse
+// the same rules elsewhere later.
+//
+// chat.ts keeps its own validation too — that's intentional:
+// middleware validates the shape, chat.ts validates the business rules.
+app.use('/api/chat', validateChatBody);
 
 app.use('/api', chatRouter);
 app.use('/api', searchRouter);
@@ -172,6 +183,7 @@ app.use(
 const server = app.listen(PORT, HOST, () => {
   const groqReady = Boolean(process.env.GROQ_API_KEY?.trim());
   const cerebrasReady = Boolean(process.env.CEREBRAS_API_KEY?.trim());
+  const mistralReady = Boolean(process.env.MISTRAL_API_KEY?.trim());
   const tavilyReady = Boolean(process.env.TAVILY_API_KEY?.trim());
   const cfReady = Boolean(
     process.env.CLOUDFLARE_ACCOUNT_ID?.trim() &&
@@ -187,6 +199,7 @@ const server = app.listen(PORT, HOST, () => {
   console.log(`Health:      /health`);
   console.log(`Groq:        ${groqReady ? 'READY (primary)' : 'MISSING'}`);
   console.log(`Cerebras:    ${cerebrasReady ? 'READY (fallback)' : 'MISSING'}`);
+  console.log(`Mistral:     ${mistralReady ? 'READY (fallback)' : 'MISSING'}`);
   console.log(`Tavily:      ${tavilyReady ? 'READY' : 'MISSING'}`);
   console.log(`Cloudflare:  ${cfReady ? 'READY' : 'MISSING'}`);
   console.log(`Vision:      ${groqReady ? 'READY' : 'MISSING'}`);
