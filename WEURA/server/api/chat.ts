@@ -815,10 +815,19 @@ async function buildMessages(
     requestId,
   );
 
-  // Football questions: trust reflection.needSearch when it explicitly
-  // says "no" (historical facts), otherwise search.
-  // Non-football: use reflection.needSearch directly.
-  const needSearch = reflection.needSearch;
+  // Search decision logic:
+  // 1. If reflection says yes → search.
+  // 2. If reflection said no BUT provided a REAL search query
+  //    (differs from user's message, ASCII-only / English-like) → search.
+  //    This catches cases where the model gave a wrong need_search=false
+  //    but still filled a proper English search_query.
+  // 3. Otherwise → no search (greetings, math, historical facts).
+  const trimmedQuery = reflection.searchQuery.trim();
+  const originalMsg = lastUserMessage.trim();
+  const queryDiffers = trimmedQuery !== originalMsg && trimmedQuery.length > 3;
+  const queryIsEnglish = /^[\x00-\x7F\s]+$/.test(trimmedQuery);
+  const looksLikeRealQuery = queryDiffers && queryIsEnglish;
+  const needSearch = reflection.needSearch || looksLikeRealQuery;
 
   const out: GrokMessage[] = [
     { role: 'system', content: buildIdentityBlock() },
