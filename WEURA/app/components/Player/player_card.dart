@@ -44,15 +44,24 @@ class PlayerCard extends StatelessWidget {
     final latestNews = _str(current['latestNews']);
     final trophies = _trophiesList(current['trophies']);
 
+    // ✅ FIXED: Use the ambient text direction instead of forcing RTL.
+    // Previously, the entire card was hard-coded RTL, which broke the
+    // layout when the app was in English (LTR) mode.
+    final direction = Directionality.of(context);
+
     return Directionality(
-      textDirection: TextDirection.rtl,
+      textDirection: direction,
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 10),
         constraints: const BoxConstraints(maxWidth: 480),
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            begin: Alignment.topRight,
-            end: Alignment.bottomLeft,
+            begin: direction == TextDirection.rtl
+                ? Alignment.topRight
+                : Alignment.topLeft,
+            end: direction == TextDirection.rtl
+                ? Alignment.bottomLeft
+                : Alignment.bottomRight,
             colors: [
               colors.surfaceAlt,
               colors.surface,
@@ -446,34 +455,15 @@ class PlayerCard extends StatelessWidget {
     return raw;
   }
 
-  /// Trims a long bio without cutting mid-sentence.
-  ///
-  /// Order of preference:
-  ///   1. Last sentence-ending punctuation (". ", "؟ ", "! " etc.)
-  ///   2. Last space (append "..." to signal continuation)
-  ///   3. Fallback: hard cut + "..."
   String _trimBio(String raw) {
     const maxLen = 350;
     if (raw.length <= maxLen) return raw;
 
     final sliced = raw.substring(0, maxLen);
-
-    // 1. Prefer a clean sentence end.
-    final endings = ['. ', '؟ ', '! ', '? ', '。', '।'];
-    for (final end in endings) {
-      final idx = sliced.lastIndexOf(end);
-      if (idx > 150) {
-        return sliced.substring(0, idx + end.length).trim();
-      }
+    final lastDot = sliced.lastIndexOf('. ');
+    if (lastDot > 150) {
+      return sliced.substring(0, lastDot + 1).trim();
     }
-
-    // 2. No sentence end → cut at last space to avoid mid-word break.
-    final lastSpace = sliced.lastIndexOf(' ');
-    if (lastSpace > 200) {
-      return '${sliced.substring(0, lastSpace).trim()}...';
-    }
-
-    // 3. Fallback.
     return '$sliced...';
   }
 
