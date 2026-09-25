@@ -34,7 +34,7 @@ class WeuraApp extends StatelessWidget {
         // Without this, switching language did nothing on screen.
         return MaterialApp(
           key: ValueKey(
-            '${settings.language}-${settings.direction}-${settings.themeMode}',
+            '${settings.effectiveLanguage}-${settings.direction}-${settings.themeMode}',
           ),
           debugShowCheckedModeBanner: false,
           title: 'WEURA AI',

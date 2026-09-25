@@ -11,7 +11,7 @@ class WeuraStrings {
   WeuraStrings._();
 
   static bool get isAr {
-    return AppSettingsManager.instance.language == 'Arabic';
+    return AppSettingsManager.instance.effectiveLanguage == 'Arabic';
   }
 
   /// Helper عام

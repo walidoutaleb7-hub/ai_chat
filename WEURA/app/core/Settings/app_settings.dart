@@ -36,7 +36,7 @@ class AppSettingsManager extends ChangeNotifier {
   // ---------------------------------------------------------------------------
 
   ThemeMode _themeMode = ThemeMode.dark;
-  String _language = 'English';
+  String _language = 'System';
   String _direction = 'Auto';
   ResponseDetail _responseDetail = ResponseDetail.auto;
   String _userName = '';
@@ -54,6 +54,29 @@ class AppSettingsManager extends ChangeNotifier {
 
   ThemeMode get themeMode => _themeMode;
   String get language => _language;
+
+  /// Resolved language (never returns 'System').
+  /// If user picked 'System', we detect from the platform locale.
+  String get effectiveLanguage {
+    if (_language == 'System') {
+      return _detectSystemLanguage();
+    }
+    return _language;
+  }
+
+  /// Detects Arabic vs English from the platform locale.
+  static String _detectSystemLanguage() {
+    try {
+      final locale = Platform.localeName.toLowerCase();
+      if (locale.startsWith('ar')) return 'Arabic';
+      return 'English';
+    } catch (_) {
+      return 'English';
+    }
+  }
+
+  /// True when user picked 'System'.
+  bool get followsSystemLanguage => _language == 'System';
   String get direction => _direction;
   ResponseDetail get responseDetail => _responseDetail;
   String get userName => _userName.trim();
@@ -69,7 +92,7 @@ class AppSettingsManager extends ChangeNotifier {
   TextDirection get textDirection {
     if (_direction == 'RTL') return TextDirection.rtl;
     if (_direction == 'LTR') return TextDirection.ltr;
-    if (_language == 'Arabic') return TextDirection.rtl;
+    if (effectiveLanguage == 'Arabic') return TextDirection.rtl;
     return TextDirection.ltr;
   }
 
@@ -84,7 +107,12 @@ class AppSettingsManager extends ChangeNotifier {
     _themeMode = _parseTheme(themeRaw);
 
     final lang = await storage.read<String>(_languageKey);
-    if (lang != null && lang.isNotEmpty) _language = lang;
+    if (lang != null && lang.isNotEmpty) {
+      _language = lang;
+    } else {
+      // First launch → follow the system language.
+      _language = 'System';
+    }
 
     final dir = await storage.read<String>(_directionKey);
     if (dir != null && dir.isNotEmpty) _direction = dir;
@@ -210,7 +238,7 @@ class AppSettingsManager extends ChangeNotifier {
 
   Future<void> reset() async {
     _themeMode = ThemeMode.dark;
-    _language = 'English';
+    _language = 'System';
     _direction = 'Auto';
     _responseDetail = ResponseDetail.auto;
     _userName = '';
@@ -267,7 +295,7 @@ class AppSettingsManager extends ChangeNotifier {
   /// - "English" -> match the user's message language.
   /// - "Auto"    -> match the user's message language.
   String languagePrompt() {
-    if (_language == 'Arabic') {
+    if (effectiveLanguage == 'Arabic') {
       return 'Always respond in Arabic, regardless of the language the '
           'user writes in.';
     }
