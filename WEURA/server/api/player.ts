@@ -895,6 +895,22 @@ router.get('/player', async (req, res) => {
       finalData.latestNews = fallback.latestNews;
     }
 
+    // ── Reject stale lastTransfer (older than 5 years) ──
+    // Prevents showing "Chelsea (2012)" when current year is 2026.
+    if (finalData.lastTransfer) {
+      const yearMatch = finalData.lastTransfer.match(/\((\d{4})\)/);
+      if (yearMatch) {
+        const transferYear = parseInt(yearMatch[1], 10);
+        const nowYear = new Date().getFullYear();
+        if (transferYear < nowYear - 5) {
+          console.log(
+            `[WEURA] Rejecting stale transfer "${finalData.lastTransfer}" (${transferYear})`,
+          );
+          finalData.lastTransfer = '';
+        }
+      }
+    }
+
     if (
       finalData.latestNews &&
       player?.strDescriptionEN &&
