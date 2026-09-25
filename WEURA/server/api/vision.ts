@@ -13,10 +13,12 @@ const MODEL_TIMEOUT_MS = 45_000;
  *
  * Groq free tier: 1000 OTPM (output tokens per minute) for qwen3.8.
  * A vision request with max_tokens 1500 would fail with 429.
- * 500 tokens is enough for a detailed image description and stays
- * well under the limit.
+ *
+ * ✅ FIXED: 500 → 800.
+ * 500 was too short for complex images (scanned PDFs, busy scenes).
+ * 800 is a safe middle ground: enough detail, still under the OTPM limit.
  */
-const MAX_OUTPUT_TOKENS = 500;
+const MAX_OUTPUT_TOKENS = 800;
 
 /**
  * Only qwen3.8-27b is available on this Groq account.
@@ -43,7 +45,7 @@ const SYSTEM_PROMPT = `You are WEURA Vision — an expert image analyst.
 Match the user's language. Describe only what you actually see.
 Never invent details. Extract text accurately (OCR) if present.
 Keep the response structured with Markdown when helpful.
-Be concise — aim for under 400 words unless the user asks for more.`;
+Be concise — aim for under 500 words unless the user asks for more.`;
 
 type CallResult = {
   ok: boolean;
@@ -301,7 +303,7 @@ router.post('/vision', async (req, res) => {
           console.log(
             `[WEURA] Vision model "${model}" unavailable, skipping.`,
           );
-          break; // move to next model
+          break;
         }
 
         // Rate limit → wait and retry once.
