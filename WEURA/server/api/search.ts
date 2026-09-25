@@ -1,4 +1,5 @@
 import express from 'express';
+import { search as ddgSearch, SafeSearchType } from 'duck-duck-scrape';
 
 const router = express.Router();
 
@@ -107,6 +108,38 @@ function buildDomainList(options: SearchOptions): string[] | null {
     for (const d of list) merged.add(d);
   }
   return Array.from(merged);
+}
+
+/* ============================================================
+ *  DuckDuckGo FALLBACK
+ *  Free, no API key, no quota. Used when Tavily fails or
+ *  returns no results.
+ * ============================================================ */
+
+async function searchDuckDuckGo(
+  query: string,
+  limit: number,
+): Promise<TavilyResult[]> {
+  try {
+    const response = await ddgSearch(query, {
+      safeSearch: SafeSearchType.MODERATE,
+    });
+
+    if (!response || !Array.isArray(response.results)) {
+      return [];
+    }
+
+    return response.results.slice(0, limit).map((item) => ({
+      title: String(item.title ?? 'Untitled'),
+      url: String(item.url ?? ''),
+      snippet: String(item.description ?? '').trim(),
+      publishedDate: undefined,
+      query,
+    })).filter((r) => r.url && r.snippet);
+  } catch (error) {
+    console.error('[WEURA] DuckDuckGo error:', error);
+    return [];
+  }
 }
 
 async function runSearch(
@@ -266,7 +299,21 @@ export async function searchTavily(
     }
   }
 
-  const finalResults = merged.slice(0, safeLimit);
+  let finalResults = merged.slice(0, safeLimit);
+
+  // ── Fallback: if Tavily returned nothing, try DuckDuckGo ──
+  if (finalResults.length === 0) {
+    console.warn(
+      `[WEURA] Tavily returned 0 results for "${query}". Trying DuckDuckGo...`,
+    );
+    const ddgResults = await searchDuckDuckGo(query, safeLimit);
+    if (ddgResults.length > 0) {
+      console.log(
+        `[WEURA] DuckDuckGo fallback succeeded: ${ddgResults.length} results.`,
+      );
+      finalResults = ddgResults;
+    }
+  }
 
   SEARCH_CACHE.set(cacheKey, {
     results: finalResults,
