@@ -478,7 +478,7 @@ function extractFallbackFromDescription(description: string): {
 }
 
 /* ============================================================
- *  GROQ EXTRACTOR (VERY STRICT)
+ *  GROQ EXTRACTOR
  * ============================================================ */
 
 const EXTRACTOR_SYSTEM_PROMPT = [
@@ -491,35 +491,23 @@ const EXTRACTOR_SYSTEM_PROMPT = [
   '',
   '═══ RULE 1 — currentClub IS SACRED ═══',
   'currentClub = the club the player IS CURRENTLY PLAYING FOR,',
-  'confirmed by a source. This is the MOST IMPORTANT field.',
+  'confirmed by a source.',
   '',
   'You may ONLY set currentClub to a club if the source EXPLICITLY says:',
   '  ✓ "plays for X"',
   '  ✓ "is a X player"',
   '  ✓ "current club is X"',
-  '  ✓ "signed for X" (with a date that is <= today and not future)',
+  '  ✓ "signed for X" (date <= today)',
   '  ✓ "joined X" (same condition)',
   '',
-  'You MUST IGNORE a club if the source says:',
-  '  ✗ "X is interested in him"',
-  '  ✗ "X wants to sign him"',
-  '  ✗ "X is linked with him"',
-  '  ✗ "X is monitoring him"',
-  '  ✗ "X is rumored to sign him"',
-  '  ✗ "transfer news: X"',
-  '  ✗ "could join X"',
-  '  ✗ "X target"',
-  '  ✗ "negotiating with X"',
-  '  ✗ Any RUMOR or SPECULATION',
+  'You MUST IGNORE rumors: "interested", "linked", "target", "could join".',
   '',
   '═══ RULE 2 — lastTransfer ═══',
   'Format: "FromClub to ToClub (Year)".',
-  'Only the transfer that brought him to the CURRENT club.',
-  'If unsure, leave "".',
+  'Only the transfer to CURRENT club.',
   '',
   '═══ RULE 3 — latestNews ═══',
   'ONE short sentence in ENGLISH (max 200 chars).',
-  'Use the NEWEST search result. Not a rumor.',
   '',
   '═══ RULE 4 — trophies ═══',
   'Array of STRINGS. Major trophies only.',
@@ -535,7 +523,7 @@ const EXTRACTOR_SYSTEM_PROMPT = [
   '  "latestNews": ""',
   '}',
   '',
-  'Return ONLY JSON. No markdown. No explanation.',
+  'Return ONLY JSON.',
 ].join('\n');
 
 async function extractPlayerData(
@@ -771,6 +759,21 @@ router.get('/player', async (req, res) => {
       `${englishName} contract ${currentYear}`,
     ];
 
+    // ✅ FIXED: run all Tavily searches in parallel instead of sequentially.
+    //
+    // BEFORE: 5 sequential calls ≈ 5 × 3s = ~15s wait.
+    // AFTER:  Promise.all → ~3s wait (slowest call).
+    const startSearch = Date.now();
+    const settled = await Promise.all(
+      searchQueries.map((q) =>
+        tavilySearch(q, 5, 90).catch(() => []),
+      ),
+    );
+    const searchMs = Date.now() - startSearch;
+    console.log(
+      `[WEURA] Player "${englishName}": 5 Tavily searches in ${searchMs}ms`,
+    );
+
     const allResults: Array<{
       title: string;
       url: string;
@@ -778,8 +781,7 @@ router.get('/player', async (req, res) => {
       date?: string;
     }> = [];
 
-    for (const q of searchQueries) {
-      const results = await tavilySearch(q, 5, 90);
+    for (const results of settled) {
       allResults.push(...results);
     }
 
@@ -817,7 +819,6 @@ router.get('/player', async (req, res) => {
       latestNews: '',
     };
 
-    // ✅ Tavily (recent) has priority. TheSportsDB is fallback ONLY.
     if (!finalData.currentClub && fallback.currentClub) {
       finalData.currentClub = fallback.currentClub;
     }
