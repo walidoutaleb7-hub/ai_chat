@@ -12,9 +12,13 @@ type CacheEntry = {
   expiresAt: number;
 };
 type RejectEntry = { expiresAt: number };
+type SearchCacheEntry = { results: any[]; expiresAt: number };
 
 const cache = new Map<string, CacheEntry>();
 const rejectedCache = new Map<string, RejectEntry>();
+const SEARCH_CACHE = new Map<string, SearchCacheEntry>();
+const SEARCH_TTL_MS = 30 * 60 * 1000;
+const SEARCH_MAX = 200;
 
 const CACHE_TTL_MS = 10 * 60 * 1000;
 const CACHE_MAX_ENTRIES = 50;
@@ -56,6 +60,7 @@ setInterval(pruneCaches, 5 * 60 * 1000).unref();
  * ============================================================ */
 
 const CF_MODEL = '@cf/black-forest-labs/flux-1-schnell';
+const PEXELS_API_URL = 'https://api.pexels.com/v1/search';
 const PER_ATTEMPT_TIMEOUT_MS = 40_000;
 const MAX_ATTEMPTS = 2;
 const MAX_PROMPT_LENGTH = 1500;
@@ -427,6 +432,68 @@ router.post('/image/classify', async (req, res) => {
 });
 
 /* ============================================================
+ *  PEXELS — IMAGE SEARCH
+ * ============================================================ */
+
+async function searchPexelsImages(
+  query: string,
+  count: number = 12,
+): Promise<any[]> {
+  const apiKey = process.env.PEXELS_API_KEY?.trim();
+  if (!apiKey) {
+    console.warn('[WEURA] PEXELS_API_KEY not set');
+    return [];
+  }
+
+  const params = new URLSearchParams({
+    query,
+    per_page: String(Math.min(Math.max(count, 1), 24)),
+    orientation: 'all',
+    size: 'medium',
+  });
+
+  try {
+    const response = await fetch(`${PEXELS_API_URL}?${params}`, {
+      method: 'GET',
+      headers: {
+        Authorization: apiKey,
+        Accept: 'application/json',
+      },
+      signal: AbortSignal.timeout(15000),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '');
+      console.error(
+        `[WEURA] Pexels HTTP ${response.status}:`,
+        errText.slice(0, 200),
+      );
+      return [];
+    }
+
+    const data: any = await response.json();
+    const photos = Array.isArray(data?.photos) ? data.photos : [];
+
+    return photos.map((photo: any) => ({
+      id: String(photo?.id ?? ''),
+      url: String(photo?.url ?? ''),
+      thumbnail: String(photo?.src?.medium ?? photo?.src?.small ?? ''),
+      preview: String(photo?.src?.large ?? photo?.src?.medium ?? ''),
+      full: String(photo?.src?.original ?? photo?.src?.large2x ?? ''),
+      width: Number(photo?.width ?? 0),
+      height: Number(photo?.height ?? 0),
+      photographer: String(photo?.photographer ?? ''),
+      photographerUrl: String(photo?.photographer_url ?? ''),
+      alt: String(photo?.alt ?? ''),
+      avgColor: String(photo?.avg_color ?? ''),
+    }));
+  } catch (error) {
+    console.error('[WEURA] Pexels error:', error);
+    return [];
+  }
+}
+
+/* ============================================================
  *  ROUTE — GENERATE IMAGE
  * ============================================================ */
 
@@ -535,6 +602,161 @@ router.get('/image', async (req, res) => {
     success: false,
     error: 'Image service is busy. Please try again.',
   });
+});
+
+/* ============================================================
+ *  ROUTE — SEARCH IMAGES (Pexels)
+ * ============================================================ */
+
+router.post('/image/search', async (req, res) => {
+  try {
+    const body = req.body as { query?: unknown; count?: unknown };
+    const rawQuery = String(body.query ?? '').trim();
+    const rawCount = Number(body.count ?? 12);
+
+    if (!rawQuery) {
+      return res.status(400).json({
+        success: false,
+        error: 'Query is required.',
+      });
+    }
+
+    if (rawQuery.length > 200) {
+      return res.status(400).json({
+        success: false,
+        error: 'Query is too long (max 200 chars).',
+      });
+    }
+
+    const count = Number.isFinite(rawCount)
+      ? Math.min(Math.max(Math.floor(rawCount), 1), 24)
+      : 12;
+
+    // ─── Safety check ──────────────────────────────────────
+    if (hardReject(rawQuery)) {
+      return res.status(400).json({
+        success: false,
+        error: 'لا يمكنني البحث عن هذه الصور.',
+      });
+    }
+
+    // ─── Translate query to English if needed ─────────────
+    // We reuse the enhancement pipeline to get an English query.
+    let searchQuery = rawQuery;
+    const hasArabicOrFrench = /[\u0600-\u06FF\u00C0-\u017F]/.test(rawQuery);
+    if (hasArabicOrFrench) {
+      const apiKey = process.env.GROQ_API_KEY?.trim();
+      if (apiKey) {
+        try {
+          const transResp = await fetch(GROQ_API_URL, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+              model:
+                process.env.GROQ_IMAGE_MODEL?.trim() ||
+                'openai/gpt-oss-120b',
+              messages: [
+                {
+                  role: 'system',
+                  content:
+                    'Translate the user\'s search query to a SHORT English query ' +
+                    '(max 6 words) suitable for stock photo search. ' +
+                    'Examples: "حبيت فوطو لباتمان" → "Batman", ' +
+                    '"وريني صور ميسي" → "Lionel Messi footballer", ' +
+                    '"صور باريس" → "Paris city". ' +
+                    'Return ONLY the English query, no quotes, no explanation.',
+                },
+                { role: 'user', content: rawQuery },
+              ],
+              temperature: 0.2,
+              max_tokens: 60,
+            }),
+            signal: AbortSignal.timeout(8000),
+          });
+
+          if (transResp.ok) {
+            const td: any = await transResp.json();
+            const translated = String(
+              td?.choices?.[0]?.message?.content ?? '',
+            )
+              .replace(/^["'`]+|["'`]+$/g, '')
+              .trim();
+            if (translated && /^[\x00-\x7F\s]+$/.test(translated)) {
+              searchQuery = translated;
+            }
+          }
+        } catch (e) {
+          console.warn('[WEURA] Search query translation failed:', e);
+        }
+      }
+    }
+
+    console.log(
+      `[WEURA] /image/search "${rawQuery}" → "${searchQuery}" (count=${count})`,
+    );
+
+    // ─── Cache check ───────────────────────────────────────
+    const cacheKey = `${searchQuery.toLowerCase()}|${count}`;
+    const cached = SEARCH_CACHE.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return res.json({
+        success: true,
+        query: rawQuery,
+        translated_query: searchQuery,
+        count: cached.results.length,
+        results: cached.results,
+        cached: true,
+      });
+    }
+
+    // ─── Pexels search ─────────────────────────────────────
+    const results = await searchPexelsImages(searchQuery, count);
+
+    if (results.length === 0) {
+      return res.json({
+        success: true,
+        query: rawQuery,
+        translated_query: searchQuery,
+        count: 0,
+        results: [],
+        cached: false,
+        message: 'لم أجد صوراً لهذا البحث. جرّب كلمات أخرى.',
+      });
+    }
+
+    // ─── Cache results ─────────────────────────────────────
+    SEARCH_CACHE.set(cacheKey, {
+      results,
+      expiresAt: Date.now() + SEARCH_TTL_MS,
+    });
+    if (SEARCH_CACHE.size > SEARCH_MAX) {
+      const overflow = SEARCH_CACHE.size - SEARCH_MAX;
+      let removed = 0;
+      for (const key of SEARCH_CACHE.keys()) {
+        if (removed >= overflow) break;
+        SEARCH_CACHE.delete(key);
+        removed++;
+      }
+    }
+
+    return res.json({
+      success: true,
+      query: rawQuery,
+      translated_query: searchQuery,
+      count: results.length,
+      results,
+      cached: false,
+    });
+  } catch (error) {
+    console.error('[WEURA] /image/search error:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Image search failed.',
+    });
+  }
 });
 
 /* ============================================================
