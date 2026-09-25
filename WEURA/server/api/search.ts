@@ -1,5 +1,4 @@
 import express from 'express';
-import { search as ddgSearch, SafeSearchType } from 'duck-duck-scrape';
 
 const router = express.Router();
 
@@ -121,21 +120,82 @@ async function searchDuckDuckGo(
   limit: number,
 ): Promise<TavilyResult[]> {
   try {
-    const response = await ddgSearch(query, {
-      safeSearch: SafeSearchType.MODERATE,
+    // Use DDG's HTML endpoint (same as browser), with realistic headers.
+    // The library approach gets blocked due to internal API fingerprinting.
+    const response = await fetch('https://html.duckduckgo.com/html/', {
+      method: 'POST',
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
+          '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept':
+          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Origin': 'https://html.duckduckgo.com',
+        'Referer': 'https://html.duckduckgo.com/',
+      },
+      body: `q=${encodeURIComponent(query)}&kl=us-en`,
+      signal: AbortSignal.timeout(12000),
     });
 
-    if (!response || !Array.isArray(response.results)) {
+    if (!response.ok) {
+      console.error(`[WEURA] DDG HTML HTTP ${response.status}`);
       return [];
     }
 
-    return response.results.slice(0, limit).map((item) => ({
-      title: String(item.title ?? 'Untitled'),
-      url: String(item.url ?? ''),
-      snippet: String(item.description ?? '').trim(),
-      publishedDate: undefined,
-      query,
-    })).filter((r) => r.url && r.snippet);
+    const html = await response.text();
+    const results: TavilyResult[] = [];
+
+    // Match each result block.
+    const itemRegex =
+      /<div class="result results_links[^"]*"[\s\S]*?<\/div>\s*<\/div>/g;
+    const items = html.match(itemRegex) || [];
+
+    for (const item of items) {
+      const urlMatch = item.match(
+        /<a[^>]+class="result__a"[^>]+href="([^"]+)"/,
+      );
+      const titleMatch = item.match(
+        /<a[^>]+class="result__a"[^>]*>([\s\S]*?)<\/a>/,
+      );
+      const snippetMatch = item.match(
+        /<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/,
+      );
+
+      if (!urlMatch) continue;
+
+      let url = urlMatch[1];
+      // DDG wraps URLs: //duckduckgo.com/l/?uddg=<encoded>
+      if (url.includes('duckduckgo.com/l/')) {
+        const m = url.match(/uddg=([^&]+)/);
+        if (m) url = decodeURIComponent(m[1]);
+      }
+      if (!url.startsWith('http')) continue;
+
+      const stripTags = (s: string) =>
+        s.replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').trim();
+
+      const title = stripTags(titleMatch?.[1] || '');
+      const snippet = stripTags(snippetMatch?.[1] || '');
+
+      if (url && title) {
+        results.push({
+          title,
+          url,
+          snippet: snippet || title,
+          publishedDate: undefined,
+          query,
+        });
+      }
+
+      if (results.length >= limit) break;
+    }
+
+    console.log(
+      `[WEURA] DuckDuckGo HTML: ${results.length} results for "${query}"`,
+    );
+    return results;
   } catch (error) {
     console.error('[WEURA] DuckDuckGo error:', error);
     return [];
