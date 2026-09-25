@@ -3246,15 +3246,26 @@ class _TypedMarkdownState extends State<_TypedMarkdown>
   }
 
   void _onTick() {
-    final len = widget.fullText.length;
-    final chars = (_controller.value * len).floor();
-    if (chars == _visibleText.length) return;
+  // ✅ FIXED: use runes instead of code units.
+  //
+  // substring() cuts at code-unit boundaries, which can split an emoji
+  // (2 code units) or an Arabic letter + combining mark, producing
+  // broken glyphs (e.g. "�") during the typing animation.
+  //
+  // runes gives full Unicode code points, so emoji and Arabic stay intact.
+  final fullRunes = widget.fullText.runes.toList();
+  final total = fullRunes.length;
+  if (total == 0) return;
 
-    setState(() {
-      _visibleText = widget.fullText.substring(0, chars.clamp(0, len));
-    });
+  final count = (_controller.value * total).floor().clamp(0, total);
+  final nextVisible = String.fromCharCodes(fullRunes.take(count));
+  if (nextVisible == _visibleText) return;
 
-    widget.onTick?.call();
+  setState(() {
+    _visibleText = nextVisible;
+  });
+
+  widget.onTick?.call();
   }
 
   @override
