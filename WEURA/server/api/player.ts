@@ -248,8 +248,8 @@ async function tavilySearch(
       include_answer: false,
       include_raw_content: true,
       search_depth: 'advanced',
-      topic: 'news',
-      days,
+      topic: 'general',
+      days: Math.max(days, 365),
       include_domains: FOOTBALL_DOMAINS,
     };
 
@@ -592,7 +592,7 @@ async function extractPlayerData(
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: process.env.GROQ_MODEL?.trim() || 'openai/gpt-oss-120b',
+        model: process.env.GROQ_EXTRACTOR_MODEL?.trim() || 'llama-3.1-8b-instant',
         messages: [
           { role: 'system', content: EXTRACTOR_SYSTEM_PROMPT },
           { role: 'user', content: userMessage },
