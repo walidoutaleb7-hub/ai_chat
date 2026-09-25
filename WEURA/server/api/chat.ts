@@ -446,12 +446,10 @@ async function reflectOnQuery(
             { role: 'user', content: userPrompt },
           ],
           temperature: 0.1,
-          max_tokens: 200,
+          max_tokens: 500,
           response_format: { type: 'json_object' },
-          tools: [],
-          tool_choice: 'none',
         }),
-        signal: AbortSignal.timeout(8000),
+        signal: AbortSignal.timeout(12000),
       },
     );
 
