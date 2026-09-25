@@ -82,3 +82,5 @@ desktop.ini
 # ─── Flutter lockfile ──────────────────────────────────────
 # pubspec.lock IS tracked (mobile app, not a library)
 # Keep it in Git for reproducible builds.
+package-lock.json
+/package-lock.json

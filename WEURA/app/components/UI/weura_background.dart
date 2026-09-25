@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -6,18 +7,11 @@ import '../../core/Theme/weura_theme.dart';
 
 /// Subtle, theme-aware background for WEURA screens.
 ///
-/// Performance:
-///   - 1 AnimationController only (slow aurora, 30s)
-///   - Static gradient + 2 slow glows + vignette
+/// Performance (v2 — low-end friendly):
+///   - Timer.periodic every 200ms (5 fps instead of 60 fps)
+///   - Animation pauses when app is in background
+///   - 1 slow aurora glow (2 blobs), vignette
 ///   - No stars, no grid → cheap on low-end devices
-///
-/// Usage:
-///   Scaffold(
-///     body: WeuraScreenBackground(
-///       colors: WeuraColors.of(context),
-///       child: SafeArea(child: ...),
-///     ),
-///   )
 class WeuraScreenBackground extends StatefulWidget {
   const WeuraScreenBackground({
     super.key,
@@ -35,22 +29,52 @@ class WeuraScreenBackground extends StatefulWidget {
 }
 
 class _WeuraScreenBackgroundState extends State<WeuraScreenBackground>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _auroraController;
+    with WidgetsBindingObserver {
+  static const Duration _frameInterval = Duration(milliseconds: 200);
+  static const double _cycleSeconds = 30.0;
+
+  Timer? _timer;
+  double _progress = 0.0;
 
   @override
   void initState() {
     super.initState();
-    _auroraController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 30),
-    )..repeat();
+    WidgetsBinding.instance.addObserver(this);
+    _startTimer();
   }
 
   @override
   void dispose() {
-    _auroraController.dispose();
+    _stopTimer();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Pause animation when app is not visible → saves battery & GPU.
+    if (state == AppLifecycleState.resumed) {
+      _startTimer();
+    } else {
+      _stopTimer();
+    }
+  }
+
+  void _startTimer() {
+    _timer?.cancel();
+    _timer = Timer.periodic(_frameInterval, (_) {
+      if (!mounted) return;
+      setState(() {
+        _progress += _frameInterval.inMilliseconds /
+            (_cycleSeconds * 1000.0);
+        if (_progress >= 1.0) _progress -= 1.0;
+      });
+    });
+  }
+
+  void _stopTimer() {
+    _timer?.cancel();
+    _timer = null;
   }
 
   @override
@@ -77,23 +101,18 @@ class _WeuraScreenBackgroundState extends State<WeuraScreenBackground>
         ),
         child: Stack(
           children: [
-            // Single slow-moving aurora glow (only 2 blobs)
-            AnimatedBuilder(
-              animation: _auroraController,
-              builder: (context, _) {
-                return CustomPaint(
-                  size: Size.infinite,
-                  painter: _ScreenGlowPainter(
-                    progress: _auroraController.value,
-                    blue: colors.accent,
-                    glow: colors.accentGlow,
-                    intensity: glowOpacity,
-                  ),
-                );
-              },
+            // Single slow-moving aurora glow (2 blobs).
+            CustomPaint(
+              size: Size.infinite,
+              painter: _ScreenGlowPainter(
+                progress: _progress,
+                blue: colors.accent,
+                glow: colors.accentGlow,
+                intensity: glowOpacity,
+              ),
             ),
 
-            // Subtle vignette
+            // Subtle vignette.
             Positioned.fill(
               child: IgnorePointer(
                 child: DecoratedBox(
