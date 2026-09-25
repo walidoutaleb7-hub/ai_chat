@@ -592,13 +592,13 @@ async function extractPlayerData(
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: process.env.GROQ_EXTRACTOR_MODEL?.trim() || 'llama-3.1-8b-instant',
+        model: process.env.GROQ_EXTRACTOR_MODEL?.trim() || 'openai/gpt-oss-120b',
         messages: [
           { role: 'system', content: EXTRACTOR_SYSTEM_PROMPT },
           { role: 'user', content: userMessage },
         ],
-        temperature: 0.05,
-        max_tokens: 900,
+        temperature: 0.1,
+        max_tokens: 2000,
         response_format: { type: 'json_object' },
         tools: [],
         tool_choice: 'none',
