@@ -823,12 +823,14 @@ router.get('/player', async (req, res) => {
       return db.localeCompare(da);
     });
 
+    console.log(`[WEURA] Calling extractor with ${uniqueResults.slice(0, 12).length} results`);
     const freshData = await extractPlayerData(
       englishName,
       player?.strNationality ?? '',
       player?.strDescriptionEN ?? '',
       uniqueResults.slice(0, 12),
     );
+    console.log(`[WEURA] Extractor returned:`, JSON.stringify(freshData)?.slice(0, 500));
 
     const fallback = extractFallbackFromDescription(
       player?.strDescriptionEN ?? '',
