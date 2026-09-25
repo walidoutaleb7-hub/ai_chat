@@ -109,8 +109,9 @@ async function callProvider(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 90_000);
 
-  const temperature = options.temperature ?? 0.85;
-  const maxTokens = options.maxTokens ?? 2048;
+  // Safe defaults. Caller (chat.ts) usually passes explicit values.
+  const temperature = options.temperature ?? 0.65;
+  const maxTokens = options.maxTokens ?? 3072;
 
   try {
     const response = await fetch(provider.url, {
@@ -261,6 +262,48 @@ function isProviderDeadError(error: unknown): boolean {
   );
 }
 
+/**
+ * Retry a single provider call with exponential backoff.
+ * Only retries on retryable errors.
+ */
+async function callProviderWithRetry(
+  provider: Provider,
+  messages: GrokMessage[],
+  options: AskOptions,
+  maxAttempts = 2,
+): Promise<{
+  content: string;
+  model: string;
+  usage: unknown;
+  provider: string;
+}> {
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await callProvider(provider, messages, options);
+    } catch (error) {
+      lastError = error;
+
+      // Don't retry non-retryable errors
+      if (!isRetryableError(error)) throw error;
+
+      // Don't retry provider-dead errors
+      if (isProviderDeadError(error)) throw error;
+
+      if (attempt < maxAttempts) {
+        const delay = 500 * attempt; // 500ms, 1000ms
+        console.log(
+          `[WEURA][${options.requestId ?? '-'}] ${provider.name} attempt ${attempt} failed, retrying in ${delay}ms...`,
+        );
+        await new Promise((r) => setTimeout(r, delay));
+      }
+    }
+  }
+
+  throw lastError;
+}
+
 export async function askGrok(
   messages: GrokMessage[],
   options: AskOptions = {},
@@ -281,7 +324,7 @@ export async function askGrok(
     const isLast = i === candidates.length - 1;
 
     try {
-      const result = await callProvider(provider, messages, options);
+      const result = await callProviderWithRetry(provider, messages, options);
 
       if (i > 0) {
         console.log(

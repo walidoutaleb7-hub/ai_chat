@@ -1,1 +1,84 @@
+# ═══════════════════════════════════════════════════════════
+#  WEURA — .gitignore
+# ═══════════════════════════════════════════════════════════
+
+# ─── Environment / Secrets ─────────────────────────────────
 .env
+.env.*
+!.env.example
+*.key
+*.pem
+secrets.json
+credentials.json
+
+# ─── Node.js (server) ──────────────────────────────────────
+node_modules/
+dist/
+build/
+*.log
+npm-debug.log*
+yarn-error.log*
+.npm/
+.yarn/
+
+# ─── Flutter / Dart ────────────────────────────────────────
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+*.iml
+*.ipr
+*.iws
+.idea/
+.vscode/
+
+# ─── Android ───────────────────────────────────────────────
+android/.gradle/
+android/captures/
+android/local.properties
+android/key.properties
+*.jks
+*.keystore
+
+# ─── iOS ───────────────────────────────────────────────────
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+ios/Runner/GeneratedPluginRegistrant.*
+*.ipa
+
+# ─── Logs & Temp ───────────────────────────────────────────
+logs/
+*.tmp
+*.temp
+*.bak
+*.backup
+*.old
+*.orig
+
+# ─── OS Files ──────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+desktop.ini
+
+# ─── Editor ────────────────────────────────────────────────
+*.swp
+*.swo
+*~
+.*.sw?
+
+# ─── Render / Deployment ───────────────────────────────────
+.render/
+
+# ─── Flutter lockfile ──────────────────────────────────────
+# pubspec.lock IS tracked (mobile app, not a library)
+# Keep it in Git for reproducible builds.

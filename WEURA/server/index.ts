@@ -44,9 +44,31 @@ app.use((_req, res, next) => {
   next();
 });
 
+/* ============================================================
+ *  CORS — restricted
+ *  - Mobile apps (no Origin) → allowed
+ *  - Browser origins → only if in ALLOWED_ORIGINS env
+ * ============================================================ */
+
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
 app.use(
   cors({
-    origin: true,
+    origin(origin, callback) {
+      // Allow requests with no Origin (mobile apps, curl, Postman)
+      if (!origin) return callback(null, true);
+
+      // Allow if origin is whitelisted
+      if (ALLOWED_ORIGINS.includes(origin)) {
+        return callback(null, true);
+      }
+
+      // Reject unknown browser origins
+      return callback(null, false);
+    },
     credentials: true,
     methods: ['GET', 'POST', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Accept'],

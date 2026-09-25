@@ -1,4 +1,5 @@
 import express from 'express';
+import crypto from 'crypto';
 import { askGrok, GrokMessage } from '../grok/grok';
 import { searchTavily } from './search';
 import {
@@ -56,21 +57,21 @@ function pruneResponseCache(): void {
 setInterval(pruneResponseCache, 5 * 60 * 1000).unref();
 
 /**
- * ✅ FIXED: cache key now includes memory + mode.
- *
- * BEFORE: only the last user message was used → memory/mode changes were
- * ignored, causing cross-user cache leaks (a user could receive a cached
- * reply that contains another user's memory like their name).
+ * Cache key includes: message + mode + memory hash.
+ * Prevents cross-user cache leaks (memory differs → different key).
+ * SHA-256 hash avoids collisions from truncated memory prefixes.
  */
 function buildCacheKey(
   userMessage: string,
-  memory: string,
   mode: string | null,
+  memory: string,
 ): string {
   const msgPart = userMessage.trim().toLowerCase().slice(0, 150);
-  const memPart = memory ? memory.trim().slice(0, 80) : '';
-  const modePart = (mode ?? 'auto').trim();
-  return `${msgPart}|${modePart}|${memPart}`;
+  const modePart = (mode ?? 'auto').toLowerCase();
+  const memoryPart = memory.trim().length > 0
+    ? crypto.createHash('sha256').update(memory).digest('hex').slice(0, 16)
+    : 'nomem';
+  return `${modePart}:${memoryPart}:${msgPart}`;
 }
 
 function pickTTL(userMessage: string, searchUsed: boolean): number {
@@ -186,7 +187,20 @@ NO SEARCH (need_search = false):
 - Language / translation help
 - Coding questions
 
-CRITICAL: For ANY football-related question → need_search = true.
+FOOTBALL — SEARCH RULES:
+- CURRENT facts (current club, latest transfer, current manager, recent match,
+  current standings, recent awards) → need_search = true
+- HISTORICAL facts (World Cup winners before 2018, old finals, retired players'
+  stats, classic matches before 2020) → need_search = false, use training data
+- If unsure whether the fact is current → need_search = true
+- Rumors vs confirmed transfers → always search (status changes fast)
+
+Examples:
+- "من فاز بكأس العالم 1998؟" → need_search = false (stable fact)
+- "من فاز بكأس العالم 2022؟" → need_search = true (needs accuracy)
+- "من مدرب ريال مدريد؟" → need_search = true (current role)
+- "من فاز بالكرة الذهبية 2010؟" → need_search = false (stable)
+- "من فاز بالكرة الذهبية 2024؟" → need_search = true (recent)
 
 ═══ OUTPUT ═══
 Return ONLY valid JSON:
@@ -567,6 +581,31 @@ function buildSearchContext(
 }
 
 /* ============================================================
+ *  TEMPERATURE — adaptive per mode
+ * ============================================================ */
+
+function pickTemperature(mode: string | null): number {
+  switch (mode) {
+    case 'code':
+    case 'research':
+    case 'files':
+      return 0.25;
+    case 'vision':
+    case 'translation':
+      return 0.4;
+    case 'smart':
+      return 0.6;
+    case 'fast':
+      return 0.7;
+    case 'creative':
+      return 0.9;
+    case 'auto':
+    default:
+      return 0.65;
+  }
+}
+
+/* ============================================================
  *  BUILD MESSAGES
  * ============================================================ */
 
@@ -598,7 +637,10 @@ async function buildMessages(
     requestId,
   );
 
-  const needSearch = isFootball || reflection.needSearch;
+  // Football questions: trust reflection.needSearch when it explicitly
+  // says "no" (historical facts), otherwise search.
+  // Non-football: use reflection.needSearch directly.
+  const needSearch = reflection.needSearch;
 
   const out: GrokMessage[] = [
     { role: 'system', content: buildIdentityBlock() },
@@ -732,8 +774,7 @@ router.post('/chat', async (req, res) => {
       !isCasual &&
       lastUserMessage.trim().length >= 5;
 
-    // ✅ FIXED: cache key includes memory + mode to prevent cross-user leaks.
-    const cacheKey = buildCacheKey(lastUserMessage, memory, mode);
+    const cacheKey = buildCacheKey(lastUserMessage, mode, memory);
 
     if (useCache) {
       const cached = RESPONSE_CACHE.get(cacheKey);
@@ -775,7 +816,7 @@ router.post('/chat', async (req, res) => {
 
     const result = await askGrok(built.messages, {
       requestId,
-      temperature: 0.85,
+      temperature: pickTemperature(mode),
       maxTokens,
     });
 
@@ -828,8 +869,7 @@ router.post('/chat', async (req, res) => {
     console.error(`[WEURA][${requestId}] Chat error:`, error);
     return res.status(500).json({
       success: false,
-      error:
-        error instanceof Error ? error.message : 'Unexpected error.',
+      error: 'حدث خطأ مؤقت. الرجاء المحاولة مرة أخرى.',
       requestId,
     });
   }
