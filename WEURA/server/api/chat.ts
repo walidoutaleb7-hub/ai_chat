@@ -817,17 +817,20 @@ async function buildMessages(
 
   // Search decision logic:
   // 1. If reflection says yes → search.
-  // 2. If reflection said no BUT provided a REAL search query
-  //    (differs from user's message, ASCII-only / English-like) → search.
-  //    This catches cases where the model gave a wrong need_search=false
-  //    but still filled a proper English search_query.
+  // 2. If reflection said no BUT provided a DIFFERENT search query
+  //    (not just echoing the user's message) → search.
+  //    This catches cases where the model set need_search=false by mistake
+  //    but still filled a proper search_query (i.e. it knows data is needed).
   // 3. Otherwise → no search (greetings, math, historical facts).
   const trimmedQuery = reflection.searchQuery.trim();
   const originalMsg = lastUserMessage.trim();
-  const queryDiffers = trimmedQuery !== originalMsg && trimmedQuery.length > 3;
-  const queryIsEnglish = /^[\x00-\x7F\s]+$/.test(trimmedQuery);
-  const looksLikeRealQuery = queryDiffers && queryIsEnglish;
-  const needSearch = reflection.needSearch || looksLikeRealQuery;
+  // Strip zero-width and non-printable characters before comparison.
+  const cleanQuery = trimmedQuery
+    .replace(/[\u200B-\u200F\u202A-\u202E\u2060\uFEFF]/g, '')
+    .trim();
+  const queryDiffers =
+    cleanQuery !== originalMsg && cleanQuery.length > 5;
+  const needSearch = reflection.needSearch || queryDiffers;
 
   const out: GrokMessage[] = [
     { role: 'system', content: buildIdentityBlock() },
