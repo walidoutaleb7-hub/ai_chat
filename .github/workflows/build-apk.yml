@@ -70,6 +70,11 @@ jobs:
             sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>\n    <uses-permission android:name="android.permission.CAMERA"/>\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>\n    <application|' "$MANIFEST"
           fi
 
+          # ─── Disable Impeller (fixes glitches on Mali GPUs) ───
+          if ! grep -q 'EnableImpeller' "$MANIFEST"; then
+            sed -i 's|<application|<meta-data android:name="io.flutter.embedding.android.EnableImpeller" android:value="false" />\n    <application|' "$MANIFEST"
+          fi
+
       - name: Build APK
         working-directory: WEURA
         run: flutter build apk --release --target=app/main.dart

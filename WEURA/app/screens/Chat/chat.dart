@@ -3795,7 +3795,7 @@ class _TypedMarkdownState extends State<_TypedMarkdown>
 
     _cursorController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 750),
+      duration: const Duration(milliseconds: 1200),  // slower = less redraws
     );
     _cursorController.value = 0.7;
     _cursorController.repeat(reverse: true);
@@ -3823,7 +3823,7 @@ class _TypedMarkdownState extends State<_TypedMarkdown>
       return;
     }
 
-    final durationMs = (len * 12).clamp(400, 5000);
+    final durationMs = (len * 8).clamp(300, 3000);  // faster + less screen time
 
     _controller = AnimationController(
       vsync: this,
