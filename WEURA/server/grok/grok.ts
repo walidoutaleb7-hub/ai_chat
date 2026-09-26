@@ -49,6 +49,18 @@ function getProviders(): Provider[] {
     });
   }
 
+  const openrouterKey = process.env.OPENROUTER_API_KEY?.trim();
+  if (openrouterKey) {
+    providers.push({
+      name: 'openrouter',
+      url: 'https://openrouter.ai/api/v1/chat/completions',
+      apiKey: openrouterKey,
+      model:
+        process.env.OPENROUTER_MODEL?.trim() ||
+        'meta-llama/llama-3.3-70b-instruct:free',
+    });
+  }
+
   const cerebrasKey = process.env.CEREBRAS_API_KEY?.trim();
   if (cerebrasKey) {
     providers.push({
@@ -121,6 +133,13 @@ async function callProvider(
         'Content-Type': 'application/json',
         Accept: 'application/json',
         Authorization: `Bearer ${provider.apiKey}`,
+        // OpenRouter requires these attribution headers (optional but recommended)
+        ...(provider.name === 'openrouter'
+          ? {
+              'HTTP-Referer': 'https://ai-chat-tlol.onrender.com',
+              'X-Title': 'WEURA AI',
+            }
+          : {}),
       },
       body: JSON.stringify({
         model: provider.model,
