@@ -57,7 +57,7 @@ function getProviders(): Provider[] {
       apiKey: openrouterKey,
       model:
         process.env.OPENROUTER_MODEL?.trim() ||
-        'meta-llama/llama-3.3-70b-instruct:free',
+        'qwen/qwen3.8-27b:free',
     });
   }
 
