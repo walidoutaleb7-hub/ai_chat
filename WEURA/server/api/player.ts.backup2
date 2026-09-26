@@ -4,8 +4,6 @@ const router = express.Router();
 
 const BASE = 'https://www.thesportsdb.com/api/v1/json/3';
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const CEREBRAS_API_URL = 'https://api.cerebras.ai/v1/chat/completions';
 const TAVILY_URL = 'https://api.tavily.com/search';
 
 /* ============================================================
@@ -19,7 +17,7 @@ const TRANSLATION_MAX = 500;
 
 type CardCache = { data: any; expiresAt: number };
 const CARD_CACHE = new Map<string, CardCache>();
-const CARD_TTL = 24 * 60 * 60 * 1000;  // 24 hours
+const CARD_TTL = 5 * 60 * 1000;
 const CARD_MAX = 100;
 
 function pruneCache<K, V extends { expiresAt: number }>(
@@ -615,106 +613,41 @@ async function extractPlayerData(
     `TheSportsDB description (may be old):\n${description.slice(0, 1500)}\n\n` +
     `Recent search results (newest first):\n\n${context}`;
 
-  // ─── Multi-provider list (Groq → OpenRouter → Cerebras) ───
-  type ExtractorProvider = {
-    name: string;
-    url: string;
-    key: string;
-    model: string;
-    extraHeaders?: Record<string, string>;
-  };
-
-  const extractorProviders: ExtractorProvider[] = [];
-
-  const groqKey = process.env.GROQ_API_KEY?.trim();
-  if (groqKey) {
-    extractorProviders.push({
-      name: 'groq',
-      url: GROQ_API_URL,
-      key: groqKey,
-      model: process.env.GROQ_EXTRACTOR_MODEL?.trim() || 'openai/gpt-oss-120b',
-    });
-  }
-
-  const orKey = process.env.OPENROUTER_API_KEY?.trim();
-  if (orKey) {
-    extractorProviders.push({
-      name: 'openrouter',
-      url: 'https://openrouter.ai/api/v1/chat/completions',
-      key: orKey,
-      model:
-        process.env.OPENROUTER_EXTRACTOR_MODEL?.trim() ||
-        'nvidia/nemotron-3-ultra-550b-a55b:free',
-      extraHeaders: {
-        'HTTP-Referer': 'https://ai-chat-tlol.onrender.com',
-        'X-Title': 'WEURA AI',
-      },
-    });
-  }
-
-  const cbKey = process.env.CEREBRAS_API_KEY?.trim();
-  if (cbKey) {
-    extractorProviders.push({
-      name: 'cerebras',
-      url: 'https://api.cerebras.ai/v1/chat/completions',
-      key: cbKey,
-      model: process.env.CEREBRAS_MODEL?.trim() || 'gpt-oss-120b',
-    });
-  }
-
-  if (extractorProviders.length === 0) return null;
-
-  let content = '';
-
-  for (const provider of extractorProviders) {
-    try {
-      const response = await fetch(provider.url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${provider.key}`,
-          ...(provider.extraHeaders ?? {}),
-        },
-        body: JSON.stringify({
-          model: provider.model,
-          messages: [
-            { role: 'system', content: EXTRACTOR_SYSTEM_PROMPT },
-            { role: 'user', content: userMessage },
-          ],
-          temperature: 0.1,
-          max_tokens: 2000,
-          response_format: { type: 'json_object' },
-        }),
-        signal: AbortSignal.timeout(30000),
-      });
-
-      if (!response.ok) {
-        const errText = await response.text().catch(() => '');
-        console.error(
-          `[WEURA] Extractor ${provider.name} HTTP ${response.status}: ${errText.slice(0, 200)}`,
-        );
-        continue;
-      }
-
-      const data: any = await response.json();
-      const text = String(data?.choices?.[0]?.message?.content ?? '').trim();
-      if (text) {
-        content = text;
-        console.log(`[WEURA] Extractor succeeded via ${provider.name}`);
-        break;
-      }
-    } catch (e) {
-      console.error(`[WEURA] Extractor ${provider.name} exception:`, e);
-      continue;
-    }
-  }
-
-  if (!content) {
-    console.error('[WEURA] All extractor providers failed');
-    return null;
-  }
-
   try {
+    const response = await fetch(GROQ_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: process.env.GROQ_EXTRACTOR_MODEL?.trim() || 'openai/gpt-oss-120b',
+        messages: [
+          { role: 'system', content: EXTRACTOR_SYSTEM_PROMPT },
+          { role: 'user', content: userMessage },
+        ],
+        temperature: 0.1,
+        max_tokens: 2000,
+        response_format: { type: 'json_object' },
+        tools: [],
+        tool_choice: 'none',
+      }),
+      signal: AbortSignal.timeout(30000),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '');
+      console.error(`[WEURA] Extractor HTTP ${response.status}: ${errText.slice(0, 500)}`);
+      return null;
+    }
+
+    const data: any = await response.json();
+    const content = String(data?.choices?.[0]?.message?.content ?? '').trim();
+    if (!content) {
+      console.error('[WEURA] Extractor empty content:', JSON.stringify(data).slice(0, 300));
+      return null;
+    }
+
     let parsed: any;
     try {
       parsed = JSON.parse(content);
