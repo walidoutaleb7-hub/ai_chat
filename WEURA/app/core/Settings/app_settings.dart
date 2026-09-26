@@ -65,10 +65,12 @@ class AppSettingsManager extends ChangeNotifier {
   }
 
   /// Detects Arabic vs English from the platform locale.
+  /// Uses WidgetsBinding (works on mobile + web + desktop).
   static String _detectSystemLanguage() {
     try {
-      final locale = Platform.localeName.toLowerCase();
-      if (locale.startsWith('ar')) return 'Arabic';
+      final dispatcher = WidgetsBinding.instance.platformDispatcher;
+      final locale = dispatcher.locale;
+      if (locale.languageCode.toLowerCase() == 'ar') return 'Arabic';
       return 'English';
     } catch (_) {
       return 'English';

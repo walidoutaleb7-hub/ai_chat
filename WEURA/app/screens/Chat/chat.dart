@@ -59,6 +59,9 @@ class _ChatMessage {
     this.playerData,
     this.imageLocalPath,
     this.isImageLoading = false,
+    this.searchResults,
+    this.searchQuery,
+    this.isSearching = false,
   });
 
   final String text;
@@ -70,6 +73,11 @@ class _ChatMessage {
   final Map<String, dynamic>? playerData;
   final String? imageLocalPath;
   final bool isImageLoading;
+
+  // Image search (Pexels)
+  final List<Map<String, dynamic>>? searchResults;
+  final String? searchQuery;
+  final bool isSearching;
 }
 
 class _ChatScreenState extends State<ChatScreen>
@@ -706,6 +714,85 @@ class _ChatScreenState extends State<ChatScreen>
         (code >= 0x08A0 && code <= 0x08FF);
   }
 
+  // ============================================================
+  // IMAGE SEARCH (Pexels) — detect intent
+  // ============================================================
+
+  /// Detects "find real photos of X" intent.
+  /// Returns the search query, or null if not a search request.
+  String? _detectImageSearchIntent(String message) {
+    final text = message.trim();
+    final lower = text.toLowerCase();
+
+    // Arabic triggers for SEARCH (not generate)
+    const arabicSearchTriggers = [
+      'حبيت فوطو لـ ', 'حبيت فوطو ل', 'حبيت فوطو ',
+      'حبيت صورة لـ ', 'حبيت صورة ل', 'حبيت صورة ',
+      'حبيت صور لـ ', 'حبيت صور ',
+      'بغيت فوطو لـ ', 'بغيت فوطو ', 'بغيت صورة ', 'بغيت صور ',
+      'وريني صور لـ ', 'وريني صور ', 'وريني صورة ', 'وريني فوطو ',
+      'ورّيني صور لـ ', 'ورّيني صور ',
+      'هات لي صور لـ ', 'هات لي صور ', 'هاتلي صور ',
+      'جيب لي صور لـ ', 'جيب لي صور ', 'جيبلي صور ',
+      'ابحث عن صور لـ ', 'ابحث عن صور ', 'ابحثلي على صور ',
+      'لقّي لي صور لـ ', 'لقّي لي صور ', 'لقّيلي صور ',
+      'عطيني صور لـ ', 'عطيني صور ', 'عطيني فوطو ',
+      'أريد صور لـ ', 'اريد صور لـ ', 'أريد صور ', 'اريد صور ',
+      'صور حقيقية لـ ', 'صور حقيقية ل',
+    ];
+
+    const englishSearchTriggers = [
+      'find photos of ', 'find photos ',
+      'find pictures of ', 'find pictures ',
+      'find images of ', 'find images ',
+      'show me photos of ', 'show me photos ',
+      'show me pictures of ', 'show me pictures ',
+      'show me images of ', 'show me images ',
+      'search for photos of ', 'search for photos ',
+      'search for images of ', 'search for images ',
+      'search images of ', 'search images ',
+      'get me photos of ', 'get me photos ',
+      'get me images of ', 'get me images ',
+      'i want photos of ', 'i want pictures of ', 'i want images of ',
+      'real photos of ', 'real pictures of ',
+    ];
+
+    // Arabic — check longest first
+    final sortedArabic = [...arabicSearchTriggers]
+      ..sort((a, b) => b.length.compareTo(a.length));
+
+    for (final trigger in sortedArabic) {
+      final idx = text.indexOf(trigger);
+      if (idx != -1) {
+        if (!_isArabicLetterBefore(text, idx) &&
+            !_isArabicLetterAfter(text, idx + trigger.length)) {
+          final query = text.substring(idx + trigger.length).trim();
+          final cleaned = query
+              .replaceFirst(RegExp(r'^[\s:\-,\.]+'), '')
+              .trim();
+          if (cleaned.length >= 2) return cleaned;
+        }
+      }
+    }
+
+    // English — check longest first
+    final sortedEnglish = [...englishSearchTriggers]
+      ..sort((a, b) => b.length.compareTo(a.length));
+
+    for (final trigger in sortedEnglish) {
+      final idx = lower.indexOf(trigger);
+      if (idx != -1) {
+        final query = text.substring(idx + trigger.length).trim();
+        final cleaned = query
+            .replaceFirst(RegExp(r'^[\s:\-,\.]+'), '')
+            .trim();
+        if (cleaned.length >= 2) return cleaned;
+      }
+    }
+
+    return null;
+  }
+
   String? _detectImageIntent(String message) {
     final text = message.trim();
     final lower = text.toLowerCase();
@@ -803,6 +890,121 @@ class _ChatScreenState extends State<ChatScreen>
     final encoded = Uri.encodeComponent(prompt);
     final seedPart = (seed != null) ? '&seed=$seed' : '';
     return '$_serverUrl/api/image?prompt=$encoded$seedPart';
+  }
+
+  // ============================================================
+  // IMAGE SEARCH (Pexels) — handler
+  // ============================================================
+
+  Future<void> _handleImageSearch(
+    String userMessage,
+    String query,
+  ) async {
+    await _ensureSession(userMessage);
+
+    setState(() {
+      _messages.add(_ChatMessage(text: userMessage, isUser: true));
+      _messages.add(
+        _ChatMessage(
+          text: '',
+          isUser: false,
+          searchQuery: query,
+          isSearching: true,
+        ),
+      );
+      _isLoading = false;
+    });
+
+    await _persistMessages();
+    _scrollToBottom();
+
+    try {
+      // 1) Classify intent first (to confirm it's a search)
+      final classifyResp = await http
+          .post(
+            Uri.parse('$_serverUrl/api/image/classify'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'prompt': query}),
+          )
+          .timeout(const Duration(seconds: 15));
+
+      String intent = 'search';
+      String searchQuery = query;
+
+      if (classifyResp.statusCode == 200) {
+        final classifyData =
+            jsonDecode(classifyResp.body) as Map<String, dynamic>;
+        intent = (classifyData['intent'] as String?) ?? 'search';
+        final sq = (classifyData['search_query'] as String?)?.trim() ?? '';
+        if (sq.isNotEmpty) searchQuery = sq;
+      }
+
+      // If classifier says "generate", redirect to generation
+      if (intent == 'generate') {
+        setState(() {
+          _messages.removeLast(); // remove the searching placeholder
+        });
+        await _handleImageGeneration(userMessage, query);
+        return;
+      }
+
+      // 2) Search Pexels
+      final searchResp = await http
+          .post(
+            Uri.parse('$_serverUrl/api/image/search'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'query': query,
+              'count': 12,
+            }),
+          )
+          .timeout(const Duration(seconds: 25));
+
+      if (searchResp.statusCode != 200) {
+        throw Exception('Search failed (HTTP ${searchResp.statusCode})');
+      }
+
+      final data = jsonDecode(searchResp.body) as Map<String, dynamic>;
+
+      if (data['success'] != true) {
+        throw Exception(data['error'] ?? 'Search failed');
+      }
+
+      final results = (data['results'] as List?)
+              ?.whereType<Map>()
+              .map((e) => e.cast<String, dynamic>())
+              .toList() ??
+          [];
+
+      final translatedQuery =
+          (data['translated_query'] as String?)?.trim() ?? query;
+
+      setState(() {
+        _messages.removeLast(); // remove placeholder
+        _messages.add(
+          _ChatMessage(
+            text: '',
+            isUser: false,
+            searchResults: results,
+            searchQuery: translatedQuery,
+          ),
+        );
+      });
+
+      await _persistMessages();
+      _scrollToBottom();
+    } catch (e) {
+      setState(() {
+        _messages.removeLast();
+        _messages.add(
+          _ChatMessage(
+            text: 'فشل البحث عن الصور. حاول مرة أخرى.',
+            isUser: false,
+            isError: true,
+          ),
+        );
+      });
+    }
   }
 
   Future<void> _handleImageGeneration(
@@ -1280,6 +1482,15 @@ class _ChatScreenState extends State<ChatScreen>
       return;
     }
 
+    // 1) Check for IMAGE SEARCH intent first (find real photos)
+    final imageSearchQuery = _detectImageSearchIntent(message);
+    if (imageSearchQuery != null) {
+      await _maybeStoreMemory(message);
+      await _handleImageSearch(message, imageSearchQuery);
+      return;
+    }
+
+    // 2) Then check for IMAGE GENERATION intent (draw/create)
     final imagePrompt = _detectImageIntent(message);
     if (imagePrompt != null) {
       await _maybeStoreMemory(message);
@@ -2374,12 +2585,315 @@ class _ChatScreenState extends State<ChatScreen>
     return (mainText, uniqueUrls);
   }
 
+  // ============================================================
+  // IMAGE SEARCH — bubble (grid of Pexels results)
+  // ============================================================
+
+  Widget _imageSearchBubble(WeuraColors colors, _ChatMessage message) {
+    // Loading state
+    if (message.isSearching) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 24, right: 8),
+          child: Container(
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width * 0.85,
+            ),
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: colors.surface,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: colors.accentGlow.withValues(alpha: 0.30),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: colors.accentGlow,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Flexible(
+                  child: Text(
+                    'أبحث عن صور...',
+                    style: TextStyle(
+                      color: colors.textSecondary,
+                      fontSize: 13.5,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    final results = message.searchResults ?? const <Map<String, dynamic>>[];
+
+    if (results.isEmpty) {
+      return Align(
+        alignment: Alignment.centerLeft,
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 24, right: 8),
+          child: Text(
+            'لم أجد صوراً لهذا البحث. جرّب كلمات أخرى.',
+            style: TextStyle(color: colors.textMuted, fontSize: 13.5),
+          ),
+        ),
+      );
+    }
+
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 24, right: 8),
+        child: Container(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * 0.90,
+          ),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: colors.surface,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: colors.accentGlow.withValues(alpha: 0.25),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header
+              Row(
+                children: [
+                  Icon(
+                    Icons.image_search_rounded,
+                    size: 16,
+                    color: colors.accentGlow,
+                  ),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      message.searchQuery ?? 'نتائج البحث',
+                      style: TextStyle(
+                        color: colors.textPrimary,
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              // Grid
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate:
+                    const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  crossAxisSpacing: 6,
+                  mainAxisSpacing: 6,
+                  childAspectRatio: 1.0,
+                ),
+                itemCount: results.length,
+                itemBuilder: (context, idx) {
+                  final img = results[idx];
+                  final thumb = (img['thumbnail'] ?? img['preview'] ?? '')
+                      .toString();
+                  final full = (img['preview'] ??
+                          img['full'] ??
+                          img['thumbnail'] ??
+                          '')
+                      .toString();
+                  final photographer =
+                      (img['photographer'] ?? '').toString();
+
+                  if (thumb.isEmpty) {
+                    return Container(
+                      decoration: BoxDecoration(
+                        color: colors.surfaceAlt,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    );
+                  }
+
+                  return GestureDetector(
+                    onTap: () => _openImagePreview(
+                      full,
+                      photographer: photographer,
+                      colors: colors,
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: Image.network(
+                        thumb,
+                        fit: BoxFit.cover,
+                        loadingBuilder: (_, child, progress) {
+                          if (progress == null) return child;
+                          return Container(
+                            color: colors.surfaceAlt,
+                            child: Center(
+                              child: SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: colors.accentGlow,
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                        errorBuilder: (_, __, ___) => Container(
+                          color: colors.surfaceAlt,
+                          child: Icon(
+                            Icons.broken_image_outlined,
+                            size: 22,
+                            color: colors.textFaint,
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 10),
+              // Footer
+              Row(
+                children: [
+                  Icon(
+                    Icons.photo_library_outlined,
+                    size: 13,
+                    color: colors.textFaint,
+                  ),
+                  const SizedBox(width: 5),
+                  Text(
+                    '${results.length} صورة من Pexels',
+                    style: TextStyle(
+                      color: colors.textFaint,
+                      fontSize: 11.5,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Full-screen preview when tapping an image.
+  void _openImagePreview(
+    String url, {
+    required String photographer,
+    required WeuraColors colors,
+  }) {
+    if (url.isEmpty) return;
+
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        opaque: false,
+        barrierColor: Colors.black87,
+        pageBuilder: (_, __, ___) => Scaffold(
+          backgroundColor: Colors.transparent,
+          body: GestureDetector(
+            onTap: () => Navigator.of(context).pop(),
+            child: SafeArea(
+              child: Stack(
+                children: [
+                  Center(
+                    child: InteractiveViewer(
+                      minScale: 1,
+                      maxScale: 4,
+                      child: Image.network(
+                        url,
+                        fit: BoxFit.contain,
+                        loadingBuilder: (_, child, progress) {
+                          if (progress == null) return child;
+                          return const Center(
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                            ),
+                          );
+                        },
+                        errorBuilder: (_, __, ___) => const Center(
+                          child: Icon(
+                            Icons.broken_image_outlined,
+                            color: Colors.white54,
+                            size: 48,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  // Close button
+                  Positioned(
+                    top: 12,
+                    right: 12,
+                    child: Material(
+                      color: Colors.black54,
+                      shape: const CircleBorder(),
+                      child: InkWell(
+                        onTap: () => Navigator.of(context).pop(),
+                        customBorder: const CircleBorder(),
+                        child: const Padding(
+                          padding: EdgeInsets.all(10),
+                          child: Icon(
+                            Icons.close_rounded,
+                            color: Colors.white,
+                            size: 22,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  // Photographer credit
+                  if (photographer.isNotEmpty)
+                    Positioned(
+                      bottom: 20,
+                      left: 20,
+                      right: 20,
+                      child: Text(
+                        '📷 $photographer  •  Pexels',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 12.5,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        transitionDuration: const Duration(milliseconds: 220),
+      ),
+    );
+  }
+
   Widget _messageBubble(
     WeuraColors colors,
     _ChatMessage message,
     int index,
     bool isLastAssistant,
   ) {
+    // Image search results (Pexels)
+    if (message.isSearching || message.searchResults != null) {
+      return _imageSearchBubble(colors, message);
+    }
+
     if (message.imageUrl != null || message.isImageLoading) {
       return _imageBubble(colors, message, index);
     }
