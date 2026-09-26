@@ -2286,7 +2286,7 @@ class _ChatScreenState extends State<ChatScreen>
           Column(
             children: [
               SizedBox(
-                height: MediaQuery.of(context).padding.top + kToolbarHeight,
+                height: MediaQuery.paddingOf(context).top + kToolbarHeight,
               ),
               Expanded(
                 child: _messages.isEmpty
@@ -2319,18 +2319,23 @@ class _ChatScreenState extends State<ChatScreen>
                 _attachedImageChip(colors, _attachedImage!),
               if (_attachedFile != null)
                 _attachedFileChip(colors, _attachedFile!),
-              Padding(
-                padding: EdgeInsets.only(
-                  bottom: MediaQuery.of(context).viewInsets.bottom,
-                ),
-                child: WeuraComposer(
-                  enabled: true,
-                  isLoading: _isLoading,
-                  onSend: _sendMessage,
-                  onAttach: () => _showAttachmentSheet(colors),
-                  onMode: () => _showModePicker(colors),
-                  onVoice: () => _handleVoice(colors),
-                  onStop: _cancelRequest,
+              // Isolated composer: uses viewInsetsOf (not MediaQuery.of)
+              // so the keyboard animation only repaints the composer,
+              // not the whole screen tree.
+              RepaintBoundary(
+                child: Padding(
+                  padding: EdgeInsets.only(
+                    bottom: MediaQuery.viewInsetsOf(context).bottom,
+                  ),
+                  child: WeuraComposer(
+                    enabled: true,
+                    isLoading: _isLoading,
+                    onSend: _sendMessage,
+                    onAttach: () => _showAttachmentSheet(colors),
+                    onMode: () => _showModePicker(colors),
+                    onVoice: () => _handleVoice(colors),
+                    onStop: _cancelRequest,
+                  ),
                 ),
               ),
             ],
