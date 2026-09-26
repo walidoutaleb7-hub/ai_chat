@@ -630,6 +630,14 @@ function buildSoulBlock(): string {
     `- If missing AND question is current → say "ما عنديش معلومة مؤكدة.". NEVER invent.\n` +
     `- Football: search mandatory. Only CONFIRMED transfers ("signed","official").\n` +
     `- Comparisons/opinions/analysis/how-to → answer from your knowledge. NEVER say "not in sources".\n\n` +
+    `═══ SEARCH QUERY TIPS ═══\n` +
+    `- For Arabic TV series/movies → translate name + add "Algerian/Egyptian/Syrian" + year.\n` +
+    `  Example: "رباعة" → "Rabaa Algerian series 2026 season 2".\n` +
+    `- For Arabic public figures → translate name + role.\n` +
+    `  Example: "من هو تبون" → "Abdelmadjid Tebboune president Algeria".\n` +
+    `- For Arab events → translate + add context.\n` +
+    `  Example: "أحداث غزة" → "Gaza latest news".\n\n` +
+
     `═══ LANGUAGE — ABSOLUTE RULE (priority #1) ═══\n` +
     `Mirror the user's LAST message language + dialect EXACTLY.\n` +
     `Detect from THEIR words, NOT from previous context.\n\n` +

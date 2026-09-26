@@ -49,7 +49,19 @@ class GrokService {
         _client = client ?? http.Client();
 
   final String baseUrl;
-  final http.Client _client;
+  http.Client _client;
+  bool _cancelRequested = false;
+
+  /// Cancels the currently in-flight request (if any).
+  /// The pending `sendMessage` will throw a GrokException.
+  void cancelActiveRequest() {
+    _cancelRequested = true;
+    try {
+      _client.close();
+    } catch (_) {}
+    // Create a fresh client so future requests still work.
+    _client = http.Client();
+  }
 
   /// Sends a chat request to the WEURA server.
   ///
@@ -67,6 +79,7 @@ class GrokService {
     if (messages.isEmpty) {
       throw const GrokException('No messages were provided.');
     }
+    _cancelRequested = false;
 
     final uri = Uri.parse('$baseUrl/api/chat');
 
@@ -98,6 +111,9 @@ class GrokService {
           )
           .timeout(const Duration(seconds: 90));
 
+      if (_cancelRequested) {
+        throw const GrokException('Request cancelled.');
+      }
       return _parseResponse(response);
     } on TimeoutException {
       throw const GrokException(

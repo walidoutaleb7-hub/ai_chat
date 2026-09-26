@@ -781,8 +781,14 @@ class _ChatScreenState extends State<ChatScreen>
     for (final trigger in sortedArabic) {
       final idx = text.indexOf(trigger);
       if (idx != -1) {
-        if (!_isArabicLetterBefore(text, idx) &&
-            !_isArabicLetterAfter(text, idx + trigger.length)) {
+        // Allow letter-after when trigger ends with "ل" (لـ + word)
+        // e.g. "حبيت فوطو لامبابي" → trigger "حبيت فوطو ل" + "امبابي"
+        final endsWithLam = trigger.trimRight().endsWith('ل');
+        final beforeOk = !_isArabicLetterBefore(text, idx);
+        final afterOk = endsWithLam ||
+            !_isArabicLetterAfter(text, idx + trigger.length);
+
+        if (beforeOk && afterOk) {
           final query = text.substring(idx + trigger.length).trim();
           final cleaned = query
               .replaceFirst(RegExp(r'^[\s:\-,\.]+'), '')
@@ -875,8 +881,12 @@ class _ChatScreenState extends State<ChatScreen>
     for (final trigger in sortedArabic) {
       final idx = text.indexOf(trigger);
       if (idx != -1) {
-        if (!_isArabicLetterBefore(text, idx) &&
-            !_isArabicLetterAfter(text, idx + trigger.length)) {
+        final endsWithLam = trigger.trimRight().endsWith('ل');
+        final beforeOk = !_isArabicLetterBefore(text, idx);
+        final afterOk = endsWithLam ||
+            !_isArabicLetterAfter(text, idx + trigger.length);
+
+        if (beforeOk && afterOk) {
           final prompt = text.substring(idx + trigger.length).trim();
           final cleaned = prompt
               .replaceFirst(RegExp(r'^[\s:\-,\.]+'), '')
@@ -1648,6 +1658,7 @@ class _ChatScreenState extends State<ChatScreen>
 
   void _cancelRequest() {
     if (!_isLoading) return;
+    _grok.cancelActiveRequest();  // actually abort the HTTP request
     setState(() {
       _requestCancelled = true;
       _isLoading = false;
