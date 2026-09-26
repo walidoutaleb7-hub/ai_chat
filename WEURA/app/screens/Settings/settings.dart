@@ -103,7 +103,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           colors: colors,
           title: _t('Appearance', 'المظهر'),
           value: _settings.themeMode,
-          options: const [
+          options: [
             _SelectionOption(value: ThemeMode.system, title: _t('System', 'النظام')),
             _SelectionOption(value: ThemeMode.dark, title: _t('Dark', 'داكن')),
             _SelectionOption(value: ThemeMode.light, title: _t('Light', 'فاتح')),
@@ -125,7 +125,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           colors: colors,
           title: _t('Language', 'اللغة'),
           value: _settings.language,
-          options: const [
+          options: [
             _SelectionOption(value: 'English', title: 'English'),
             _SelectionOption(value: 'Arabic', title: 'العربية'),
             _SelectionOption(value: 'Auto', title: _t('Auto', 'تلقائي')),
@@ -147,7 +147,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           colors: colors,
           title: _t('Text direction', 'اتجاه النص'),
           value: _settings.direction,
-          options: const [
+          options: [
             _SelectionOption(value: 'Auto', title: _t('Auto', 'تلقائي')),
             _SelectionOption(value: 'LTR', title: _t('Left to right', 'من اليسار لليمين')),
             _SelectionOption(value: 'RTL', title: _t('Right to left', 'من اليمين لليسار')),
@@ -169,7 +169,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           colors: colors,
           title: _t('Response detail', 'تفصيل الرد'),
           value: _settings.responseDetail,
-          options: const [
+          options: [
             _SelectionOption(value: ResponseDetail.auto, title: _t('Auto', 'تلقائي')),
             _SelectionOption(value: ResponseDetail.concise, title: _t('Concise', 'موجز')),
             _SelectionOption(
@@ -243,12 +243,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text(_t('Cancel', 'إلغاء')),
+              child: Text(_t('Cancel', 'إلغاء')),
             ),
             TextButton(
               onPressed: () =>
                   Navigator.pop(dialogContext, controller.text),
-              child: const Text(_t('Save', 'حفظ')),
+              child: Text(_t('Save', 'حفظ')),
             ),
           ],
         );
@@ -289,7 +289,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text(_t('Cancel', 'إلغاء')),
+              child: Text(_t('Cancel', 'إلغاء')),
             ),
             TextButton(
               onPressed: () async {
@@ -326,7 +326,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text(_t('Cancel', 'إلغاء')),
+              child: Text(_t('Cancel', 'إلغاء')),
             ),
             TextButton(
               onPressed: () async {
@@ -736,7 +736,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 }
 
 class _SelectionOption<T> {
-  const _SelectionOption({
+  _SelectionOption({
     required this.value,
     required this.title,
   });
