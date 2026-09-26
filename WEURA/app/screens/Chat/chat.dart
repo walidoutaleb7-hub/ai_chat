@@ -2299,18 +2299,25 @@ class _ChatScreenState extends State<ChatScreen>
                         padding: const EdgeInsets.fromLTRB(18, 22, 18, 24),
                         itemCount: _messages.length + (_isLoading ? 1 : 0),
                         itemBuilder: (context, index) {
-                          if (_isLoading && index == _messages.length) {
+                          // reverse:true means index 0 is at bottom.
+                          // Convert to the actual message index (0 = oldest).
+                          final loadingOffset = _isLoading ? 1 : 0;
+                          final totalItems = _messages.length + loadingOffset;
+                          final reversedIndex = totalItems - 1 - index;
+
+                          if (_isLoading && reversedIndex == _messages.length) {
                             return _isFootballQuestion
                                 ? _FootballThinking(colors: colors)
                                 : _WeuraThinking(colors: colors);
                           }
-                          final message = _messages[index];
+
+                          final message = _messages[reversedIndex];
                           final isLastAssistant = !message.isUser &&
-                              index == _messages.length - 1;
+                              reversedIndex == _messages.length - 1;
                           return _messageBubble(
                             colors,
                             message,
-                            index,
+                            reversedIndex,
                             isLastAssistant,
                           );
                         },
