@@ -382,11 +382,9 @@ class _ChatScreenState extends State<ChatScreen>
 
   void _autoScrollDuringTyping() {
     if (!_scrollController.hasClients) return;
-    final pos = _scrollController.position;
-    final distanceFromBottom = pos.maxScrollExtent - pos.pixels;
-    if (distanceFromBottom >= 140) return;
 
-    // Defer to next frame to avoid feedback loops (shaking).
+    // Always follow the AI as it types. Defer to next frame to
+    // avoid feedback loops (which caused shaking before).
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollController.hasClients) return;
       final p2 = _scrollController.position;

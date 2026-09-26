@@ -57,7 +57,7 @@ function getProviders(): Provider[] {
       apiKey: openrouterKey,
       model:
         process.env.OPENROUTER_MODEL?.trim() ||
-        'nvidia/nemotron-3-ultra-550b-a55b:free',
+        'google/gemma-3-27b-it:free',
     });
   }
 

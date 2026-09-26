@@ -1022,6 +1022,21 @@ router.post('/chat', async (req, res) => {
       maxTokens,
     });
 
+    // ─── Safety: strip raw JSON/tool-call leaks ───
+    // Some models (especially free-tier OpenRouter) sometimes leak
+    // {"query":"...","recency_days":N,"max_results":N} as text.
+    const jsonLeakPattern =
+      /\{\s*"query"\s*:[^}]*"recency_days"\s*:[^}]*\}/g;
+    if (jsonLeakPattern.test(result.content)) {
+      console.warn(
+        `[WEURA][${requestId}] Stripped JSON leak from response`,
+      );
+      result.content = result.content.replace(jsonLeakPattern, '').trim();
+      if (!result.content) {
+        result.content = 'عذراً، حدث خطأ. جرّب مرة أخرى.';
+      }
+    }
+
     if (useCache) {
       const ttl = pickTTL(lastUserMessage, built.searchUsed);
       if (ttl > 0) {
