@@ -4,6 +4,7 @@ import '../../components/UI/weura_background.dart';
 import '../../core/AI/ai_router.dart';
 import '../../core/Settings/app_settings.dart';
 import '../../core/Theme/weura_theme.dart';
+import '../../core/i18n/weura_strings.dart';
 import '../../services/Storage/storage_service.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -21,6 +22,12 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+
+  // ═══════════════════════════════════════════════════════
+  //  Bilingual helper — reads current app language
+  // ═══════════════════════════════════════════════════════
+  String _t(String en, String ar) => WeuraStrings.isAr ? ar : en;
+
   final AppSettingsManager _settings = AppSettingsManager.instance;
 
   @override
@@ -94,12 +101,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (_) {
         return _SelectionSheet<ThemeMode>(
           colors: colors,
-          title: 'Appearance',
+          title: _t('Appearance', 'المظهر'),
           value: _settings.themeMode,
           options: const [
-            _SelectionOption(value: ThemeMode.system, title: 'System'),
-            _SelectionOption(value: ThemeMode.dark, title: 'Dark'),
-            _SelectionOption(value: ThemeMode.light, title: 'Light'),
+            _SelectionOption(value: ThemeMode.system, title: _t('System', 'النظام')),
+            _SelectionOption(value: ThemeMode.dark, title: _t('Dark', 'داكن')),
+            _SelectionOption(value: ThemeMode.light, title: _t('Light', 'فاتح')),
           ],
         );
       },
@@ -116,12 +123,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (_) {
         return _SelectionSheet<String>(
           colors: colors,
-          title: 'Language',
+          title: _t('Language', 'اللغة'),
           value: _settings.language,
           options: const [
             _SelectionOption(value: 'English', title: 'English'),
             _SelectionOption(value: 'Arabic', title: 'العربية'),
-            _SelectionOption(value: 'Auto', title: 'Auto'),
+            _SelectionOption(value: 'Auto', title: _t('Auto', 'تلقائي')),
           ],
         );
       },
@@ -138,12 +145,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (_) {
         return _SelectionSheet<String>(
           colors: colors,
-          title: 'Text direction',
+          title: _t('Text direction', 'اتجاه النص'),
           value: _settings.direction,
           options: const [
-            _SelectionOption(value: 'Auto', title: 'Auto'),
-            _SelectionOption(value: 'LTR', title: 'Left to right'),
-            _SelectionOption(value: 'RTL', title: 'Right to left'),
+            _SelectionOption(value: 'Auto', title: _t('Auto', 'تلقائي')),
+            _SelectionOption(value: 'LTR', title: _t('Left to right', 'من اليسار لليمين')),
+            _SelectionOption(value: 'RTL', title: _t('Right to left', 'من اليمين لليسار')),
           ],
         );
       },
@@ -160,18 +167,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (_) {
         return _SelectionSheet<ResponseDetail>(
           colors: colors,
-          title: 'Response detail',
+          title: _t('Response detail', 'تفصيل الرد'),
           value: _settings.responseDetail,
           options: const [
-            _SelectionOption(value: ResponseDetail.auto, title: 'Auto'),
-            _SelectionOption(value: ResponseDetail.concise, title: 'Concise'),
+            _SelectionOption(value: ResponseDetail.auto, title: _t('Auto', 'تلقائي')),
+            _SelectionOption(value: ResponseDetail.concise, title: _t('Concise', 'موجز')),
             _SelectionOption(
               value: ResponseDetail.balanced,
-              title: 'Balanced',
+              title: _t('Balanced', 'متوازن'),
             ),
             _SelectionOption(
               value: ResponseDetail.detailed,
-              title: 'Detailed',
+              title: _t('Detailed', 'مفصّل'),
             ),
           ],
         );
@@ -193,7 +200,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (_) {
         return _SelectionSheet<AIMode>(
           colors: colors,
-          title: 'Default AI mode',
+          title: _t('Default AI mode', 'نمط الذكاء الافتراضي'),
           value: _settings.mode,
           options: AIMode.values
               .map((m) => _SelectionOption(value: m, title: _modeName(m)))
@@ -236,12 +243,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
+              child: const Text(_t('Cancel', 'إلغاء')),
             ),
             TextButton(
               onPressed: () =>
                   Navigator.pop(dialogContext, controller.text),
-              child: const Text('Save'),
+              child: const Text(_t('Save', 'حفظ')),
             ),
           ],
         );
@@ -282,7 +289,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
+              child: const Text(_t('Cancel', 'إلغاء')),
             ),
             TextButton(
               onPressed: () async {
@@ -319,7 +326,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
+              child: const Text(_t('Cancel', 'إلغاء')),
             ),
             TextButton(
               onPressed: () async {
@@ -498,21 +505,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _card(colors, [
               _settingTile(
                 colors,
-                title: 'Appearance',
+                title: _t('Appearance', 'المظهر'),
                 subtitle: _themeName,
                 onTap: () => _selectTheme(colors),
               ),
               _divider(colors),
               _settingTile(
                 colors,
-                title: 'Language',
+                title: _t('Language', 'اللغة'),
                 subtitle: _settings.language,
                 onTap: () => _selectLanguage(colors),
               ),
               _divider(colors),
               _settingTile(
                 colors,
-                title: 'Text direction',
+                title: _t('Text direction', 'اتجاه النص'),
                 subtitle: _settings.direction,
                 onTap: () => _selectDirection(colors),
               ),
@@ -523,7 +530,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _card(colors, [
               _settingTile(
                 colors,
-                title: 'Your name',
+                title: _t('Your name', 'اسمك'),
                 subtitle: _settings.hasUserName
                     ? _settings.userName
                     : 'Not set',
@@ -532,21 +539,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _divider(colors),
               _settingTile(
                 colors,
-                title: 'Default AI mode',
+                title: _t('Default AI mode', 'نمط الذكاء الافتراضي'),
                 subtitle: _modeName(_settings.mode),
                 onTap: () => _selectMode(colors),
               ),
               _divider(colors),
               _settingTile(
                 colors,
-                title: 'Response detail',
+                title: _t('Response detail', 'تفصيل الرد'),
                 subtitle: _responseDetailName,
                 onTap: () => _selectResponseDetail(colors),
               ),
               _divider(colors),
               _switchTile(
                 colors,
-                title: 'Memory',
+                title: _t('Memory', 'الذاكرة'),
                 subtitle: 'Allow WEURA to use saved memories',
                 value: _settings.memoryEnabled,
                 onChanged: _settings.setMemoryEnabled,
@@ -558,7 +565,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _card(colors, [
               _switchTile(
                 colors,
-                title: 'Voice input',
+                title: _t('Voice input', 'الإدخال الصوتي'),
                 subtitle: 'Use your microphone for messages',
                 value: _settings.voiceInputEnabled,
                 onChanged: _settings.setVoiceInputEnabled,
@@ -566,7 +573,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _divider(colors),
               _switchTile(
                 colors,
-                title: 'Voice output',
+                title: _t('Voice output', 'الإخراج الصوتي'),
                 subtitle: 'Read AI responses aloud',
                 value: _settings.voiceOutputEnabled,
                 onChanged: _settings.setVoiceOutputEnabled,
@@ -578,7 +585,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _card(colors, [
               _switchTile(
                 colors,
-                title: 'Auto-save history',
+                title: _t('Auto-save history', 'حفظ تلقائي للسجل'),
                 subtitle: 'Automatically save conversations',
                 value: _settings.autoSaveHistory,
                 onChanged: _settings.setAutoSaveHistory,
@@ -586,7 +593,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _divider(colors),
               _switchTile(
                 colors,
-                title: 'Send on Enter',
+                title: _t('Send on Enter', 'إرسال بزر Enter'),
                 subtitle: 'Press Enter to send a message',
                 value: _settings.sendOnEnter,
                 onChanged: _settings.setSendOnEnter,
@@ -598,7 +605,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _card(colors, [
               _settingTile(
                 colors,
-                title: 'AI connection',
+                title: _t('AI connection', 'اتصال الذكاء'),
                 subtitle: 'Groq • Cerebras • Tavily',
                 onTap: () => _showConnectionInfo(colors),
               ),
@@ -609,7 +616,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _card(colors, [
               _settingTile(
                 colors,
-                title: 'Clear local data',
+                title: _t('Clear local data', 'مسح البيانات المحلية'),
                 subtitle: 'Remove locally stored WEURA data',
                 destructive: true,
                 onTap: () => _confirmClearData(colors),

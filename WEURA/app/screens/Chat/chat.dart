@@ -3072,6 +3072,8 @@ class _ChatScreenState extends State<ChatScreen>
                 builders: {
                   'code': _CodeBlockBuilder(colors: colors),
                 },
+                imageBuilder: (uri, title, alt) =>
+                    _buildMarkdownImage(colors, uri, title, alt),
               ),
 
             if (sources.isNotEmpty && !isTyping)
@@ -3676,6 +3678,7 @@ class _TypedMarkdown extends StatefulWidget {
     this.builders = const {},
     this.onComplete,
     this.onTick,
+    this.imageBuilder,
   });
 
   final String fullText;
@@ -3683,6 +3686,7 @@ class _TypedMarkdown extends StatefulWidget {
   final Map<String, MarkdownElementBuilder> builders;
   final VoidCallback? onComplete;
   final VoidCallback? onTick;
+  final Widget Function(Uri, String?, String?)? imageBuilder;
 
   @override
   State<_TypedMarkdown> createState() => _TypedMarkdownState();
@@ -3695,6 +3699,56 @@ class _TypedMarkdownState extends State<_TypedMarkdown>
   late String _visibleText;
   bool _done = false;
   bool _controllerReady = false;
+
+  // Renders images inside Markdown with rounded corners + shadow.
+  Widget _buildMarkdownImage(
+      WeuraColors colors, Uri uri, String? title, String? alt) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          decoration: BoxDecoration(
+            boxShadow: [
+              BoxShadow(
+                color: colors.accentGlow.withValues(alpha: 0.20),
+                blurRadius: 18,
+                spreadRadius: 1,
+              ),
+            ],
+          ),
+          child: Image.network(
+            uri.toString(),
+            fit: BoxFit.cover,
+            loadingBuilder: (_, child, progress) {
+              if (progress == null) return child;
+              return Container(
+                height: 200,
+                color: colors.surfaceAlt,
+                child: Center(
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: colors.accentGlow,
+                  ),
+                ),
+              );
+            },
+            errorBuilder: (_, __, ___) => Container(
+              height: 120,
+              color: colors.surfaceAlt,
+              child: Center(
+                child: Icon(
+                  Icons.broken_image_outlined,
+                  color: colors.textFaint,
+                  size: 32,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -3798,6 +3852,9 @@ class _TypedMarkdownState extends State<_TypedMarkdown>
         selectable: true,
         styleSheet: widget.styleSheet,
         builders: widget.builders,
+        imageBuilder: widget.imageBuilder ??
+            ((uri, title, alt) =>
+                _buildMarkdownImage(WeuraColors.of(context), uri, title, alt)),
       );
     }
 
