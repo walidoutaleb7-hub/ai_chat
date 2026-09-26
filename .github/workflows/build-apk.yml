@@ -77,8 +77,7 @@ jobs:
 
       - name: Build APK
         working-directory: WEURA
-        run: |
-          flutter build apk --release --target=app/main.dart --no-enable-impeller
+        run: flutter build apk --release --target=app/main.dart
 
       - name: Get APK size
         id: apk
