@@ -57,7 +57,7 @@ function getProviders(): Provider[] {
       apiKey: openrouterKey,
       model:
         process.env.OPENROUTER_MODEL?.trim() ||
-        'qwen/qwen3.8-27b:free',
+        'nvidia/nemotron-3-ultra-550b-a55b:free',
     });
   }
 
