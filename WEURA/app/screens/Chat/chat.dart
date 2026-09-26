@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
@@ -4584,7 +4585,8 @@ class _ImageGeneratingLoaderState extends State<_ImageGeneratingLoader>
               width: 170,
               height: 170,
               child: AnimatedBuilder(
-                animation: Listenable.merge([
+                // OLD animation reference removed
+              // 
                   _pulseController,
                   _rotateController,
                   _sparkleController,
@@ -4963,7 +4965,8 @@ class _WeuraThinkingState extends State<_WeuraThinking>
               height: 150,
               child: RepaintBoundary(
                 child: AnimatedBuilder(
-                  animation: Listenable.merge([
+                  // OLD animation reference removed
+              // 
                     _rotateController,
                     _pulseController,
                     _waveController,
@@ -5707,37 +5710,51 @@ class _ChatBackground extends StatefulWidget {
 }
 
 class _ChatBackgroundState extends State<_ChatBackground>
-    with TickerProviderStateMixin {
-  late final AnimationController _auroraController;
-  late final AnimationController _starsController;
-  late final AnimationController _twinkleController;
+    with WidgetsBindingObserver {
+  static const Duration _tick = Duration(milliseconds: 200);
+  Timer? _timer;
+  double _aurora = 0.0;
+  double _stars = 0.0;
+  double _twinkle = 0.0;
 
   @override
   void initState() {
     super.initState();
-
-    _auroraController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 24),
-    )..repeat();
-
-    _starsController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 40),
-    )..repeat();
-
-    _twinkleController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2200),
-    )..repeat(reverse: true);
+    WidgetsBinding.instance.addObserver(this);
+    _startTimer();
   }
 
   @override
   void dispose() {
-    _auroraController.dispose();
-    _starsController.dispose();
-    _twinkleController.dispose();
+    _stopTimer();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _startTimer();
+    } else {
+      _stopTimer();
+    }
+  }
+
+  void _startTimer() {
+    _timer?.cancel();
+    _timer = Timer.periodic(_tick, (_) {
+      if (!mounted) return;
+      setState(() {
+        _aurora = (_aurora + 1 / 120) % 1.0;
+        _stars = (_stars + 1 / 200) % 1.0;
+        _twinkle = (_twinkle + 1 / 11) % 1.0;
+      });
+    });
+  }
+
+  void _stopTimer() {
+    _timer?.cancel();
+    _timer = null;
   }
 
   @override
@@ -5781,12 +5798,12 @@ class _ChatBackgroundState extends State<_ChatBackground>
           children: [
             // Aurora blobs (2 instead of 3)
             AnimatedBuilder(
-              animation: _auroraController,
+              
               builder: (context, _) {
                 return CustomPaint(
                   size: Size.infinite,
                   painter: _AuroraPainter(
-                    progress: _auroraController.value,
+                    progress: _aurora,
                     blue: colors.accent,
                     glow: colors.accentGlow,
                     intensity: isDark ? 1.0 : 0.55,
@@ -5795,23 +5812,15 @@ class _ChatBackgroundState extends State<_ChatBackground>
               },
             ),
 
-            // Stars (40 instead of 80)
-            AnimatedBuilder(
-              animation: Listenable.merge([
-                _starsController,
-                _twinkleController,
-              ]),
-              builder: (context, _) {
-                return CustomPaint(
-                  size: Size.infinite,
-                  painter: _StarsPainter(
-                    drift: _starsController.value,
-                    twinkle: _twinkleController.value,
-                    color: starColor,
-                    intensity: isDark ? 1.0 : 0.45,
-                  ),
-                );
-              },
+            // Stars (15 instead of 40) — custom paint, updated by Timer
+            CustomPaint(
+              size: Size.infinite,
+              painter: _StarsPainter(
+                drift: _stars,
+                twinkle: _twinkle,
+                color: starColor,
+                intensity: isDark ? 1.0 : 0.45,
+              ),
             ),
 
             // Bottom glow
