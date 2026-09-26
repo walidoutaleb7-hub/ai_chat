@@ -162,6 +162,18 @@ class _ChatScreenState extends State<ChatScreen>
     await Future.wait([_history.load(), _memory.load()]);
     await _loadRatings();
 
+    // Scroll to bottom after loading history (opening chat)
+    if (mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!_scrollController.hasClients) return;
+          _scrollController.jumpTo(
+            _scrollController.position.maxScrollExtent,
+          );
+        });
+      });
+    }
+
     if (widget.sessionId != null) {
       final existing = _history.findById(widget.sessionId!);
       if (existing != null) {
@@ -372,9 +384,16 @@ class _ChatScreenState extends State<ChatScreen>
     if (!_scrollController.hasClients) return;
     final pos = _scrollController.position;
     final distanceFromBottom = pos.maxScrollExtent - pos.pixels;
-    if (distanceFromBottom < 140) {
-      _scrollController.jumpTo(pos.maxScrollExtent);
-    }
+    if (distanceFromBottom >= 140) return;
+
+    // Defer to next frame to avoid feedback loops (shaking).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scrollController.hasClients) return;
+      final p2 = _scrollController.position;
+      if (p2.pixels < p2.maxScrollExtent) {
+        _scrollController.jumpTo(p2.maxScrollExtent);
+      }
+    });
   }
 
   Future<void> _editUserMessage(int index, WeuraColors colors) async {
@@ -1691,14 +1710,24 @@ class _ChatScreenState extends State<ChatScreen>
     _regenerateLast();
   }
 
-  void _scrollToBottom() {
+  void _scrollToBottom({bool animated = true}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollController.hasClients) return;
-      _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOutCubic,
-      );
+      final maxExtent = _scrollController.position.maxScrollExtent;
+
+      // Don't force-scroll if user scrolled up manually.
+      final distanceFromBottom = maxExtent - _scrollController.position.pixels;
+      if (distanceFromBottom > 400) return;
+
+      if (animated) {
+        _scrollController.animateTo(
+          maxExtent,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
+      } else {
+        _scrollController.jumpTo(maxExtent);
+      }
     });
   }
 
@@ -2293,31 +2322,23 @@ class _ChatScreenState extends State<ChatScreen>
                     ? _emptyState(colors)
                     : ListView.builder(
                         controller: _scrollController,
-                        reverse: true,
                         keyboardDismissBehavior:
                             ScrollViewKeyboardDismissBehavior.onDrag,
                         padding: const EdgeInsets.fromLTRB(18, 22, 18, 24),
                         itemCount: _messages.length + (_isLoading ? 1 : 0),
                         itemBuilder: (context, index) {
-                          // reverse:true means index 0 is at bottom.
-                          // Convert to the actual message index (0 = oldest).
-                          final loadingOffset = _isLoading ? 1 : 0;
-                          final totalItems = _messages.length + loadingOffset;
-                          final reversedIndex = totalItems - 1 - index;
-
-                          if (_isLoading && reversedIndex == _messages.length) {
+                          if (_isLoading && index == _messages.length) {
                             return _isFootballQuestion
                                 ? _FootballThinking(colors: colors)
                                 : _WeuraThinking(colors: colors);
                           }
-
-                          final message = _messages[reversedIndex];
+                          final message = _messages[index];
                           final isLastAssistant = !message.isUser &&
-                              reversedIndex == _messages.length - 1;
+                              index == _messages.length - 1;
                           return _messageBubble(
                             colors,
                             message,
-                            reversedIndex,
+                            index,
                             isLastAssistant,
                           );
                         },
