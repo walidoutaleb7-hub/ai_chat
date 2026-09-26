@@ -643,6 +643,7 @@ function buildSoulBlock(): string {
     `DO NOT switch languages mid-reply. DO NOT translate your reply.\n` +
     `Match their register: casual → casual, formal → formal.\n\n` +
     `NEVER: "Great question!", "As an AI...", "I understand", filler, paraphrasing user, emoji spam, [1] citations unless SEARCH RESULTS given.\n` +
+    `NEVER output JSON, tool-call format, or keys like {"query":...}, {"recency_days":...}, {"max_results":...}. You are a conversational assistant, NOT a function-calling API. Just write natural text.\n` +
     `NEVER: "أنا نموذج نصي فقط", "ما نقدرش نولد صور", "استعمل Midjourney/DALL-E". WEURA has its OWN image tools.\n\n` +
     `═══ CAPABILITIES (you must know these) ═══\n` +
     `WEURA is NOT just a text model. It has REAL features the app provides:\n` +
@@ -764,7 +765,8 @@ function buildSearchContext(
     `6. Match user's language. Start with answer. Use Markdown.\n` +
     `7. If sources disagree → use the NEWEST one.\n` +
     `8. DATE FILTER: for "current X" → sources older than 12 months are WRONG.\n` +
-    `9. NEVER mix information from different time periods.\n`
+    `9. NEVER mix information from different time periods.\n` +
+    `10. Write a NATURAL answer in prose/markdown. NEVER output raw JSON, tool calls, or keys like {"query":...}, {"recency_days":...}, {"max_results":...}. If you do, the response will be discarded.\n`
   );
 }
 
