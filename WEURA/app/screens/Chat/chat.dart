@@ -2293,6 +2293,7 @@ class _ChatScreenState extends State<ChatScreen>
                     ? _emptyState(colors)
                     : ListView.builder(
                         controller: _scrollController,
+                        reverse: true,
                         keyboardDismissBehavior:
                             ScrollViewKeyboardDismissBehavior.onDrag,
                         padding: const EdgeInsets.fromLTRB(18, 22, 18, 24),
