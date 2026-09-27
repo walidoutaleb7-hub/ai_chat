@@ -5967,17 +5967,17 @@ class _StarsPainter extends CustomPainter {
   final Color color;
   final double intensity;
 
+  // 35 stars, no per-star speed → all drift together (no "meeting").
   static final List<_StarSeed> _stars = _generateStars();
 
   static List<_StarSeed> _generateStars() {
     final rnd = math.Random(42);
-    return List.generate(40, (i) {
+    return List.generate(35, (i) {
       return _StarSeed(
         x: rnd.nextDouble(),
         y: rnd.nextDouble(),
-        size: 0.6 + rnd.nextDouble() * 1.6,
+        size: 0.7 + rnd.nextDouble() * 1.4,
         phase: rnd.nextDouble(),
-        speed: 0.5 + rnd.nextDouble() * 1.5,
       );
     });
   }
@@ -5985,11 +5985,12 @@ class _StarsPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     for (final star in _stars) {
-      final yShift = (drift * star.speed) % 1.0;
-      final y = (star.y - yShift + 1.0) % 1.0;
+      // Uniform vertical drift — all stars move at the same rate.
+      final y = (star.y - drift + 1.0) % 1.0;
 
-      final tw = 0.35 +
-          0.65 *
+      // Per-star twinkle phase (so they don't blink in sync).
+      final tw = 0.4 +
+          0.6 *
               (0.5 +
                   0.5 *
                       math.sin(
@@ -5998,19 +5999,42 @@ class _StarsPainter extends CustomPainter {
 
       final pos = Offset(star.x * size.width, y * size.height);
 
+      // Soft halo (large, faint).
       canvas.drawCircle(
         pos,
-        star.size * 3.5,
+        star.size * 4.0,
         Paint()
-          ..color = color.withValues(alpha: 0.10 * tw * intensity),
+          ..color = color.withValues(alpha: 0.08 * tw * intensity),
       );
 
+      // Bright core.
       canvas.drawCircle(
         pos,
         star.size,
         Paint()
           ..color = color.withValues(alpha: 0.85 * tw * intensity),
       );
+
+      // Subtle comet trail — only for larger stars.
+      if (star.size > 1.3) {
+        final trailHeight = star.size * 6.0;
+        final trailRect = Rect.fromLTWH(
+          pos.dx - 0.6,
+          pos.dy - trailHeight,
+          1.2,
+          trailHeight,
+        );
+        final trailPaint = Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              color.withValues(alpha: 0.0),
+              color.withValues(alpha: 0.30 * tw * intensity),
+            ],
+          ).createShader(trailRect);
+        canvas.drawRect(trailRect, trailPaint);
+      }
     }
   }
 
@@ -6028,12 +6052,10 @@ class _StarSeed {
     required this.y,
     required this.size,
     required this.phase,
-    required this.speed,
   });
 
   final double x;
   final double y;
   final double size;
   final double phase;
-  final double speed;
 }
