@@ -5708,38 +5708,25 @@ class _ChatBackground extends StatefulWidget {
 }
 
 class _ChatBackgroundState extends State<_ChatBackground>
-    with TickerProviderStateMixin, WidgetsBindingObserver {
-  late final AnimationController _auroraCtrl;
-  late final AnimationController _starsCtrl;
-  late final AnimationController _twinkleCtrl;
+    with WidgetsBindingObserver {
+  // 30 fps tick — smooth enough, light on Mali-G57.
+  static const Duration _tick = Duration(milliseconds: 33);
+  Timer? _timer;
+  double _aurora = 0.0;
+  double _stars = 0.0;
+  double _twinkle = 0.0;
+  int _frame = 0;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-
-    // Slower, smoother cycles (60 fps smooth).
-    _auroraCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 18),   // aurora (slow)
-    )..repeat();
-
-    _starsCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 60),   // stars (gentle)
-    )..repeat();
-
-    _twinkleCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 3),    // twinkle
-    )..repeat(reverse: true);
+    _startTimer();
   }
 
   @override
   void dispose() {
-    _auroraCtrl.dispose();
-    _starsCtrl.dispose();
-    _twinkleCtrl.dispose();
+    _stopTimer();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -5747,14 +5734,32 @@ class _ChatBackgroundState extends State<_ChatBackground>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _auroraCtrl.repeat();
-      _starsCtrl.repeat();
-      _twinkleCtrl.repeat(reverse: true);
+      _startTimer();
     } else {
-      _auroraCtrl.stop();
-      _starsCtrl.stop();
-      _twinkleCtrl.stop();
+      _stopTimer();
     }
+  }
+
+  void _startTimer() {
+    _timer?.cancel();
+    _timer = Timer.periodic(_tick, (_) {
+      if (!mounted) return;
+      _frame++;
+      // Aurora only updates every 6 frames (~5fps) — it's slow blobs.
+      final updateAurora = _frame % 6 == 0;
+      setState(() {
+        if (updateAurora) {
+          _aurora = (_aurora + 6 / (18 * 30)) % 1.0;
+        }
+        _stars = (_stars + 1 / (60 * 30)) % 1.0;
+        _twinkle = (_twinkle + 1 / (3 * 30)) % 1.0;
+      });
+    });
+  }
+
+  void _stopTimer() {
+    _timer?.cancel();
+    _timer = null;
   }
 
   @override
@@ -5796,34 +5801,26 @@ class _ChatBackgroundState extends State<_ChatBackground>
         ),
         child: Stack(
           children: [
-            // Aurora blobs (2) — smooth 60fps
-            RepaintBoundary(
-              child: AnimatedBuilder(
-                animation: _auroraCtrl,
-                builder: (context, _) => CustomPaint(
-                  size: Size.infinite,
-                  painter: _AuroraPainter(
-                    progress: _auroraCtrl.value,
-                    blue: colors.accent,
-                    glow: colors.accentGlow,
-                    intensity: isDark ? 1.0 : 0.55,
-                  ),
-                ),
+            // Aurora blobs (2) — updated at ~5fps (slow, no need for 30)
+            CustomPaint(
+              size: Size.infinite,
+              painter: _AuroraPainter(
+                progress: _aurora,
+                blue: colors.accent,
+                glow: colors.accentGlow,
+                intensity: isDark ? 1.0 : 0.55,
               ),
             ),
 
-            // Stars (15) — smooth 60fps
+            // Stars (15) — 30fps tick
             RepaintBoundary(
-              child: AnimatedBuilder(
-                animation: Listenable.merge([_starsCtrl, _twinkleCtrl]),
-                builder: (context, _) => CustomPaint(
-                  size: Size.infinite,
-                  painter: _StarsPainter(
-                    drift: _starsCtrl.value,
-                    twinkle: _twinkleCtrl.value,
-                    color: starColor,
-                    intensity: isDark ? 1.0 : 0.45,
-                  ),
+              child: CustomPaint(
+                size: Size.infinite,
+                painter: _StarsPainter(
+                  drift: _stars,
+                  twinkle: _twinkle,
+                  color: starColor,
+                  intensity: isDark ? 1.0 : 0.45,
                 ),
               ),
             ),
