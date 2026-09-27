@@ -5709,7 +5709,7 @@ class _ChatBackground extends StatefulWidget {
 
 class _ChatBackgroundState extends State<_ChatBackground>
     with WidgetsBindingObserver {
-  static const Duration _tick = Duration(milliseconds: 200);
+  static const Duration _tick = Duration(milliseconds: 100);
   Timer? _timer;
   double _aurora = 0.0;
   double _stars = 0.0;
@@ -5744,7 +5744,7 @@ class _ChatBackgroundState extends State<_ChatBackground>
       if (!mounted) return;
       setState(() {
         _aurora = (_aurora + 1 / 120) % 1.0;
-        _stars = (_stars + 1 / 200) % 1.0;
+        _stars = (_stars + 1 / 100) % 1.0;
         _twinkle = (_twinkle + 1 / 11) % 1.0;
       });
     });
@@ -5967,16 +5967,16 @@ class _StarsPainter extends CustomPainter {
   final Color color;
   final double intensity;
 
-  // 35 stars, no per-star speed → all drift together (no "meeting").
+  // Only 20 stars — light on GPU.
   static final List<_StarSeed> _stars = _generateStars();
 
   static List<_StarSeed> _generateStars() {
     final rnd = math.Random(42);
-    return List.generate(35, (i) {
+    return List.generate(20, (i) {
       return _StarSeed(
         x: rnd.nextDouble(),
         y: rnd.nextDouble(),
-        size: 0.7 + rnd.nextDouble() * 1.4,
+        size: 1.0 + rnd.nextDouble() * 1.8,
         phase: rnd.nextDouble(),
       );
     });
@@ -5985,56 +5985,32 @@ class _StarsPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     for (final star in _stars) {
-      // Uniform vertical drift — all stars move at the same rate.
-      final y = (star.y - drift + 1.0) % 1.0;
+      // Much faster drift (×4 speed).
+      final y = (star.y - drift * 4.0 + 1.0) % 1.0;
 
-      // Per-star twinkle phase (so they don't blink in sync).
-      final tw = 0.4 +
-          0.6 *
-              (0.5 +
-                  0.5 *
-                      math.sin(
-                        (twinkle + star.phase) * 2 * math.pi,
-                      ));
+      final tw = 0.5 +
+          0.5 *
+              math.sin(
+                (twinkle + star.phase) * 2 * math.pi,
+              );
 
       final pos = Offset(star.x * size.width, y * size.height);
 
-      // Soft halo (large, faint).
+      // Stronger halo (brighter).
       canvas.drawCircle(
         pos,
-        star.size * 4.0,
+        star.size * 3.5,
         Paint()
-          ..color = color.withValues(alpha: 0.08 * tw * intensity),
+          ..color = color.withValues(alpha: 0.20 * tw * intensity),
       );
 
-      // Bright core.
+      // Bright core (much brighter).
       canvas.drawCircle(
         pos,
         star.size,
         Paint()
-          ..color = color.withValues(alpha: 0.85 * tw * intensity),
+          ..color = color.withValues(alpha: 1.0 * tw * intensity),
       );
-
-      // Subtle comet trail — only for larger stars.
-      if (star.size > 1.3) {
-        final trailHeight = star.size * 6.0;
-        final trailRect = Rect.fromLTWH(
-          pos.dx - 0.6,
-          pos.dy - trailHeight,
-          1.2,
-          trailHeight,
-        );
-        final trailPaint = Paint()
-          ..shader = LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              color.withValues(alpha: 0.0),
-              color.withValues(alpha: 0.30 * tw * intensity),
-            ],
-          ).createShader(trailRect);
-        canvas.drawRect(trailRect, trailPaint);
-      }
     }
   }
 
