@@ -1562,25 +1562,42 @@ class _ChatScreenState extends State<ChatScreen>
         userName: userName,
       );
 
-      final recent = _messages
-          .where((m) => !m.isError && m.imageUrl == null)
-          .where((m) => m.visionImagePath == null)
-          .where((m) => m.playerData == null)
-          .where((m) => m.text.trim().isNotEmpty)
-          .toList();
+      // Build a CLEAN history:
+      // 1. Skip special messages (player cards, images) AND the user
+      //    message that triggered them.
+      // 2. Guarantee no consecutive user messages.
+      final history = <GrokMessage>[];
+      final buffer = <_ChatMessage>[];
 
-      final trimmed = recent.length > 6
-          ? recent.sublist(recent.length - 6)
-          : recent;
+      for (final m in _messages) {
+        // Reset buffer when we hit a special feature message.
+        if (m.imageUrl != null ||
+            m.visionImagePath != null ||
+            m.playerData != null ||
+            m.isError) {
+          buffer.clear();
+          continue;
+        }
 
-      final history = trimmed
-          .map(
-            (m) => GrokMessage(
-              role: m.isUser ? 'user' : 'assistant',
-              content: m.text,
-            ),
-          )
-          .toList();
+        if (m.text.trim().isEmpty) continue;
+
+        buffer.add(m);
+      }
+
+      // Take last 6 from the clean buffer.
+      final recent = buffer.length > 6
+          ? buffer.sublist(buffer.length - 6)
+          : buffer;
+
+      // Build the messages, ensuring no two user messages in a row.
+      for (final m in recent) {
+        final role = m.isUser ? 'user' : 'assistant';
+        if (history.isNotEmpty && history.last.role == role) {
+          // Skip duplicate role (merge with previous).
+          continue;
+        }
+        history.add(GrokMessage(role: role, content: m.text));
+      }
 
       final result = await _grok.sendMessage(
         messages: history,
