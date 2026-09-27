@@ -4585,8 +4585,7 @@ class _ImageGeneratingLoaderState extends State<_ImageGeneratingLoader>
               width: 170,
               height: 170,
               child: AnimatedBuilder(
-                // OLD animation reference removed
-              // 
+                animation: Listenable.merge([
                   _pulseController,
                   _rotateController,
                   _sparkleController,
@@ -4965,8 +4964,7 @@ class _WeuraThinkingState extends State<_WeuraThinking>
               height: 150,
               child: RepaintBoundary(
                 child: AnimatedBuilder(
-                  // OLD animation reference removed
-              // 
+                  animation: Listenable.merge([
                     _rotateController,
                     _pulseController,
                     _waveController,
@@ -5796,20 +5794,15 @@ class _ChatBackgroundState extends State<_ChatBackground>
         ),
         child: Stack(
           children: [
-            // Aurora blobs (2 instead of 3)
-            AnimatedBuilder(
-              
-              builder: (context, _) {
-                return CustomPaint(
-                  size: Size.infinite,
-                  painter: _AuroraPainter(
-                    progress: _aurora,
-                    blue: colors.accent,
-                    glow: colors.accentGlow,
-                    intensity: isDark ? 1.0 : 0.55,
-                  ),
-                );
-              },
+            // Aurora blobs (2 instead of 3) — updated by Timer
+            CustomPaint(
+              size: Size.infinite,
+              painter: _AuroraPainter(
+                progress: _aurora,
+                blue: colors.accent,
+                glow: colors.accentGlow,
+                intensity: isDark ? 1.0 : 0.55,
+              ),
             ),
 
             // Stars (15 instead of 40) — custom paint, updated by Timer
