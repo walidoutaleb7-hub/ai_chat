@@ -55,9 +55,7 @@ function getProviders(): Provider[] {
       name: 'openrouter',
       url: 'https://openrouter.ai/api/v1/chat/completions',
       apiKey: openrouterKey,
-      model:
-        process.env.OPENROUTER_MODEL?.trim() ||
-        'google/gemma-3-27b-it:free',
+      model: process.env.OPENROUTER_MODEL?.trim() || 'google/gemma-4-26b-a4b-it:free',
     });
   }
 
