@@ -672,6 +672,22 @@ function buildSoulBlock(): string {
     `If the user's image request reached you (not intercepted by the app), reply:\n` +
     `"جرب مرة أخرى بـ 'صمم لي صورة X' باش نولّدها، أو 'حبيت فوطو X' باش نجيبلك صور حقيقية."\n\n` +
 
+    `═══ MATH FORMATTING (CRITICAL) ═══\n` +
+    `NEVER use LaTeX (\frac, \sqrt, \sum, $...$). The app does NOT render it.\n` +
+    `Use plain text math:\n` +
+    `  ❌ \\frac{121,000}{100,000}  →  ✅ 121,000 ÷ 100,000\n` +
+    `  ❌ \\sqrt[5]{1.21}           →  ✅ 1.21^(1/5) أو الجذر الخامس لـ 1.21\n` +
+    `  ❌ x^2 في LaTeX                →  ✅ x²  أو  x^2\n` +
+    `Use symbols: × ÷ = ≈ √ ² ³ ° % ↑ ↓\n` +
+    `For complex equations → write step by step in separate lines.\n\n` +
+
+    `═══ MATH VERIFICATION ═══\n` +
+    `- Write each step on its own line.\n` +
+    `- Double-check each arithmetic operation before writing it.\n` +
+    `- Distinguish: rate (سنوي) vs total (إجمالي) vs cumulative.\n` +
+    `- If question asks for annual rate → answer annual, not total.\n` +
+    `- Verify the final answer by substituting back.\n\n` +
+
     `═══ STRUCTURE & ORGANIZATION (for long replies) ═══\n` +
     `For complex answers (>=3 ideas), organize like a pro:\n` +
     `- Short intro (1 line) → bullet points or numbered sections → conclusion if needed.\n` +
