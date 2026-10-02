@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter_highlight/themes/atom-one-dark.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:gal/gal.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
@@ -3087,6 +3088,42 @@ class _ChatScreenState extends State<ChatScreen>
     );
   }
 
+  // Renders a LaTeX math block using flutter_math_fork.
+  // Called from the Markdown "code" builder when language == "latex".
+  Widget _buildLatexWidget(WeuraColors colors, String latex) {
+    final cleaned = latex
+        .replaceAll(r'\[', '')
+        .replaceAll(r'\]', '')
+        .replaceAll(r'\(', '')
+        .replaceAll(r'\)', '')
+        .trim();
+
+    if (cleaned.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Math.tex(
+          cleaned,
+          textStyle: TextStyle(
+            color: colors.textPrimary,
+            fontSize: 17,
+          ),
+          mathStyle: MathStyle.display,
+          onErrorFallback: (error) => Text(
+            cleaned,
+            style: TextStyle(
+              color: colors.textPrimary,
+              fontFamily: 'monospace',
+              fontSize: 15,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   // Renders images inside Markdown for the assistant message body.
   Widget _buildMarkdownImage(
       WeuraColors colors, Uri uri, String? title, String? alt) {
@@ -4015,6 +4052,75 @@ class _TypedMarkdownState extends State<_TypedMarkdown>
 // Code block builder
 // ---------------------------------------------------------------------------
 
+class _LatexBlock extends StatelessWidget {
+  const _LatexBlock({required this.latex, required this.colors});
+
+  final String latex;
+  final WeuraColors colors;
+
+  String _clean(String raw) {
+    var s = raw.trim();
+    // Strip common delimiters if present.
+    s = s.replaceAll(r'\\[', '');
+    s = s.replaceAll(r'\\]', '');
+    s = s.replaceAll(r'\\(', '');
+    s = s.replaceAll(r'\\)', '');
+    if (s.startsWith(r'$$') && s.endsWith(r'$$')) {
+      s = s.substring(2, s.length - 2);
+    } else if (s.startsWith(r'$') && s.endsWith(r'$')) {
+      s = s.substring(1, s.length - 1);
+    }
+    return s.trim();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cleaned = _clean(latex);
+    if (cleaned.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 14),
+      padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 16),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(
+          color: colors.accentGlow.withValues(alpha: 0.25),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: colors.accent.withValues(alpha: 0.08),
+            blurRadius: 12,
+            spreadRadius: 1,
+          ),
+        ],
+      ),
+      child: Directionality(
+        textDirection: TextDirection.ltr,
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Math.tex(
+            cleaned,
+            textStyle: TextStyle(
+              color: colors.textPrimary,
+              fontSize: 20,
+            ),
+            mathStyle: MathStyle.display,
+            onErrorFallback: (error) => SelectableText(
+              cleaned,
+              style: TextStyle(
+                color: colors.textPrimary,
+                fontFamily: 'monospace',
+                fontSize: 14,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _CodeBlockBuilder extends MarkdownElementBuilder {
   _CodeBlockBuilder({required this.colors});
 
@@ -4028,8 +4134,16 @@ class _CodeBlockBuilder extends MarkdownElementBuilder {
       return null;
     }
 
-    final language = cls.substring('language-'.length).trim();
+    final language = cls.substring('language-'.length).trim().toLowerCase();
     final code = element.textContent.trimRight();
+
+    // LaTeX math block
+    if (language == 'latex' ||
+        language == 'math' ||
+        language == 'tex' ||
+        language == 'katex') {
+      return _LatexBlock(latex: code, colors: colors);
+    }
 
     return Directionality(
       textDirection: TextDirection.ltr,

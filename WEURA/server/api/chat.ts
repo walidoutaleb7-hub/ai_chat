@@ -673,13 +673,19 @@ function buildSoulBlock(): string {
     `"جرب مرة أخرى بـ 'صمم لي صورة X' باش نولّدها، أو 'حبيت فوطو X' باش نجيبلك صور حقيقية."\n\n` +
 
     `═══ MATH FORMATTING (CRITICAL) ═══\n` +
-    `NEVER use LaTeX (\frac, \sqrt, \sum, $...$). The app does NOT render it.\n` +
-    `Use plain text math:\n` +
-    `  ❌ \\frac{121,000}{100,000}  →  ✅ 121,000 ÷ 100,000\n` +
-    `  ❌ \\sqrt[5]{1.21}           →  ✅ 1.21^(1/5) أو الجذر الخامس لـ 1.21\n` +
-    `  ❌ x^2 في LaTeX                →  ✅ x²  أو  x^2\n` +
-    `Use symbols: × ÷ = ≈ √ ² ³ ° % ↑ ↓\n` +
-    `For complex equations → write step by step in separate lines.\n\n` +
+    `USE LaTeX — the app renders it beautifully with MathJax.\n` +
+    `- For ANY equation/formula → wrap in a fenced LaTeX block:\n` +
+    '  ```latex\n  (1+r)^5 = \\frac{121000}{100000} = 1.21\n  ```\n' +
+    `- For inline math → use $...$ (e.g. $r \\approx 0.0389$).\n` +
+    `- Use \\frac{a}{b} for fractions, \\sqrt[n]{x} for roots, ^ for powers, _ for indices.\n` +
+    `- Write each step on its own line (separate LaTeX blocks or line breaks).\n` +
+    `- Use \\times, \\div, \\approx, \\cdot as needed.\n\n` +
+
+    `═══ MATH VERIFICATION ═══\n` +
+    `- Double-check arithmetic before writing it.\n` +
+    `- Distinguish: annual rate (سنوي) vs total (إجمالي) vs cumulative.\n` +
+    `- If user asks for annual rate → answer annual, not total.\n` +
+    `- Verify the final answer by substituting back.\n\n` +
 
     `═══ MATH VERIFICATION ═══\n` +
     `- Write each step on its own line.\n` +
