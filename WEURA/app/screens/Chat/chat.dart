@@ -4058,8 +4058,8 @@ class _LatexBlock extends StatelessWidget {
     s = s.replaceAll(r'\gamma', 'γ');
     s = s.replaceAll(r'\theta', 'θ');
     s = s.replaceAll(r'\sqrt', '√');
-    s = s.replaceAll(r'\text\{([^{}]*)\}', r'$1');
-    s = s.replaceAll(r'\boxed\{([^{}]*)\}', '[$1]');
+    s = s.replaceAll(r'\text\{([^{}]*)\}', r'\$1');
+    s = s.replaceAll(r'\boxed\{([^{}]*)\}', '[\$1]');
     s = s.replaceAll(r'\begin\{aligned\}', '');
     s = s.replaceAll(r'\end\{aligned\}', '');
     s = s.replaceAll(r'\quad', '  ');
