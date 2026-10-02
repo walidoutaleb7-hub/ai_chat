@@ -364,13 +364,18 @@ Examples:
 - "من فاز بالكرة الذهبية 2024؟" → need_search = true (recent)
 
 ═══ OUTPUT ═══
+DECOMPOSE: If the user's message contains multiple sub-questions
+(e.g., "أعطني X و Y و Z", "قارن بين X و Y", numbered points),
+identify them ALL — the final answer MUST address every one.
+
 Return ONLY valid JSON:
 
 {
   "need_search": true | false,
   "reason": "short reason (max 80 chars, in English)",
   "search_query": "ENGLISH-only query (empty if need_search=false)",
-  "angle": "how to approach the answer (max 100 chars, in user's language)"
+  "angle": "how to approach the answer (max 100 chars, in user's language)",
+  "sub_questions": ["list", "of", "sub-questions", "if multiple"]
 }
 
 CRITICAL RULES FOR search_query:
@@ -693,6 +698,61 @@ function buildSoulBlock(): string {
   );
 }
 
+/* ============================================================
+ *  VERIFICATION PIPELINE
+ *  Enforces epistemic rigor: no single-source = truth, no
+ *  invented sources, distinguish supported vs unverified.
+ * ============================================================ */
+
+const GOLDEN_RULES = [
+  'عدم العثور على دليل ≠ إثبات عدم وجود الدليل.',
+  'وجود مصدر واحد ≠ إثبات صحة الادعاء.',
+  'صحة النتيجة لا تعني أن طريقة التحقق صحيحة.',
+];
+
+function buildVerificationBlock(needsSearch: boolean): string {
+  // Compact version (always included) — saves tokens on casual chats.
+  const compact = [
+    '═══ VERIFICATION — GOLDEN RULES ═══',
+    ...GOLDEN_RULES.map((r) => `- ${r}`),
+    '- NEVER invent: DOIs, page numbers, quotes, dates, URLs, study names, document IDs.',
+    '- If unsure a source says X → say "لم أتحقق من هذا التفصيل" instead of fabricating.',
+    '- "لم أجد دليلاً" ≠ "لا يوجد دليل" — keep these distinct.',
+    '- CONTEXT ISOLATION: use previous turns ONLY if explicitly referenced. Never leak names/numbers/sources from earlier answers.',
+  ].join('\n');
+
+  if (!needsSearch) return compact;
+
+  // Full version (only when search happened).
+  const full = [
+    '',
+    '═══ VERIFICATION PIPELINE (follow silently before answering) ═══',
+    'STEP 1 — DECOMPOSE: split the question into explicit claims/sub-questions.',
+    'STEP 2 — SEARCH: use the provided SEARCH RESULTS as the source of truth.',
+    'STEP 3 — SOURCE VALIDATION:',
+    '  • Only cite a source if its CONTENT actually contains the claim.',
+    '  • A famous name alone is NOT evidence.',
+    '  • If a source does not explicitly support a detail → do not attribute it.',
+    'STEP 4 — CROSS-SOURCE:',
+    '  • If sources agree → state agreement.',
+    '  • If they disagree → SHOW the disagreement, do not pick one arbitrarily.',
+    'STEP 5 — CLASSIFY each important claim (internally):',
+    '  SUPPORTED | PARTIALLY_SUPPORTED | DISPUTED | INSUFFICIENT_EVIDENCE | FALSE | UNVERIFIED',
+    '  (UNVERIFIED ≠ FALSE)',
+    'STEP 6 — CONFIDENCE: high / medium / low / unknown — based on EVIDENCE, not fame.',
+    'STEP 7 — COMPLETENESS: re-read the user question; answer EVERY sub-question.',
+    'STEP 8 — CONTEXT ISOLATION: nothing from prior messages unless explicitly needed.',
+    'STEP 9 — ANSWER FORMAT: separate clearly between:',
+    '  • ما تدعمه الأدلة (supported)',
+    '  • ما هو مختلف عليه (disputed — show both sides)',
+    '  • ما لم نتحقق منه (unverified)',
+    'Use non-categorical language when evidence is weak:',
+    '  ❌ "ثبت أن..." → ✅ "تشير الأدلة إلى..."',
+  ].join('\n');
+
+  return compact + full;
+}
+
 function buildMemoryBlock(memory: string): string {
   return (
     `USER MEMORY (use naturally, never list back):\n` +
@@ -778,7 +838,13 @@ function buildSearchContext(
     `7. If sources disagree → use the NEWEST one.\n` +
     `8. DATE FILTER: for "current X" → sources older than 12 months are WRONG.\n` +
     `9. NEVER mix information from different time periods.\n` +
-    `10. Write a NATURAL answer in prose/markdown. NEVER output raw JSON, tool calls, or keys like {"query":...}, {"recency_days":...}, {"max_results":...}. If you do, the response will be discarded.\n`
+    `10. Write a NATURAL answer in prose/markdown. NEVER output raw JSON, tool calls, or keys like {"query":...}, {"recency_days":...}, {"max_results":...}. If you do, the response will be discarded.\n` +
+    `11. CROSS-SOURCE: If sources give DIFFERENT numbers/dates/names → SHOW the disagreement ("مصدر X يقول... ومصدر Y يقول..."). NEVER pick one arbitrarily.\n` +
+    `12. CITATION VALIDATION: Only cite [N] if source N's content actually contains the claim. Do NOT invent page numbers, DOIs, quotes, or details not in the snippet.\n` +
+    `13. "لم أجد في المصادر" ≠ "لا يوجد". Keep these strictly distinct.\n` +
+    `14. COMPLETENESS: Re-read the user question. Answer EVERY sub-question. If 5 points requested → 5 answered.\n` +
+    `15. CONTEXT ISOLATION: Do NOT carry names/numbers/sources/examples from previous conversation turns unless the user explicitly refers to them.\n` +
+    `16. CONFIDENCE: When evidence is weak or mixed, use: "تشير الأدلة إلى..." / "المصادر متضاربة..." / "لم أتمكن من التحقق..." — NOT "ثبت أن...".\n`
   );
 }
 
@@ -866,6 +932,7 @@ async function buildMessages(
         : buildEmptyMemoryBlock(),
     },
     { role: 'system', content: buildModeBlock(mode) },
+    { role: 'system', content: buildVerificationBlock(false) }, // compact first
     { role: 'system', content: currentTimeContext() },
   ];
 
@@ -913,6 +980,11 @@ async function buildMessages(
             reflection.angle,
             isFootball,
           ),
+        });
+        // Full verification pipeline only when we actually have sources.
+        out.push({
+          role: 'system',
+          content: buildVerificationBlock(true),
         });
       }
     } catch (error) {
