@@ -208,9 +208,12 @@ class _SplashScreenState extends State<SplashScreen>
           ),
         ],
       ),
-      child: SvgPicture.asset(
-        'assets/logo/weura.svg',
-        fit: BoxFit.contain,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: Image.asset(
+          'assets/logo/app_icon.png',
+          fit: BoxFit.cover,
+        ),
       ),
     );
   }

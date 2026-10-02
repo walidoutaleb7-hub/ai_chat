@@ -132,7 +132,10 @@ class WeuraSidebar extends StatelessWidget {
                 color: colors.accentGlow.withValues(alpha: 0.25),
               ),
             ),
-            child: SvgPicture.asset('assets/logo/weura.svg'),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Image.asset('assets/logo/app_icon.png'),
+            ),
           ),
           const SizedBox(width: 11),
           Expanded(
