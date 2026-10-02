@@ -9,7 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter_highlight/themes/atom-one-dark.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
-import 'package:flutter_math_fork/flutter_math.dart';
+import 'package:catex/catex.dart';
 import 'package:gal/gal.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
@@ -3088,7 +3088,7 @@ class _ChatScreenState extends State<ChatScreen>
     );
   }
 
-  // Renders a LaTeX math block using flutter_math_fork.
+  // Renders a LaTeX math block using catex.
   // Called from the Markdown "code" builder when language == "latex".
   Widget _buildLatexWidget(WeuraColors colors, String latex) {
     final cleaned = latex
@@ -3104,20 +3104,11 @@ class _ChatScreenState extends State<ChatScreen>
       padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
-        child: Math.tex(
+        child: CaTeX(
           cleaned,
-          textStyle: TextStyle(
+          style: CaTeXStyle(
             color: colors.textPrimary,
             fontSize: 17,
-          ),
-          mathStyle: MathStyle.display,
-          onErrorFallback: (error) => Text(
-            cleaned,
-            style: TextStyle(
-              color: colors.textPrimary,
-              fontFamily: 'monospace',
-              fontSize: 15,
-            ),
           ),
         ),
       ),
@@ -4099,20 +4090,11 @@ class _LatexBlock extends StatelessWidget {
         textDirection: TextDirection.ltr,
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
-          child: Math.tex(
+          child: CaTeX(
             cleaned,
-            textStyle: TextStyle(
+            style: CaTeXStyle(
               color: colors.textPrimary,
               fontSize: 20,
-            ),
-            mathStyle: MathStyle.display,
-            onErrorFallback: (error) => SelectableText(
-              cleaned,
-              style: TextStyle(
-                color: colors.textPrimary,
-                fontFamily: 'monospace',
-                fontSize: 14,
-              ),
             ),
           ),
         ),
