@@ -1,7 +1,7 @@
 import express from 'express';
 import crypto from 'crypto';
 import { askGrok, GrokMessage } from '../grok/grok';
-import { searchTavily } from './search';
+import { searchTavily, detectClaimType, ClaimType } from './search';
 import {
   createRequestId,
   sanitizeMemory,
@@ -748,28 +748,44 @@ function buildVerificationBlock(needsSearch: boolean): string {
   // Full version (only when search happened).
   const full = [
     '',
-    '═══ VERIFICATION PIPELINE (follow silently before answering) ═══',
-    'STEP 1 — DECOMPOSE: split the question into explicit claims/sub-questions.',
-    'STEP 2 — SEARCH: use the provided SEARCH RESULTS as the source of truth.',
+    '═══ VERIFICATION PIPELINE ═══',
+    'STEP 1 — DECOMPOSE: split the question into explicit claims.',
+    'STEP 2 — SEARCH: SEARCH RESULTS below are your ONLY factual source.',
     'STEP 3 — SOURCE VALIDATION:',
-    '  • Only cite a source if its CONTENT actually contains the claim.',
-    '  • A famous name alone is NOT evidence.',
-    '  • If a source does not explicitly support a detail → do not attribute it.',
-    'STEP 4 — CROSS-SOURCE:',
-    '  • If sources agree → state agreement.',
-    '  • If they disagree → SHOW the disagreement, do not pick one arbitrarily.',
-    'STEP 5 — CLASSIFY each important claim (internally):',
-    '  SUPPORTED | PARTIALLY_SUPPORTED | DISPUTED | INSUFFICIENT_EVIDENCE | FALSE | UNVERIFIED',
+    '  • Only cite a source if its content actually contains the claim.',
+    '  • Famous name ≠ evidence. Institution name alone ≠ proof.',
+    '  • DO NOT invent: DOI, URL, authors, page numbers, quotes, dates.',
+    'STEP 4 — SOURCE HIERARCHY (apply when comparing):',
+    '  Tier 1 (best): Primary — papers, gov docs, official records, raw data.',
+    '  Tier 2: Institutional — universities, top journals, museums.',
+    '  Tier 3: Quality secondary — Reuters, AP, BBC, major press.',
+    '  Tier 4: General — Wikipedia, generic edu sites.',
+    '  Tier 5 (avoid): Forums, social, SEO content, anonymous posts.',
+    '  Rule: If a Tier 1-2 source exists, do NOT rely on Tier 4-5.',
+    'STEP 5 — CLAIM → EVIDENCE MATCHING:',
+    '  For each important claim: does the cited source DIRECTLY support it?',
+    '  If source supports only part → split the sentence.',
+    'STEP 6 — CROSS-SOURCE:',
+    '  • Agreement → state it plainly.',
+    '  • Disagreement → SHOW it, do not pick one.',
+    '  • Explain the cause if documented (definition, date, method).',
+    'STEP 7 — CLASSIFY each claim (internal):',
+    '  SUPPORTED | PARTIALLY_SUPPORTED | CONTRADICTED | DISPUTED | INSUFFICIENT_EVIDENCE | UNVERIFIED',
     '  (UNVERIFIED ≠ FALSE)',
-    'STEP 6 — CONFIDENCE: high / medium / low / unknown — based on EVIDENCE, not fame.',
-    'STEP 7 — COMPLETENESS: re-read the user question; answer EVERY sub-question.',
-    'STEP 8 — CONTEXT ISOLATION: nothing from prior messages unless explicitly needed.',
-    'STEP 9 — ANSWER FORMAT: separate clearly between:',
-    '  • ما تدعمه الأدلة (supported)',
-    '  • ما هو مختلف عليه (disputed — show both sides)',
-    '  • ما لم نتحقق منه (unverified)',
-    'Use non-categorical language when evidence is weak:',
+    'STEP 8 — CONFIDENCE: high / medium / low / unknown — based on EVIDENCE.',
+    'STEP 9 — TEMPORAL: for rates/prices/current facts, use the NEWEST source.',
+    '  Check published date. Do not present old data as current.',
+    'STEP 10 — COMPLETENESS: answer EVERY sub-question. If 5 asked → 5 answered.',
+    'STEP 11 — CONTEXT ISOLATION: no leakage from prior messages.',
+    'STEP 12 — FORMAT:',
+    '  • ما تدعمه الأدلة',
+    '  • ما هو مختلف عليه (show both sides)',
+    '  • ما لم نتحقق منه',
     '  ❌ "ثبت أن..." → ✅ "تشير الأدلة إلى..."',
+    '',
+    '═══ ABSENCE OF EVIDENCE ═══',
+    '"لم أجد دليلاً" ≠ "لا يوجد دليل". Keep strictly distinct.',
+    'If a record would normally exist → mention that context.',
   ].join('\n');
 
   return compact + full;
@@ -914,6 +930,8 @@ async function buildMessages(
   resultCount: number;
   football: boolean;
   reflection: ReflectionResult;
+  usedSources: string[];
+  rawSearchText: string;
 }> {
   const lastUserMessage = getLastUserMessage(safeMessages);
   const tavilyConfigured = Boolean(process.env.TAVILY_API_KEY?.trim());
@@ -960,9 +978,17 @@ async function buildMessages(
 
   let searchUsed = false;
   let resultCount = 0;
+  const usedSources: string[] = [];
+  let rawSearchText = '';
 
   if (needSearch && tavilyConfigured && lastUserMessage) {
     try {
+      // Detect claim type to route to the right source tier.
+      const claimType: ClaimType = detectClaimType(lastUserMessage);
+      console.log(
+        `[WEURA][${requestId}] Claim type: ${claimType}`,
+      );
+
       const results = await searchTavily(
         reflection.searchQuery,
         4,
@@ -970,6 +996,7 @@ async function buildMessages(
           timeSensitive: isFootball ? false : true,
           football: isFootball,
           tech: false,
+          claimType,
         },
       );
 
@@ -1028,6 +1055,8 @@ async function buildMessages(
     searchUsed,
     memoryUsed,
     resultCount,
+    usedSources,
+    rawSearchText,
     football: isFootball,
     reflection,
   };
@@ -1127,6 +1156,42 @@ router.post('/chat', async (req, res) => {
       temperature: pickTemperature(mode),
       maxTokens,
     });
+
+    // ─── Citation Sanitizer: remove invented DOIs / fake URLs ───
+    // Detects common hallucination patterns and replaces them with
+    // a neutral phrase, unless the URL/DOI appears in search results.
+    const citedUrls = new Set(
+      Array.from(built.usedSources ?? []).map((u) => u.toLowerCase()),
+    );
+
+    // Pattern 1: DOI: 10.xxxx/yyyy
+    const doiPattern = /\b10\.\d{4,9}\/[-._;()/:A-Za-z0-9]+/g;
+    // Pattern 2: https?://... (but only validate against known sources)
+    const urlPattern = /https?:\/\/[^\s)\]]+/g;
+
+    const foundDois = result.content.match(doiPattern) ?? [];
+    const foundUrls = result.content.match(urlPattern) ?? [];
+
+    // Check if DOI exists in search context (raw content)
+    const searchBlob = (built.rawSearchText ?? '').toLowerCase();
+    const fakeDois = foundDois.filter(
+      (d) => !searchBlob.includes(d.toLowerCase()),
+    );
+    const fakeUrls = foundUrls.filter(
+      (u) => !searchBlob.includes(u.toLowerCase()) && !citedUrls.has(u.toLowerCase()),
+    );
+
+    if (fakeDois.length > 0 || fakeUrls.length > 0) {
+      console.warn(
+        `[WEURA][${requestId}] Sanitizer: ${fakeDois.length} fake DOIs, ${fakeUrls.length} fake URLs`,
+      );
+      for (const d of fakeDois) {
+        result.content = result.content.replace(d, '[مرجع غير متحقق]');
+      }
+      for (const u of fakeUrls) {
+        result.content = result.content.replace(u, '[رابط غير متحقق]');
+      }
+    }
 
     // ─── Safety: strip raw JSON/tool-call leaks ───
     // Some models (especially free-tier OpenRouter) sometimes leak

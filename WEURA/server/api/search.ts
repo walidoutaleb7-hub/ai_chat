@@ -79,12 +79,155 @@ const TRUSTED_TECH = [
   'dart.dev', 'pub.dev', 'docs.flutter.dev',
 ];
 
+/* ============================================================
+ *  SOURCE HIERARCHY (Tier 1 → Tier 5)
+ *  Tier 1: Primary source (paper, official doc, raw data)
+ *  Tier 2: Institutional / academic (universities, orgs)
+ *  Tier 3: Quality secondary (top press, systematic reviews)
+ *  Tier 4: General secondary (wikipedia, edu sites)
+ * ============================================================ */
+
+const TIER_1_PRIMARY: string[] = [
+  'pubmed.ncbi.nlm.nih.gov', 'ncbi.nlm.nih.gov',
+  'doi.org', 'arxiv.org',
+  'europepmc.org', 'semanticscholar.org',
+  'census.gov', 'ons.gov.uk', 'insee.fr',
+  'worldbank.org', 'imf.org', 'oecd.org',
+  'who.int', 'un.org', 'unicef.org', 'unesco.org',
+  'nasa.gov', 'esa.int', 'noaa.gov', 'nist.gov',
+  'cdc.gov', 'nih.gov', 'fda.gov', 'ema.europa.eu',
+  'joradp.dz', 'legifrance.gouv.fr', 'eur-lex.europa.eu',
+  'congress.gov', 'supremecourt.gov',
+  'fifa.com', 'uefa.com', 'cafonline.com', 'faf.dz',
+];
+
+const TIER_2_INSTITUTIONAL: string[] = [
+  'nature.com', 'science.org', 'thelancet.com', 'nejm.org',
+  'bmj.com', 'jamanetwork.com', 'plos.org', 'cochrane.org',
+  'jstor.org', 'springer.com', 'wiley.com', 'sciencedirect.com',
+  'academic.oup.com', 'cambridge.org',
+  'harvard.edu', 'mit.edu', 'stanford.edu', 'ox.ac.uk',
+  'cam.ac.uk', 'ethz.ch', 'epfl.ch',
+  'britishmuseum.org', 'louvre.fr', 'metmuseum.org',
+  'britannica.com',
+];
+
+const TIER_3_QUALITY_SECONDARY: string[] = [
+  'reuters.com', 'apnews.com', 'afp.com',
+  'bbc.com', 'nytimes.com', 'theguardian.com',
+  'washingtonpost.com', 'economist.com',
+  'aljazeera.net', 'aljazeera.com',
+  'lemonde.fr', 'france24.com', 'euronews.com',
+];
+
+const TIER_4_GENERAL: string[] = [
+  'wikipedia.org',
+];
+
+/* ============================================================
+ *  CLAIM TYPE ROUTING
+ * ============================================================ */
+
+export type ClaimType =
+  | 'scientific' | 'historical' | 'legal' | 'statistical'
+  | 'news' | 'quote' | 'institutional' | 'sports' | 'general';
+
+export function detectClaimType(query: string): ClaimType {
+  const q = query.toLowerCase();
+
+  if (/(study|research|paper|meta-analysis|systematic review|دراسة|بحث علمي|ورقة بحثية|مراجعة منهجية)/.test(q)) {
+    return 'scientific';
+  }
+  if (/(law|legal|decree|قانون|مرسوم|مادة|دستور)/.test(q)) {
+    return 'legal';
+  }
+  if (/(history|ancient|century|empire|التاريخ|القرن|حضارة)/.test(q)) {
+    return 'historical';
+  }
+  if (/(statistics|population|gdp|rate|percent|إحصائية|سكان|معدل|نسبة)/.test(q)) {
+    return 'statistical';
+  }
+  if (/(quote|said|statement|اقتباس|قال|صرح|بيان)/.test(q)) {
+    return 'quote';
+  }
+  if (/(official|government|ministry|رسمي|حكومة|وزارة|مؤسسة)/.test(q)) {
+    return 'institutional';
+  }
+  if (/(match|player|club|league|مباراة|لاعب|نادي|دوري|بطولة)/.test(q)) {
+    return 'sports';
+  }
+  if (/(news|latest|breaking|آخر|عاجل|اليوم|الآن)/.test(q)) {
+    return 'news';
+  }
+  return 'general';
+}
+
+export function getDomainsForClaimType(claimType: ClaimType): string[] {
+  switch (claimType) {
+    case 'scientific':
+      return [
+        ...TIER_1_PRIMARY.filter((d) =>
+          d.includes('pubmed') || d.includes('ncbi') ||
+          d === 'doi.org' || d === 'arxiv.org' ||
+          d.includes('europepmc') || d.includes('semantic'),
+        ),
+        ...TIER_2_INSTITUTIONAL.filter((d) =>
+          d.includes('nature') || d.includes('science.org') ||
+          d.includes('lancet') || d.includes('nejm') ||
+          d.includes('bmj') || d.includes('plos') ||
+          d.includes('cochrane') || d.includes('jstor'),
+        ),
+      ];
+    case 'legal':
+      return TIER_1_PRIMARY.filter((d) =>
+        d.includes('joradp') || d.includes('legifrance') ||
+        d.includes('eur-lex') || d.includes('congress') ||
+        d.includes('supreme'),
+      );
+    case 'historical':
+      return [
+        ...TIER_2_INSTITUTIONAL.filter((d) =>
+          d.includes('britishmuseum') || d.includes('louvre') ||
+          d.includes('metmuseum') || d.includes('jstor'),
+        ),
+        ...TIER_1_PRIMARY.filter((d) =>
+          d.includes('unesco') || d.includes('un.org'),
+        ),
+      ];
+    case 'statistical':
+      return TIER_1_PRIMARY.filter((d) =>
+        d.includes('census') || d.includes('ons') ||
+        d.includes('insee') || d.includes('worldbank') ||
+        d.includes('imf') || d.includes('oecd'),
+      );
+    case 'institutional':
+      return [...TIER_1_PRIMARY, ...TIER_2_INSTITUTIONAL];
+    case 'sports':
+      return TIER_1_PRIMARY.filter((d) =>
+        d.includes('fifa') || d.includes('uefa') ||
+        d.includes('caf') || d.includes('faf'),
+      );
+    case 'news':
+      return TIER_3_QUALITY_SECONDARY;
+    case 'quote':
+      return [
+        ...TIER_1_PRIMARY,
+        ...TIER_2_INSTITUTIONAL,
+        ...TIER_3_QUALITY_SECONDARY,
+      ];
+    default:
+      return [];
+  }
+}
+
 export type SearchOptions = {
   timeSensitive?: boolean;
   football?: boolean;
   tech?: boolean;
   /** Football only: prefer history-oriented sources. */
   footballHistory?: boolean;
+  /** Detected claim type — routes to the right tier of sources. */
+  claimType?: ClaimType;
 };
 
 function buildDomainList(options: SearchOptions): string[] | null {
@@ -98,6 +241,14 @@ function buildDomainList(options: SearchOptions): string[] | null {
   }
   if (options.timeSensitive && !options.football && !options.tech) {
     lists.push(TRUSTED_GENERAL);
+  }
+
+  // Route to claim-type specific tiers (scientific, legal, etc.).
+  if (options.claimType && options.claimType !== 'general') {
+    const tierDomains = getDomainsForClaimType(options.claimType);
+    if (tierDomains.length > 0) {
+      lists.push(tierDomains);
+    }
   }
 
   if (lists.length === 0) return null;
