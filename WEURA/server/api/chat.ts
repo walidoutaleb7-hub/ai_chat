@@ -672,27 +672,24 @@ function buildSoulBlock(): string {
     `If the user's image request reached you (not intercepted by the app), reply:\n` +
     `"جرب مرة أخرى بـ 'صمم لي صورة X' باش نولّدها، أو 'حبيت فوطو X' باش نجيبلك صور حقيقية."\n\n` +
 
-    `═══ MATH FORMATTING (CRITICAL) ═══\n` +
-    `USE LaTeX — the app renders it beautifully with MathJax.\n` +
-    `- For ANY equation/formula → wrap in a fenced LaTeX block:\n` +
-    '  ```latex\n  (1+r)^5 = \\frac{121000}{100000} = 1.21\n  ```\n' +
-    `- For inline math → use $...$ (e.g. $r \\approx 0.0389$).\n` +
-    `- Use \\frac{a}{b} for fractions, \\sqrt[n]{x} for roots, ^ for powers, _ for indices.\n` +
-    `- Write each step on its own line (separate LaTeX blocks or line breaks).\n` +
-    `- Use \\times, \\div, \\approx, \\cdot as needed.\n\n` +
+    `═══ MATH FORMATTING — NO LATEX ═══\n` +
+    `The app does NOT render LaTeX. NEVER use: \\frac, \\sqrt, \\times, \\text{}, \\boxed{}, $...$, \`\`\`latex.\n` +
+    `Write math in PLAIN TEXT with Unicode symbols:\n` +
+    `  • ضرب: ×   • قسمة: ÷   • يساوي: =   • يقارب: ≈\n` +
+    `  • جذر: √  أو  جذر تربيعي لـ  • أس: ^  أو  ²  ³\n` +
+    `  • نسبة: %   • زائد: +   • ناقص: -\n` +
+    `- Write each step on its own line, like:\n` +
+    `  السعر بعد رفع 30% = 50,000 × 1.30 = 65,000 دج\n` +
+    `  السعر بعد الخصم 20% = 65,000 × 0.80 = 52,000 دج\n` +
+    `- For labels, just write them in Arabic: "السعر النهائي = ..."\n` +
+    `- NEVER wrap formulas in code blocks or any markup.\n\n` +
 
     `═══ MATH VERIFICATION ═══\n` +
-    `- Double-check arithmetic before writing it.\n` +
-    `- Distinguish: annual rate (سنوي) vs total (إجمالي) vs cumulative.\n` +
-    `- If user asks for annual rate → answer annual, not total.\n` +
-    `- Verify the final answer by substituting back.\n\n` +
-
-    `═══ MATH VERIFICATION ═══\n` +
-    `- Write each step on its own line.\n` +
-    `- Double-check each arithmetic operation before writing it.\n` +
-    `- Distinguish: rate (سنوي) vs total (إجمالي) vs cumulative.\n` +
-    `- If question asks for annual rate → answer annual, not total.\n` +
-    `- Verify the final answer by substituting back.\n\n` +
+    `- Verify: (a) arithmetic (b) interpretation of givens (c) assumptions.\n` +
+    `- Distinguish: revenue ≠ profit ≠ tax ≠ cost.\n` +
+    `- Tax collected for government ≠ profit for merchant.\n` +
+    `- Cost paid by merchant ≠ price paid by customer.\n` +
+    `- Double-check final answer by substituting back.\n\n` +
 
     `═══ STRUCTURE & ORGANIZATION (for long replies) ═══\n` +
     `For complex answers (>=3 ideas), organize like a pro:\n` +
@@ -732,64 +729,120 @@ const GOLDEN_RULES = [
   'صحة النتيجة لا تعني أن طريقة التحقق صحيحة.',
 ];
 
-function buildVerificationBlock(needsSearch: boolean): string {
-  // Compact version (always included) — saves tokens on casual chats.
-  const compact = [
-    '═══ VERIFICATION — GOLDEN RULES ═══',
-    ...GOLDEN_RULES.map((r) => `- ${r}`),
-    '- NEVER invent: DOIs, page numbers, quotes, dates, URLs, study names, document IDs.',
-    '- If unsure a source says X → say "لم أتحقق من هذا التفصيل" instead of fabricating.',
-    '- "لم أجد دليلاً" ≠ "لا يوجد دليل" — keep these distinct.',
-    '- CONTEXT ISOLATION: use previous turns ONLY if explicitly referenced. Never leak names/numbers/sources from earlier answers.',
+function buildVerificationBlock(
+  needsSearch: boolean,
+  isMathOrFinancial: boolean = false,
+): string {
+  // ═══ GOLDEN RULES — always active ═══
+  const golden = [
+    '═══ GOLDEN RULES ═══',
+    '1. عدم العثور على دليل ≠ إثبات عدم وجود الدليل.',
+    '2. وجود مصدر واحد ≠ إثبات صحة الادعاء.',
+    '3. صحة النتيجة ≠ صحة طريقة التحقق.',
+    '4. "لم أجد" ≠ "لا يوجد" — استخدم: "لم أتمكن من العثور على مصدر موثوق".',
+    '5. ممنوع اختراع: DOI، أرقام أرشيفية، أسماء وثائق، تواريخ، اقتباسات، URLs.',
+    '6. CONTEXT ISOLATION: لا تنقل أسماء/أرقام/مصادر/أمثلة من سؤال سابق إلا إذا طلب المستخدم الربط صراحةً.',
+    '7. CONFIDENCE: high/medium/low/unverified — مبنية على الأدلة، ليس على إحساس النموذج.',
+    '8. لا تفرض مصدراً واحداً على فقرة كاملة — قسّمها إلى Claims صغيرة.',
+    '9. قبل الإرسال: تأكد من الإجابة على كل بند طلبه المستخدم (Completeness).',
   ].join('\n');
 
-  if (!needsSearch) return compact;
+  // ═══ MATH/FINANCIAL block — only for numeric questions ═══
+  const mathBlock = !isMathOrFinancial ? '' : [
+    '',
+    '═══ MATH & FINANCIAL REASONING (CRITICAL) ═══',
+    'STEP M1 — INTERPRET FIRST:',
+    '  • Identify what each number REPRESENTS before calculating.',
+    '  • Who pays what? Who receives what? What is a cost vs revenue vs tax?',
+    '  • If question is ambiguous → state your interpretation explicitly.',
+    'STEP M2 — DISTINGUISH:',
+    '  • Revenue (إيراد) ≠ Profit (ربح) ≠ Tax (ضريبة)',
+    '  • Tax collected FOR the government ≠ profit FOR the merchant.',
+    '  • Transport cost paid by merchant ≠ price paid by customer.',
+    '  • Selling price before tax ≠ final price after tax.',
+    'STEP M3 — CORRELATION ≠ CAUSATION (for scientific claims):',
+    '  • Observational ≠ Experimental.',
+    '  • Association ≠ Causation.',
+    'STEP M4 — VERIFY:',
+    '  a) Arithmetic correct?',
+    '  b) Interpretation of givens correct?',
+    '  c) Assumptions valid?',
+    '  d) Answer addresses the ACTUAL question?',
+    '  ❌ "الحساب صحيح لكن الافتراض خاطئ" = نتيجة خاطئة.',
+    'STEP M5 — SUBSTITUTE BACK to verify the final answer.',
+  ].join('\n');
 
-  // Full version (only when search happened).
+  if (!needsSearch && !isMathOrFinancial) return golden;
+
+  if (!needsSearch && isMathOrFinancial) return golden + mathBlock;
+
+  // ═══ FULL VERIFICATION PIPELINE (search happened) ═══
   const full = [
     '',
-    '═══ VERIFICATION PIPELINE ═══',
-    'STEP 1 — DECOMPOSE: split the question into explicit claims.',
-    'STEP 2 — SEARCH: SEARCH RESULTS below are your ONLY factual source.',
+    '═══ VERIFICATION PIPELINE (12 steps, follow silently) ═══',
+    'STEP 1 — DECOMPOSE: split question into explicit Claims/sub-questions.',
+    '  If user asked 3 points → track 3 points. Answer every one.',
+    'STEP 2 — SOURCE HIERARCHY:',
+    '  Tier 1 (PRIMARY — use first): papers, DOI, gov records, raw data, official statements.',
+    '  Tier 2: universities, top journals (Nature, Science, Lancet, NEJM), museums.',
+    '  Tier 3: quality press (Reuters, AP, BBC, AFP).',
+    '  Tier 4: general (Wikipedia) — ONLY if no Tier 1-3 exists.',
+    '  Rule: "Harvard أثبتت" ≠ evidence. Find the actual study, authors, journal, methodology.',
     'STEP 3 — SOURCE VALIDATION:',
-    '  • Only cite a source if its content actually contains the claim.',
-    '  • Famous name ≠ evidence. Institution name alone ≠ proof.',
-    '  • DO NOT invent: DOI, URL, authors, page numbers, quotes, dates.',
-    'STEP 4 — SOURCE HIERARCHY (apply when comparing):',
-    '  Tier 1 (best): Primary — papers, gov docs, official records, raw data.',
-    '  Tier 2: Institutional — universities, top journals, museums.',
-    '  Tier 3: Quality secondary — Reuters, AP, BBC, major press.',
-    '  Tier 4: General — Wikipedia, generic edu sites.',
-    '  Tier 5 (avoid): Forums, social, SEO content, anonymous posts.',
-    '  Rule: If a Tier 1-2 source exists, do NOT rely on Tier 4-5.',
-    'STEP 5 — CLAIM → EVIDENCE MATCHING:',
-    '  For each important claim: does the cited source DIRECTLY support it?',
-    '  If source supports only part → split the sentence.',
-    'STEP 6 — CROSS-SOURCE:',
-    '  • Agreement → state it plainly.',
-    '  • Disagreement → SHOW it, do not pick one.',
-    '  • Explain the cause if documented (definition, date, method).',
-    'STEP 7 — CLASSIFY each claim (internal):',
-    '  SUPPORTED | PARTIALLY_SUPPORTED | CONTRADICTED | DISPUTED | INSUFFICIENT_EVIDENCE | UNVERIFIED',
-    '  (UNVERIFIED ≠ FALSE)',
-    'STEP 8 — CONFIDENCE: high / medium / low / unknown — based on EVIDENCE.',
-    'STEP 9 — TEMPORAL: for rates/prices/current facts, use the NEWEST source.',
-    '  Check published date. Do not present old data as current.',
-    'STEP 10 — COMPLETENESS: answer EVERY sub-question. If 5 asked → 5 answered.',
-    'STEP 11 — CONTEXT ISOLATION: no leakage from prior messages.',
-    'STEP 12 — FORMAT:',
-    '  • ما تدعمه الأدلة',
-    '  • ما هو مختلف عليه (show both sides)',
-    '  • ما لم نتحقق منه',
-    '  ❌ "ثبت أن..." → ✅ "تشير الأدلة إلى..."',
+    '  • Verify the source EXISTS and its CONTENT matches the claim.',
+    '  • If a paper mentions "Harvard study" → try to reach the original paper.',
+    '  • Distinguish: primary / institutional / press / secondary.',
+    'STEP 4 — CLAIM → EVIDENCE MATCHING:',
+    '  • Cite [N] ONLY if source N explicitly supports that specific claim.',
+    '  • If a source supports part of a sentence → split the sentence.',
+    'STEP 5 — CROSS-SOURCE (2+ independent sources for important claims):',
+    '  • If sources AGREE → say so plainly.',
+    '  • If sources DISAGREE → SHOW the disagreement, do NOT pick one arbitrarily.',
+    '  • Explain the cause if documented (definition, date, method, sample).',
+    'STEP 6 — EVIDENCE CLASSIFICATION (per claim):',
+    '  SUPPORTED | PARTIALLY_SUPPORTED | CONTRADICTED | DISPUTED | INSUFFICIENT_EVIDENCE | UNVERIFIED.',
+    '  UNVERIFIED ≠ FALSE.',
+    'STEP 7 — CONFIDENCE: high / medium / low / unknown — based on EVIDENCE strength.',
+    'STEP 8 — TEMPORAL VERIFICATION:',
+    '  • For rates/records/current facts → use NEWEST source (check published date).',
+    '  • Distinguish: official record vs secondary source.',
+    '  • If a stat changes → state the cutoff date ("اعتبارًا من [تاريخ]").',
+    'STEP 9 — SCIENTIFIC CLAIMS (if applicable):',
+    '  • Distinguish experimental vs observational evidence.',
+    '  • Never turn correlation into causation.',
+    '  • "Harvard/Oxford found X" → verify: the study, the researchers, the journal.',
+    'STEP 10 — HISTORICAL CLAIMS (if applicable):',
+    '  • Distinguish: archaeological evidence vs written sources vs sagas vs later interpretation.',
+    '  • "Can it be proven X was first?" → answer THAT specific question.',
+    'STEP 11 — COMPLETENESS CHECK:',
+    '  • Re-read user question. If multiple sub-questions → answer ALL.',
+    '  • Never skip an item and jump to a summary.',
+    'STEP 12 — CONTEXT ISOLATION:',
+    '  • Zero information from prior turns unless explicitly requested.',
+    '  • Rebuild each answer from CURRENT query + CURRENT search results only.',
     '',
-    '═══ ABSENCE OF EVIDENCE ═══',
-    '"لم أجد دليلاً" ≠ "لا يوجد دليل". Keep strictly distinct.',
-    'If a record would normally exist → mention that context.',
+    '═══ FINAL VERIFICATION (before sending) ═══',
+    '□ Answered every requested item?',
+    '□ Every number/date correct?',
+    '□ Every citation supports its specific claim?',
+    '□ Reached primary sources when needed?',
+    '□ Cross-checked independent sources?',
+    '□ Detected any source contradiction?',
+    '□ Distinguished facts from inferences?',
+    '□ Used non-categorical language when evidence is weak?',
+    '□ No leakage from previous conversation?',
+    '□ Confidence level matches evidence strength?',
+    '',
+    '═══ FORMAT ═══',
+    '• ما تدعمه الأدلة',
+    '• ما هو مختلف عليه (show both sides)',
+    '• ما لم نتحقق منه',
+    '❌ "ثبت أن..." → ✅ "تشير الأدلة إلى..."',
   ].join('\n');
 
-  return compact + full;
+  return golden + mathBlock + full;
 }
+
 
 function buildMemoryBlock(memory: string): string {
   return (
@@ -912,6 +965,16 @@ function pickTemperature(mode: string | null): number {
 }
 
 /* ============================================================
+ *  MATH/FINANCIAL DETECTION
+ *  Used to enable the math+logic verification block.
+ * ============================================================ */
+
+function isMathOrFinancial(msg: string): boolean {
+  const t = msg.toLowerCase();
+  return /(احسب|احسبلي|كم يساوي|ناتج|معادلة|معدل|نسبة|سعر|ربح|خسارة|ضريبة|tva|فائدة|تكلفة|إيراد|percent|calculate|compute|interest|profit|tax|revenue|discount|percentile)/i.test(t);
+}
+
+/* ============================================================
  *  BUILD MESSAGES
  * ============================================================ */
 
@@ -972,7 +1035,13 @@ async function buildMessages(
         : buildEmptyMemoryBlock(),
     },
     { role: 'system', content: buildModeBlock(mode) },
-    { role: 'system', content: buildVerificationBlock(false) }, // compact first
+    {
+      role: 'system',
+      content: buildVerificationBlock(
+        false,
+        isMathOrFinancial(lastUserMessage),
+      ),
+    },
     { role: 'system', content: currentTimeContext() },
   ];
 
@@ -1033,7 +1102,10 @@ async function buildMessages(
         // Full verification pipeline only when we actually have sources.
         out.push({
           role: 'system',
-          content: buildVerificationBlock(true),
+          content: buildVerificationBlock(
+            true,
+            isMathOrFinancial(lastUserMessage),
+          ),
         });
       }
     } catch (error) {
