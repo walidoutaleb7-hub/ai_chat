@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter_highlight/themes/atom-one-dark.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:gal/gal.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
@@ -4023,10 +4024,8 @@ class _LatexBlock extends StatelessWidget {
   final String latex;
   final WeuraColors colors;
 
-  /// Convert LaTeX syntax to readable Unicode math.
-  String _toReadable(String raw) {
+  String _clean(String raw) {
     var s = raw.trim();
-    // Strip delimiters.
     s = s.replaceAll(r'\[', '').replaceAll(r'\]', '');
     s = s.replaceAll(r'\(', '').replaceAll(r'\)', '');
     if (s.startsWith(r'$$') && s.endsWith(r'$$')) {
@@ -4034,48 +4033,17 @@ class _LatexBlock extends StatelessWidget {
     } else if (s.startsWith(r'$') && s.endsWith(r'$')) {
       s = s.substring(1, s.length - 1);
     }
-
-    // Common LaTeX → Unicode conversions.
-    s = s.replaceAll(r'\times', '×');
-    s = s.replaceAll(r'\div', '÷');
-    s = s.replaceAll(r'\cdot', '·');
-    s = s.replaceAll(r'\approx', '≈');
-    s = s.replaceAll(r'\neq', '≠');
-    s = s.replaceAll(r'\leq', '≤');
-    s = s.replaceAll(r'\geq', '≥');
-    s = s.replaceAll(r'\pm', '±');
-    s = s.replaceAll(r'\infty', '∞');
-    s = s.replaceAll(r'\pi', 'π');
-    s = s.replaceAll(r'\alpha', 'α');
-    s = s.replaceAll(r'\beta', 'β');
-    s = s.replaceAll(r'\gamma', 'γ');
-    s = s.replaceAll(r'\theta', 'θ');
-    s = s.replaceAll(r'\sqrt', '√');
-
-    // rac{a}{b} → (a)/(b)
-    final fracRegex = RegExp(r'\\frac\{([^{}]+)\}\{([^{}]+)\}');
-    while (fracRegex.hasMatch(s)) {
-      s = s.replaceAllMapped(fracRegex, (m) => '(${m[1]})/(${m[2]})');
-    }
-
-    // a^{b} → a^b
-    s = s.replaceAll('^{', '^').replaceAll('}', '');
-
-    // _x indices: keep as-is.
-    // Remove remaining backslashes.
-    s = s.replaceAll('\\', '');
-
     return s.trim();
   }
 
   @override
   Widget build(BuildContext context) {
-    final cleaned = _toReadable(latex);
+    final cleaned = _clean(latex);
     if (cleaned.isEmpty) return const SizedBox.shrink();
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 14),
-      padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
+      padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 16),
       decoration: BoxDecoration(
         color: colors.surface,
         borderRadius: BorderRadius.circular(15),
@@ -4094,14 +4062,20 @@ class _LatexBlock extends StatelessWidget {
         textDirection: TextDirection.ltr,
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
-          child: SelectableText(
+          child: Math.tex(
             cleaned,
-            style: TextStyle(
+            textStyle: TextStyle(
               color: colors.textPrimary,
-              fontSize: 19,
-              fontFamily: 'monospace',
-              height: 1.6,
-              letterSpacing: 0.5,
+              fontSize: 20,
+            ),
+            mathStyle: MathStyle.display,
+            onErrorFallback: (error) => SelectableText(
+              cleaned,
+              style: TextStyle(
+                color: colors.textPrimary,
+                fontFamily: 'monospace',
+                fontSize: 14,
+              ),
             ),
           ),
         ),

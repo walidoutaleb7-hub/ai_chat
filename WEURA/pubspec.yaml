@@ -25,6 +25,9 @@ dependencies:
   markdown: ^7.2.0
   flutter_highlight: ^0.7.0
 
+  # ─── Math Rendering (LaTeX) ─────────────────────────
+  flutter_math_fork: ^0.7.2
+
 
 
   # ─── Local persistence ──────────────────────────────
