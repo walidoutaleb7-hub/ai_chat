@@ -5,7 +5,7 @@ publish_to: "none"
 version: 1.0.0+1
 
 environment:
-  sdk: ">=3.5.0 <4.0.0"
+  sdk: ">=3.6.0 <4.0.0"
 
 dependencies:
   flutter:
@@ -21,12 +21,9 @@ dependencies:
   http: ^1.2.0
 
   # ─── Markdown & Code ────────────────────────────────
-  flutter_markdown_plus: ^1.0.0+1
+  flutter_markdown_plus: ^1.0.3
   markdown: ^7.2.0
   flutter_highlight: ^0.7.0
-
-  # ─── Math Rendering (LaTeX) ─────────────────────────
-  flutter_math_fork: ^0.7.2
 
 
 
