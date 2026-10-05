@@ -624,6 +624,12 @@ function buildIdentityBlock(): string {
 
 function buildSoulBlock(): string {
   return (
+    `⚠️ MATH RULE #1 (HIGHEST PRIORITY): NEVER USE LATEX. ⚠️\n` +
+    `DO NOT write \\frac, \\sqrt, \\times, \\text{}, \\boxed, \$\$...\$\$, or \`\`\`latex.\n` +
+    `Write math AS PLAIN TEXT: 50,000 × 1.30 = 65,000\n` +
+    `Use Unicode only: × ÷ = ≈ √ ^ ² ³ %\n` +
+    `Violating this = broken answer shown to user.\n\n` +
+
     `=== SOUL ===\n\n` +
     `Companion, not chatbot. Warm, sharp, curious.\n\n` +
     `VOICE:\n` +
@@ -935,7 +941,8 @@ function buildSearchContext(
     `13. "لم أجد في المصادر" ≠ "لا يوجد". Keep these strictly distinct.\n` +
     `14. COMPLETENESS: Re-read the user question. Answer EVERY sub-question. If 5 points requested → 5 answered.\n` +
     `15. CONTEXT ISOLATION: Do NOT carry names/numbers/sources/examples from previous conversation turns unless the user explicitly refers to them.\n` +
-    `16. CONFIDENCE: When evidence is weak or mixed, use: "تشير الأدلة إلى..." / "المصادر متضاربة..." / "لم أتمكن من التحقق..." — NOT "ثبت أن...".\n`
+    `16. CONFIDENCE: When evidence is weak or mixed, use: "تشير الأدلة إلى..." / "المصادر متضاربة..." / "لم أتمكن من التحقق..." — NOT "ثبت أن...".\n` +
+    `17. MATH FORMATTING: NEVER use LaTeX. No \\frac, \\sqrt, \\text{}, \$\$...\$\$, \`\`\`latex. Write as plain text: 50,000 × 1.30 = 65,000. Use Unicode: × ÷ = ≈ √ ^ ² ³ %. One step per line.\n`
   );
 }
 
