@@ -32,8 +32,17 @@ function isOnCooldown(name: string): boolean {
   return true;
 }
 
-function setCooldown(name: string, reason: string): void {
-  COOLDOWNS.set(name, { until: Date.now() + COOLDOWN_MS, reason });
+function setCooldown(
+  name: string,
+  reason: string,
+  durationMs: number = COOLDOWN_MS,
+): void {
+  const until = Date.now() + durationMs;
+  COOLDOWNS.set(name, { until, reason });
+  const minutes = Math.round(durationMs / 60000);
+  console.log(
+    `[WEURA] Provider ${name} on cooldown for ${minutes} min. Reason: ${reason}`,
+  );
 }
 
 function getProviders(): Provider[] {
@@ -280,6 +289,24 @@ function isProviderDeadError(error: unknown): boolean {
 }
 
 /**
+ * Detects rate-limit / quota-exhausted errors.
+ * These should NOT be retried immediately — the provider is "tired"
+ * and needs a cooldown so the next request uses a different provider.
+ */
+function isRateLimitError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const msg = error.message.toLowerCase();
+  return (
+    hasStatusCode(msg, 429) ||
+    msg.includes('rate limit') ||
+    msg.includes('rate_limit') ||
+    msg.includes('quota') ||
+    msg.includes('exceeded') ||
+    msg.includes('too many requests')
+  );
+}
+
+/**
  * Retry a single provider call with exponential backoff.
  * Only retries on retryable errors.
  */
@@ -359,11 +386,13 @@ export async function askGrok(
         `[WEURA][${rid}] Provider ${provider.name} failed: ${message}`,
       );
 
+      // Dead errors (401/402/403): 10 min cooldown.
+      // Rate limits (429/quota): 30 min cooldown — daily token budgets
+      // need time to recover, and we want to skip this provider next time.
       if (isProviderDeadError(error)) {
-        setCooldown(provider.name, message);
-        console.warn(
-          `[WEURA][${rid}] Provider ${provider.name} on cooldown for 10 min.`,
-        );
+        setCooldown(provider.name, message, 10 * 60 * 1000);
+      } else if (isRateLimitError(error)) {
+        setCooldown(provider.name, message, 30 * 60 * 1000);
       }
 
       if (!isRetryableError(error)) {
