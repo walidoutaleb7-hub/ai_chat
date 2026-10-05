@@ -102,6 +102,7 @@ class _ChatScreenState extends State<ChatScreen>
 
   AIMode _mode = AIMode.auto;
   bool _isLoading = false;
+  bool _showScrollArrow = false;
   bool _requestCancelled = false;
   bool _isFootballQuestion = false;
   ChatSession? _session;
@@ -135,7 +136,21 @@ class _ChatScreenState extends State<ChatScreen>
     super.initState();
     _grok = GrokService(baseUrl: _serverUrl);
     _voiceOut.addListener(_onVoiceChanged);
+
+    // Show scroll-to-bottom arrow when user scrolls up.
+    _scrollController.addListener(_onScrollChanged);
+
     _initialize();
+  }
+
+  void _onScrollChanged() {
+    if (!_scrollController.hasClients) return;
+    final pos = _scrollController.position;
+    final distanceFromBottom = pos.maxScrollExtent - pos.pixels;
+    final shouldShow = distanceFromBottom > 250;
+    if (shouldShow != _showScrollArrow) {
+      setState(() => _showScrollArrow = shouldShow);
+    }
   }
 
   @override
@@ -2337,6 +2352,45 @@ class _ChatScreenState extends State<ChatScreen>
             child: TickerMode(
               enabled: _messages.isNotEmpty || _isLoading,
               child: _ChatBackground(colors: colors),
+            ),
+          ),
+          // ─── Scroll to bottom arrow ───
+          Positioned(
+            right: 16,
+            bottom: 100 + MediaQuery.viewInsetsOf(context).bottom,
+            child: AnimatedScale(
+              scale: _showScrollArrow ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOutBack,
+              child: AnimatedOpacity(
+                opacity: _showScrollArrow ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 180),
+                child: Material(
+                  color: colors.accentGlow,
+                  shape: const CircleBorder(),
+                  elevation: 8,
+                  shadowColor: colors.accent.withValues(alpha: 0.5),
+                  child: InkWell(
+                    onTap: () {
+                      if (!_scrollController.hasClients) return;
+                      _scrollController.animateTo(
+                        _scrollController.position.maxScrollExtent,
+                        duration: const Duration(milliseconds: 400),
+                        curve: Curves.easeOutCubic,
+                      );
+                    },
+                    customBorder: const CircleBorder(),
+                    child: Padding(
+                      padding: const EdgeInsets.all(10),
+                      child: Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        color: colors.background,
+                        size: 28,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ),
           ),
           Column(
