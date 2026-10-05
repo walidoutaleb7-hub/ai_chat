@@ -4094,8 +4094,8 @@ class _LatexBlock extends StatelessWidget {
     final cleaned = _clean(latex);
     if (cleaned.isEmpty) return const SizedBox.shrink();
 
-    final hexColor = '#${colors.textPrimary.toARGB32().toRadixString(16).substring(2)}';
-    final bgColor = '#${colors.surface.toARGB32().toRadixString(16).substring(2)}';
+    final hexColor = '#${(colors.textPrimary.value & 0xFFFFFF).toRadixString(16).padLeft(6, '0')}';
+    final bgColor = '#${(colors.surface.value & 0xFFFFFF).toRadixString(16).padLeft(6, '0')}';
 
     // Escape LaTeX for JS string.
     final escaped = cleaned
@@ -4112,7 +4112,7 @@ class _LatexBlock extends StatelessWidget {
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
- onload="renderMathInElement(document.body,{delimiters:[{left:'\\\\[',right:'\\\\]',display:true},{left:'\\\\$',right:'\\\\$',display:false}],throwOnError:false})"></script>
+ onload="renderMathInElement(document.body,{delimiters:[{left:'\\\\[',right:'\\\\]',display:true}],throwOnError:false})"></script>
 <style>
   html,body{margin:0;padding:14px;background:$bgColor;color:$hexColor;
   font-size:19px;font-family:'Times New Roman',serif;text-align:center;
