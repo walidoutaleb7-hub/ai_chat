@@ -25,6 +25,9 @@ dependencies:
   markdown: ^7.2.0
   flutter_highlight: ^0.7.0
 
+  # LaTeX rendering via KaTeX in WebView
+  webview_flutter: ^4.10.0
+
 
 
   # ─── Local persistence ──────────────────────────────

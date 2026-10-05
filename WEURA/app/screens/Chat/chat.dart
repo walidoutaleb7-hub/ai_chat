@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter_highlight/themes/atom-one-dark.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 import 'package:gal/gal.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
@@ -4076,11 +4077,8 @@ class _LatexBlock extends StatelessWidget {
   final String latex;
   final WeuraColors colors;
 
-  /// Convert LaTeX syntax to readable Unicode math.
-  String _toReadable(String raw) {
+  String _clean(String raw) {
     var s = raw.trim();
-
-    // Strip delimiters.
     s = s.replaceAll(r'\[', '').replaceAll(r'\]', '');
     s = s.replaceAll(r'\(', '').replaceAll(r'\)', '');
     if (s.startsWith(r'$$') && s.endsWith(r'$$')) {
@@ -4088,78 +4086,83 @@ class _LatexBlock extends StatelessWidget {
     } else if (s.startsWith(r'$') && s.endsWith(r'$')) {
       s = s.substring(1, s.length - 1);
     }
-
-    // rac{a}{b} → (a)/(b)
-    final fracRegex = RegExp(r'\\frac\{([^{}]+)\}\{([^{}]+)\}');
-    while (fracRegex.hasMatch(s)) {
-      s = s.replaceAllMapped(fracRegex, (m) => '(${m[1]})/(${m[2]})');
-    }
-
-    // Common LaTeX → Unicode
-    s = s.replaceAll(r'\times', '×');
-    s = s.replaceAll(r'\div', '÷');
-    s = s.replaceAll(r'\cdot', '·');
-    s = s.replaceAll(r'\approx', '≈');
-    s = s.replaceAll(r'\neq', '≠');
-    s = s.replaceAll(r'\leq', '≤');
-    s = s.replaceAll(r'\geq', '≥');
-    s = s.replaceAll(r'\pm', '±');
-    s = s.replaceAll(r'\infty', '∞');
-    s = s.replaceAll(r'\pi', 'π');
-    s = s.replaceAll(r'\alpha', 'α');
-    s = s.replaceAll(r'\beta', 'β');
-    s = s.replaceAll(r'\gamma', 'γ');
-    s = s.replaceAll(r'\theta', 'θ');
-    s = s.replaceAll(r'\sqrt', '√');
-    s = s.replaceAll(r'\text\{([^{}]*)\}', r'\$1');
-    s = s.replaceAll(r'\boxed\{([^{}]*)\}', '[\$1]');
-    s = s.replaceAll(r'\begin\{aligned\}', '');
-    s = s.replaceAll(r'\end\{aligned\}', '');
-    s = s.replaceAll(r'\quad', '  ');
-    s = s.replaceAll(r'\,', ' ');
-
-    // a^{b} → a^b
-    s = s.replaceAll('^{', '^');
-    s = s.replaceAll('}', '');
-
-    // Remove remaining backslashes
-    s = s.replaceAll('\\', '');
-
     return s.trim();
   }
 
   @override
   Widget build(BuildContext context) {
-    final cleaned = _toReadable(latex);
+    final cleaned = _clean(latex);
     if (cleaned.isEmpty) return const SizedBox.shrink();
+
+    final hexColor = '#${colors.textPrimary.toARGB32().toRadixString(16).substring(2)}';
+    final bgColor = '#${colors.surface.toARGB32().toRadixString(16).substring(2)}';
+
+    // Escape LaTeX for JS string.
+    final escaped = cleaned
+        .replaceAll(r'\\', r'\\\\')
+        .replaceAll('`', r'\\`')
+        .replaceAll(r'$', r'\\$');
+
+    final html = """
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+ onload="renderMathInElement(document.body,{delimiters:[{left:'\\\\[',right:'\\\\]',display:true},{left:'\\\\$',right:'\\\\$',display:false}],throwOnError:false})"></script>
+<style>
+  html,body{margin:0;padding:14px;background:$bgColor;color:$hexColor;
+  font-size:19px;font-family:'Times New Roman',serif;text-align:center;
+  overflow-x:auto;overflow-y:hidden;}
+  .katex{color:$hexColor!important;font-size:1.1em;}
+</style>
+</head>
+<body>\\\\[$escaped\\\\]</body>
+</html>
+""";
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 14),
-      padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: colors.surface,
         borderRadius: BorderRadius.circular(15),
-        border: Border.all(
-          color: colors.accentGlow.withValues(alpha: 0.25),
-        ),
+        border: Border.all(color: colors.accentGlow.withValues(alpha: 0.25)),
       ),
-      child: Directionality(
-        textDirection: TextDirection.ltr,
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: SelectableText(
-            cleaned,
-            style: TextStyle(
-              color: colors.textPrimary,
-              fontSize: 18,
-              fontFamily: 'monospace',
-              height: 1.7,
-              letterSpacing: 0.3,
-            ),
-          ),
-        ),
+      child: SizedBox(
+        height: 130,
+        child: _LatexWebView(html: html),
       ),
     );
+  }
+}
+
+class _LatexWebView extends StatefulWidget {
+  const _LatexWebView({required this.html});
+  final String html;
+
+  @override
+  State<_LatexWebView> createState() => _LatexWebViewState();
+}
+
+class _LatexWebViewState extends State<_LatexWebView> {
+  late final WebViewController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setBackgroundColor(Colors.transparent)
+      ..loadHtmlString(widget.html);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return WebViewWidget(controller: _controller);
   }
 }
 

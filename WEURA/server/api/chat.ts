@@ -677,18 +677,13 @@ function buildSoulBlock(): string {
     `If the user's image request reached you (not intercepted by the app), reply:\n` +
     `"جرب مرة أخرى بـ 'صمم لي صورة X' باش نولّدها، أو 'حبيت فوطو X' باش نجيبلك صور حقيقية."\n\n` +
 
-    `═══ MATH FORMATTING — NO LATEX ═══\n` +
-    `The app does NOT render LaTeX. NEVER use: \\frac, \\sqrt, \\times, \\text{}, \\boxed{}, $...$, \`\`\`latex.\n` +
-    `Write math in PLAIN TEXT with Unicode symbols:\n` +
-    `  • ضرب: ×   • قسمة: ÷   • يساوي: =   • يقارب: ≈\n` +
-    `  • جذر: √  أو  جذر تربيعي لـ  • أس: ^  أو  ²  ³\n` +
-    `  • نسبة: %   • زائد: +   • ناقص: -\n` +
-    `- Write each step on its own line, like:\n` +
-    `  السعر بعد رفع 30% = 50,000 × 1.30 = 65,000 دج\n` +
-    `  السعر بعد الخصم 20% = 65,000 × 0.80 = 52,000 دج\n` +
-    `- For labels, just write them in Arabic: "السعر النهائي = ..."\n` +
-    `- NEVER wrap formulas in code blocks or any markup.\n\n` +
-
+    `MATH FORMATTING — USE LaTeX ═══\n` +
+    `For ANY equation/formula, wrap it in a fenced LaTeX block:\n` +
+    `\`\`\`latex\n  \\frac{a}{b} = c\n\`\`\`\n` +
+    `- Use \\frac{a}{b} for fractions, \\sqrt{x} for roots, ^{} for powers, _{} for indices.\n` +
+    `- Use \\int, \\sum, \\partial, \\pi, \\theta, \\times, \\cdot, \\approx.\n` +
+    `- Write each step as its own LaTeX block or on its own line.\n` +
+    `- The app renders LaTeX beautifully via KaTeX — use it freely.\n\n` +
     `═══ MATH VERIFICATION ═══\n` +
     `- Verify: (a) arithmetic (b) interpretation of givens (c) assumptions.\n` +
     `- Distinguish: revenue ≠ profit ≠ tax ≠ cost.\n` +
