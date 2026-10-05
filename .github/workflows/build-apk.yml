@@ -65,6 +65,14 @@ jobs:
         run: |
           sed -i 's|^\(\s*\)compileSdk = .*|\1compileSdk = 36|' app/build.gradle 2>/dev/null || true
           sed -i 's|^\(\s*\)minSdk = .*|\1minSdk = 24|' app/build.gradle 2>/dev/null || true
+
+          # Bump Android Gradle Plugin to 8.1.1+ (required by webkit 1.14)
+          if [ -f settings.gradle ]; then
+            sed -i 's|com.android.application.*version "[0-9.]*"|com.android.application\" version \"8.1.1\"|' settings.gradle
+            sed -i 's|com.android.library.*version "[0-9.]*"|com.android.library\" version \"8.1.1\"|' settings.gradle
+            echo "=== settings.gradle after AGP bump ==="
+            cat settings.gradle
+          fi
           MANIFEST="app/src/main/AndroidManifest.xml"
           if ! grep -q 'android.permission.INTERNET' "$MANIFEST"; then
             sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>\n    <uses-permission android:name="android.permission.CAMERA"/>\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>\n    <application|' "$MANIFEST"
