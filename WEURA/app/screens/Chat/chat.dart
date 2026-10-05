@@ -2357,26 +2357,25 @@ class _ChatScreenState extends State<ChatScreen>
           // ─── Scroll to bottom arrow ───
           Positioned(
             right: 16,
-            bottom: 100 + MediaQuery.viewInsetsOf(context).bottom,
+            bottom: 140 + MediaQuery.viewInsetsOf(context).bottom,
             child: AnimatedScale(
               scale: _showScrollArrow ? 1.0 : 0.0,
-              duration: const Duration(milliseconds: 200),
+              duration: const Duration(milliseconds: 180),
               curve: Curves.easeOutBack,
               child: AnimatedOpacity(
                 opacity: _showScrollArrow ? 1.0 : 0.0,
-                duration: const Duration(milliseconds: 180),
+                duration: const Duration(milliseconds: 150),
                 child: Material(
                   color: colors.accentGlow,
                   shape: const CircleBorder(),
                   elevation: 8,
-                  shadowColor: colors.accent.withValues(alpha: 0.5),
+                  shadowColor: colors.accent.withValues(alpha: 0.6),
                   child: InkWell(
                     onTap: () {
                       if (!_scrollController.hasClients) return;
-                      _scrollController.animateTo(
+                      // Instant jump — no animation delay.
+                      _scrollController.jumpTo(
                         _scrollController.position.maxScrollExtent,
-                        duration: const Duration(milliseconds: 400),
-                        curve: Curves.easeOutCubic,
                       );
                     },
                     customBorder: const CircleBorder(),
