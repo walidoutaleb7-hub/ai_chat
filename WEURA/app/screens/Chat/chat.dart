@@ -1753,6 +1753,22 @@ class _ChatScreenState extends State<ChatScreen>
     _regenerateLast();
   }
 
+  /// Jumps to bottom repeatedly across frames.
+  /// Needed because ListView.builder's maxScrollExtent grows lazily,
+  /// so a single jump lands partway.
+  void _scrollToBottomRepeated({int attempts = 8}) {
+    if (!_scrollController.hasClients) return;
+    _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scrollController.hasClients) return;
+      final pos = _scrollController.position;
+      final atBottom = pos.pixels >= pos.maxScrollExtent - 5;
+      if (atBottom || attempts <= 1) return;
+      _scrollToBottomRepeated(attempts: attempts - 1);
+    });
+  }
+
   void _scrollToBottom({bool animated = true}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollController.hasClients) return;
@@ -2372,13 +2388,7 @@ class _ChatScreenState extends State<ChatScreen>
                   elevation: 8,
                   shadowColor: colors.accent.withValues(alpha: 0.6),
                   child: InkWell(
-                    onTap: () {
-                      if (!_scrollController.hasClients) return;
-                      // Instant jump — no animation delay.
-                      _scrollController.jumpTo(
-                        _scrollController.position.maxScrollExtent,
-                      );
-                    },
+                    onTap: _scrollToBottomRepeated,
                     customBorder: const CircleBorder(),
                     child: Padding(
                       padding: const EdgeInsets.all(10),
