@@ -56,7 +56,7 @@ function getProviders(): Provider[] {
       url: 'https://generativelanguage.googleapis.com/v1beta/models',
       apiKey: geminiKey,
       model:
-        process.env.GEMINI_MODEL?.trim() || 'gemini-2.5-flash',
+        process.env.GEMINI_MODEL?.trim() || 'gemini-3.8-flash',
     });
   }
 
