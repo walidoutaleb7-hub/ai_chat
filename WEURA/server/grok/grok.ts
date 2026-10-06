@@ -367,7 +367,14 @@ function isRetryableError(error: unknown): boolean {
     msg.includes('model_not_found') ||
     msg.includes('model not found') ||
     msg.includes('does not exist') ||
-    msg.includes('not available')
+    msg.includes('not available') ||
+    // Gemini/Google overload signals
+    msg.includes('high demand') ||
+    msg.includes('temporarily') ||
+    msg.includes('try again later') ||
+    msg.includes('overloaded') ||
+    msg.includes('service unavailable') ||
+    msg.includes('please retry')
   );
 }
 
