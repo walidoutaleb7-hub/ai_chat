@@ -1176,6 +1176,250 @@ async function buildMessages(
  *  ROUTE
  * ============================================================ */
 
+/* ============================================================
+ *  COMPLIANCE VALIDATOR — Post-processing
+ *  Extracts constraints from user message, validates the AI
+ *  response, re-asks AI if violations found.
+ * ============================================================ */
+
+type Constraint = {
+  kind: 'count' | 'forbidden' | 'literal_start' | 'literal_end' | 'format';
+  type: string;
+  value: any;
+  raw: string;
+};
+
+type Violation = {
+  constraint: Constraint;
+  message: string;
+};
+
+const EMOJI_REGEX = /[\u{1F300}-\u{1F9FF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{27BF}\u{1F900}-\u{1F9FF}\u{1FA70}-\u{1FAFF}\u{2B00}-\u{2BFF}]/u;
+
+function extractConstraints(msg: string): Constraint[] {
+  const constraints: Constraint[] = [];
+
+  // Counts: sentences / paragraphs / words / points / lines
+  const countPatterns: Array<[RegExp, string]> = [
+    [/(\d+)\s*(جمل|جملة|sentences?)/gi, 'sentence'],
+    [/(\d+)\s*(فقر|فقرة|فقرات|paragraphs?)/gi, 'paragraph'],
+    [/(\d+)\s*(كلم|كلمة|كلمات|words?)/gi, 'word'],
+    [/(\d+)\s*(نقط|نقطة|نقاط|points?)/gi, 'point'],
+    [/(\d+)\s*(أسطر|سطر|سطور|lines?)/gi, 'line'],
+  ];
+  for (const [re, type] of countPatterns) {
+    const found = msg.match(re);
+    if (found) {
+      for (const m of found) {
+        const num = parseInt(m.match(/\d+/)?.[0] ?? '0', 10);
+        if (num > 0 && num < 50) {
+          constraints.push({ kind: 'count', type, value: num, raw: m });
+        }
+      }
+    }
+  }
+
+  // Forbidden: emojis
+  if (/(بدون\s*(إيموجي|ايموجي|إيموچي|رموز\s*تعبيرية)|no\s*emoji|without\s*emoji)/i.test(msg)) {
+    constraints.push({ kind: 'forbidden', type: 'emoji', value: true, raw: 'no emoji' });
+  }
+
+  // Forbidden: bullets / lists
+  if (/(بدون\s*(نقاط|قوائم|تعداد)|no\s*bullets?|no\s*lists?)/i.test(msg)) {
+    constraints.push({ kind: 'forbidden', type: 'bullets', value: true, raw: 'no bullets' });
+  }
+
+  // Literal ending: اختم بـ X / end with X
+  const endMatch = msg.match(/(?:اختم\s*(?:بـ|ب)\s*["«'"]?([^"»'"\n.،]+)|end\s*with\s*["']?([^"'\n.]+))/i);
+  if (endMatch) {
+    const text = (endMatch[1] || endMatch[2] || '').trim();
+    if (text && text.length < 80) {
+      constraints.push({ kind: 'literal_end', type: 'phrase', value: text, raw: endMatch[0] });
+    }
+  }
+
+  // Literal start: ابدأ بـ X / start with X
+  const startMatch = msg.match(/(?:ابدأ\s*(?:بـ|ب)\s*["«'"]?([^"»'"\n.،]+)|start\s*with\s*["']?([^"'\n.]+))/i);
+  if (startMatch) {
+    const text = (startMatch[1] || startMatch[2] || '').trim();
+    if (text && text.length < 80) {
+      constraints.push({ kind: 'literal_start', type: 'phrase', value: text, raw: startMatch[0] });
+    }
+  }
+
+  // Format: single paragraph
+  if (/(فقرة\s*واحدة|paragraph\s*only|single\s*paragraph)/i.test(msg) &&
+      !constraints.some(c => c.type === 'paragraph')) {
+    constraints.push({ kind: 'format', type: 'single_paragraph', value: 1, raw: 'single paragraph' });
+  }
+
+  return constraints;
+}
+
+function countSentences(text: string): number {
+  const cleaned = text
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/`[^`]+`/g, '')
+    .replace(/\n{2,}/g, '\n')
+    .trim();
+  const matches = cleaned.match(/[^.!?؟…\n]+[.!?؟…]+/g);
+  return matches ? matches.length : 0;
+}
+
+function countParagraphs(text: string): number {
+  return text.split(/\n\s*\n/).filter(p => p.trim().length > 0).length;
+}
+
+function countWords(text: string): number {
+  const cleaned = text
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/`[^`]+`/g, '')
+    .trim();
+  return cleaned.split(/\s+/).filter(w => w.length > 0).length;
+}
+
+function countBulletLines(text: string): number {
+  const lines = text.split('\n');
+  return lines.filter(l => /^\s*[-*•·]\s|^\s*\d+[.)]\s/.test(l)).length;
+}
+
+function countEmojis(text: string): number {
+  const re = new RegExp(EMOJI_REGEX.source, 'gu');
+  const matches = text.match(re);
+  return matches ? matches.length : 0;
+}
+
+function validateCompliance(
+  response: string,
+  constraints: Constraint[],
+): Violation[] {
+  const violations: Violation[] = [];
+
+  for (const c of constraints) {
+    if (c.kind === 'count') {
+      let actual = 0;
+      let label = '';
+      if (c.type === 'sentence') { actual = countSentences(response); label = 'sentences'; }
+      else if (c.type === 'paragraph') { actual = countParagraphs(response); label = 'paragraphs'; }
+      else if (c.type === 'word') { actual = countWords(response); label = 'words'; }
+      else if (c.type === 'line') { actual = response.split('\n').filter(l => l.trim()).length; label = 'lines'; }
+      else if (c.type === 'point') { actual = countBulletLines(response); label = 'points'; }
+
+      const tolerance = (c.type === 'sentence' || c.type === 'paragraph') ? 1 : 3;
+      if (Math.abs(actual - c.value) > tolerance) {
+        violations.push({
+          constraint: c,
+          message: `You wrote ${actual} ${label}, but ${c.value} were required ("${c.raw}").`,
+        });
+      }
+    } else if (c.kind === 'forbidden') {
+      if (c.type === 'emoji') {
+        const count = countEmojis(response);
+        if (count > 0) {
+          violations.push({
+            constraint: c,
+            message: `Response contains ${count} emoji(s), but emojis were FORBIDDEN. Remove ALL emojis.`,
+          });
+        }
+      } else if (c.type === 'bullets') {
+        const count = countBulletLines(response);
+        if (count > 2) {
+          violations.push({
+            constraint: c,
+            message: `Response has ${count} bullet items, but bullets were FORBIDDEN. Write as flowing prose.`,
+          });
+        }
+      }
+    } else if (c.kind === 'literal_end') {
+      const tail = response.trim().slice(-Math.max(80, c.value.length + 30)).toLowerCase();
+      if (!tail.includes(String(c.value).toLowerCase())) {
+        violations.push({
+          constraint: c,
+          message: `Response does not end with "${c.value}". Add it as the EXACT final phrase.`,
+        });
+      }
+    } else if (c.kind === 'literal_start') {
+      const head = response.trim().slice(0, Math.max(80, c.value.length + 30)).toLowerCase();
+      if (!head.includes(String(c.value).toLowerCase())) {
+        violations.push({
+          constraint: c,
+          message: `Response does not start with "${c.value}". Begin with it verbatim.`,
+        });
+      }
+    } else if (c.kind === 'format' && c.type === 'single_paragraph') {
+      const para = countParagraphs(response);
+      if (para > 1) {
+        violations.push({
+          constraint: c,
+          message: `Response has ${para} paragraphs, but ONLY ONE was requested. Remove blank lines.`,
+        });
+      }
+    }
+  }
+
+  return violations;
+}
+
+async function enforceCompliance(
+  userMessage: string,
+  response: string,
+  requestId: string,
+): Promise<{ content: string; enforced: boolean; violations: number }> {
+  const constraints = extractConstraints(userMessage);
+  if (constraints.length === 0) {
+    return { content: response, enforced: false, violations: 0 };
+  }
+
+  const violations = validateCompliance(response, constraints);
+  if (violations.length === 0) {
+    console.log(`[WEURA][${requestId}] Compliance: OK (${constraints.length} constraints)`);
+    return { content: response, enforced: false, violations: 0 };
+  }
+
+  console.warn(`[WEURA][${requestId}] Compliance FAIL (${violations.length}):`);
+  for (const v of violations) console.warn(`  - ${v.message}`);
+
+  try {
+    const fixMessages: GrokMessage[] = [
+      {
+        role: 'system',
+        content:
+          'You are a compliance fixer. Rewrite the previous response so it ' +
+          'satisfies ALL original constraints. Output ONLY the corrected ' +
+          'response — no explanations, no apologies, no meta-commentary. ' +
+          'Match the language and tone of the original response.',
+      },
+      {
+        role: 'user',
+        content:
+          `ORIGINAL REQUEST:\n${userMessage}\n\n` +
+          `PREVIOUS RESPONSE (violated constraints):\n${response}\n\n` +
+          `VIOLATIONS:\n${violations.map(v => `• ${v.message}`).join('\n')}\n\n` +
+          `Rewrite now, fixing every violation.`,
+      },
+    ];
+
+    const fixResult = await askGrok(fixMessages, {
+      requestId: requestId + '-fix',
+      temperature: 0.2,
+      maxTokens: 2048,
+    });
+
+    if (fixResult.content && fixResult.content.trim().length > 0) {
+      console.log(`[WEURA][${requestId}] Compliance: fix succeeded`);
+      return {
+        content: fixResult.content.trim(),
+        enforced: true,
+        violations: violations.length,
+      };
+    }
+  } catch (err) {
+    console.warn(`[WEURA][${requestId}] Compliance fix failed:`, err);
+  }
+
+  return { content: response, enforced: false, violations: violations.length };
+}
+
 router.post('/chat', async (req, res) => {
   const requestId = createRequestId();
   res.setHeader('X-WEURA-Request-ID', requestId);
@@ -1316,6 +1560,18 @@ router.post('/chat', async (req, res) => {
       if (!result.content) {
         result.content = 'عذراً، حدث خطأ. جرّب مرة أخرى.';
       }
+    }
+
+    // ─── Compliance enforcement ───
+    // If user gave explicit constraints (counts, forbidden items, literal
+    // phrases), validate the response and re-ask AI to fix violations.
+    const compliance = await enforceCompliance(
+      lastUserMessage,
+      result.content,
+      requestId,
+    );
+    if (compliance.enforced) {
+      result.content = compliance.content;
     }
 
     if (useCache) {
