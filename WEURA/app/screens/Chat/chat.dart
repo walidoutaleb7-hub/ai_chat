@@ -4208,6 +4208,144 @@ class _LatexWebViewState extends State<_LatexWebView> {
   }
 }
 
+/// Elegant card for creative writing (articles, stories, poetry).
+/// Similar to ChatGPT's "Écriture" card.
+class _WritingBlock extends StatelessWidget {
+  const _WritingBlock({
+    required this.title,
+    required this.body,
+    required this.colors,
+    this.onCopy,
+    this.onShare,
+  });
+
+  final String title;
+  final String body;
+  final WeuraColors colors;
+  final VoidCallback? onCopy;
+  final VoidCallback? onShare;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 14),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: colors.accentGlow.withValues(alpha: 0.22),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: colors.accent.withValues(alpha: 0.08),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // ─── Header ───
+          Container(
+            padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+            decoration: BoxDecoration(
+              color: colors.surfaceAlt,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(16),
+                topRight: Radius.circular(16),
+              ),
+              border: Border(
+                bottom: BorderSide(
+                  color: colors.accentGlow.withValues(alpha: 0.15),
+                ),
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.edit_note_rounded,
+                  size: 18,
+                  color: colors.accentGlow,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      color: colors.textPrimary,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.2,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (onCopy != null)
+                  _iconBtn(
+                    icon: Icons.copy_rounded,
+                    tooltip: 'نسخ',
+                    onTap: onCopy!,
+                  ),
+                if (onShare != null) ...[
+                  const SizedBox(width: 4),
+                  _iconBtn(
+                    icon: Icons.share_outlined,
+                    tooltip: 'مشاركة',
+                    onTap: onShare!,
+                  ),
+                ],
+              ],
+            ),
+          ),
+          // ─── Body ───
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+            child: Directionality(
+              textDirection: TextDirection.rtl,
+              child: SelectableText(
+                body,
+                style: TextStyle(
+                  color: colors.textPrimary,
+                  fontSize: 16,
+                  height: 1.9,
+                  letterSpacing: 0.1,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _iconBtn({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: Tooltip(
+        message: tooltip,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.all(6),
+            child: Icon(
+              icon,
+              size: 18,
+              color: colors.textMuted,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _CodeBlockBuilder extends MarkdownElementBuilder {
   _CodeBlockBuilder({required this.colors});
 
@@ -4230,6 +4368,37 @@ class _CodeBlockBuilder extends MarkdownElementBuilder {
         language == 'tex' ||
         language == 'katex') {
       return _LatexBlock(latex: code, colors: colors);
+    }
+
+    // Creative writing block (articles, stories, poetry)
+    if (language == 'writing' ||
+        language == 'article' ||
+        language == 'poem' ||
+        language == 'story' ||
+        language == 'text') {
+      // First line = title (if it starts with '# '), body = rest
+      final lines = code.split('\n');
+      String title = 'Écriture';
+      String body = code;
+
+      if (lines.isNotEmpty && lines.first.startsWith('# ')) {
+        title = lines.first.substring(2).trim();
+        body = lines.sublist(1).join('\n').trim();
+      } else if (lines.isNotEmpty && lines.first.trim().isNotEmpty &&
+                 lines.first.length < 60 &&
+                 lines.length > 1) {
+        // First short line = title
+        title = lines.first.trim();
+        body = lines.sublist(1).join('\n').trim();
+      }
+
+      return _WritingBlock(
+        title: title,
+        body: body,
+        colors: colors,
+        onCopy: () => Clipboard.setData(ClipboardData(text: code)),
+        onShare: () => Share.share(code),
+      );
     }
 
     return Directionality(

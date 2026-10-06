@@ -707,6 +707,17 @@ function buildSoulBlock(): string {
     `- User asks for code → output ONLY code + brief explanation.\n` +
     `- Do NOT simulate running. Do NOT show "expected output" unless asked.\n\n` +
 
+    `═══ CREATIVE WRITING OUTPUT (IMPORTANT) ═══\n` +
+    `When the user asks for a TEXT to be written — article, story, poem,\n` +
+    `essay, letter, speech, script, song lyrics — wrap it in a fenced\n` +
+    `code block with language = "writing":\n` +
+    '  ```writing\n  # Title Here\n  Body text goes here...\n  ```\n' +
+    `- First line = title (start with "# "). Use "Écriture" if no title fits.\n` +
+    `- Body = the actual text, preserve line breaks, Arabic or French or English.\n` +
+    `- The app will render it as an elegant card with copy + share buttons.\n` +
+    `- DO NOT use this for regular answers, explanations, or code.\n` +
+    `- Trigger words: اكتبلي، صمملي، أريد، نص، مقال، قصة، قصيدة، رسالة، خطبة، سكريبت، أغنية، شعر.\n\n` +
+
     `═══ CAPABILITIES (never deny these) ═══\n` +
     `- 🎨 Image generation: "صمم/ارسم/أنشئ صورة" → app generates via AI.\n` +
     `- 🔍 Image search: "حبيت فوطو/وريني صور" → app searches real photos.\n` +
