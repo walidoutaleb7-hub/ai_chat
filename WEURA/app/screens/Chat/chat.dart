@@ -1756,44 +1756,24 @@ class _ChatScreenState extends State<ChatScreen>
   /// Jumps to bottom repeatedly across frames.
   /// Needed because ListView.builder's maxScrollExtent grows lazily,
   /// so a single jump lands partway.
-  /// Smooth scroll to bottom — fast (300ms) but visible.
-  /// Re-triggers if maxScrollExtent grew during animation
-  /// (ListView.builder renders lazily).
-  Timer? _scrollTimer;
-
-  void _scrollToBottomRepeated() {
+  /// Instant + robust scroll to bottom.
+  /// Uses jumpTo in a short burst (no timer, no animation).
+  Future<void> _scrollToBottomRepeated() async {
     if (!_scrollController.hasClients) return;
 
-    _scrollTimer?.cancel();
+    // Immediate jump
+    _scrollController.jumpTo(
+      _scrollController.position.maxScrollExtent,
+    );
 
-    int attempts = 0;
-    const maxAttempts = 8;
-    const stepDuration = Duration(milliseconds: 280);
-
-    void animateOnce() {
+    // Wait one frame, jump again (handles lazy maxScrollExtent)
+    for (int i = 0; i < 10; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 30));
       if (!mounted || !_scrollController.hasClients) return;
       final pos = _scrollController.position;
-      final target = pos.maxScrollExtent;
-
-      if (pos.pixels >= target - 2 && attempts > 0) return;
-
-      _scrollController.animateTo(
-        target,
-        duration: stepDuration,
-        curve: Curves.easeOutCubic,
-      ).then((_) {
-        if (!mounted || !_scrollController.hasClients) return;
-        attempts++;
-        if (attempts >= maxAttempts) return;
-        // Check if we're really at bottom
-        final p2 = _scrollController.position;
-        if (p2.pixels < p2.maxScrollExtent - 2) {
-          animateOnce();
-        }
-      });
+      if (pos.pixels >= pos.maxScrollExtent - 2) return;
+      _scrollController.jumpTo(pos.maxScrollExtent);
     }
-
-    animateOnce();
   }
 
   void _scrollToBottom({bool animated = true}) {
