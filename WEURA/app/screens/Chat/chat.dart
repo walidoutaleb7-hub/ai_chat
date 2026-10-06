@@ -1756,43 +1756,44 @@ class _ChatScreenState extends State<ChatScreen>
   /// Jumps to bottom repeatedly across frames.
   /// Needed because ListView.builder's maxScrollExtent grows lazily,
   /// so a single jump lands partway.
-  /// Jumps to bottom repeatedly for 500ms — handles lazy
-  /// maxScrollExtent growth in ListView.builder.
+  /// Smooth scroll to bottom — fast (300ms) but visible.
+  /// Re-triggers if maxScrollExtent grew during animation
+  /// (ListView.builder renders lazily).
   Timer? _scrollTimer;
 
   void _scrollToBottomRepeated() {
     if (!_scrollController.hasClients) return;
 
-    // Cancel any previous timer
     _scrollTimer?.cancel();
 
-    int elapsed = 0;
-    const interval = 16; // ~60fps
-    const maxDuration = 500;
+    int attempts = 0;
+    const maxAttempts = 8;
+    const stepDuration = Duration(milliseconds: 280);
 
-    // Immediate first jump for responsiveness
-    _scrollController.jumpTo(
-      _scrollController.position.maxScrollExtent,
-    );
+    void animateOnce() {
+      if (!mounted || !_scrollController.hasClients) return;
+      final pos = _scrollController.position;
+      final target = pos.maxScrollExtent;
 
-    _scrollTimer = Timer.periodic(
-      const Duration(milliseconds: interval),
-      (timer) {
-        if (!mounted || !_scrollController.hasClients) {
-          timer.cancel();
-          _scrollTimer = null;
-          return;
+      if (pos.pixels >= target - 2 && attempts > 0) return;
+
+      _scrollController.animateTo(
+        target,
+        duration: stepDuration,
+        curve: Curves.easeOutCubic,
+      ).then((_) {
+        if (!mounted || !_scrollController.hasClients) return;
+        attempts++;
+        if (attempts >= maxAttempts) return;
+        // Check if we're really at bottom
+        final p2 = _scrollController.position;
+        if (p2.pixels < p2.maxScrollExtent - 2) {
+          animateOnce();
         }
-        _scrollController.jumpTo(
-          _scrollController.position.maxScrollExtent,
-        );
-        elapsed += interval;
-        if (elapsed >= maxDuration) {
-          timer.cancel();
-          _scrollTimer = null;
-        }
-      },
-    );
+      });
+    }
+
+    animateOnce();
   }
 
   void _scrollToBottom({bool animated = true}) {
