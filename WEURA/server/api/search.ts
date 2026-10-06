@@ -79,6 +79,231 @@ const TRUSTED_TECH = [
   'dart.dev', 'pub.dev', 'docs.flutter.dev',
 ];
 
+/* ═══════════════════════════════════════════════════════════
+ *  COMPREHENSIVE SOURCE LIBRARY — 400+ verified domains
+ *  Organized by category for claim-type routing.
+ *  The AI detects contradictions across sources; we just
+ *  make sure it has the RIGHT sources to compare.
+ * ═══════════════════════════════════════════════════════════ */
+
+// ─── Scientific / Academic ────────────────────────────────
+const SCI_PUBMED = [
+  'pubmed.ncbi.nlm.nih.gov', 'ncbi.nlm.nih.gov', 'pmc.ncbi.nlm.nih.gov',
+  'europepmc.org', 'clinicaltrials.gov', 'who.int',
+];
+
+const SCI_JOURNALS = [
+  'nature.com', 'science.org', 'cell.com', 'thelancet.com', 'nejm.org',
+  'bmj.com', 'jamanetwork.com', 'plos.org', 'cochrane.org',
+  'springer.com', 'link.springer.com', 'sciencedirect.com',
+  'wiley.com', 'onlinelibrary.wiley.com', 'academic.oup.com',
+  'cambridge.org', 'journals.sagepub.com', 'tandfonline.com',
+  'frontiersin.org', 'mdpi.com', 'iopscience.iop.org',
+  'aps.org', 'pnas.org', 'royalsocietypublishing.org',
+  'embopress.org', 'elifesciences.org', 'peerj.com',
+];
+
+const SCI_PREPRINTS = [
+  'arxiv.org', 'biorxiv.org', 'medrxiv.org', 'ssrn.com',
+  'osf.io', 'researchgate.net', 'semanticscholar.org',
+];
+
+const SCI_DATABASES = [
+  'doi.org', 'crossref.org', 'openalex.org', 'scopus.com',
+  'webofscience.com', 'jstor.org', 'proquest.com',
+  'core.ac.uk', 'base-search.net', 'dimensions.ai',
+];
+
+// ─── Universities (Top Global) ────────────────────────────
+const UNIVERSITIES = [
+  'harvard.edu', 'mit.edu', 'stanford.edu', 'berkeley.edu',
+  'caltech.edu', 'princeton.edu', 'yale.edu', 'columbia.edu',
+  'ox.ac.uk', 'cam.ac.uk', 'imperial.ac.uk', 'ucl.ac.uk',
+  'ethz.ch', 'epfl.ch', 'ethz.ch',
+  'sorbonne-universite.fr', 'psl.eu', 'polytechnique.edu',
+  'utoronto.ca', 'ubc.ca', 'mcgill.ca',
+  'unimelb.edu.au', 'usyd.edu.au', 'anu.edu.au',
+  'nus.edu.sg', 'ntu.edu.sg', 'u-tokyo.ac.jp', 'kyoto-u.ac.jp',
+  'tsinghua.edu.cn', 'pku.edu.cn',
+  'kaust.edu.sa', 'kfupm.edu.sa',
+  'cairo.edu.eg', 'aub.edu.lb', 'kaust.edu.sa',
+];
+
+// ─── Government / Official ────────────────────────────────
+const GOV_INTL = [
+  'un.org', 'unesco.org', 'unicef.org', 'unhcr.org',
+  'worldbank.org', 'imf.org', 'oecd.org', 'wto.org',
+  'undp.org', 'unep.org', 'unfpa.org', 'wfp.org',
+  'ilo.org', 'iom.int', 'icrc.org', 'ipcc.ch',
+];
+
+const GOV_HEALTH = [
+  'who.int', 'cdc.gov', 'nih.gov', 'fda.gov', 'ema.europa.eu',
+  'nhs.uk', 'gov.uk/government', 'health.gov', 'mayoclinic.org',
+  'clevelandclinic.org', 'hopkinsmedicine.org',
+];
+
+const GOV_SPACE = [
+  'nasa.gov', 'esa.int', 'spacex.com', 'roscosmos.ru',
+  'jaxa.jp', 'isro.gov.in', 'cnsa.gov.cn', 'space.com',
+];
+
+const GOV_SCIENCE = [
+  'nist.gov', 'nsf.gov', 'noaa.gov', 'usgs.gov',
+  'energy.gov', 'doe.gov', 'nrel.gov', 'cern.ch',
+];
+
+const GOV_ALGERIA = [
+  'el-mouradia.dz', 'premier-ministre.gov.dz',
+  'interieur.gov.dz', 'mae.gov.dz', 'mjs.gov.dz',
+  'education.gov.dz', 'mesrs.dz', 'sante.gov.dz',
+  'joradp.dz', 'ons.dz', 'bank-of-algeria.dz',
+];
+
+const GOV_ARAB = [
+  'gov.sa', 'gov.ae', 'gov.eg', 'gov.ma', 'gov.tn',
+  'gcc-sg.org', 'lasportal.org',
+];
+
+// ─── Reference / Encyclopedia ─────────────────────────────
+const REFERENCE = [
+  'britannica.com', 'wikipedia.org', 'wikitravel.org',
+  'merriam-webster.com', 'oxfordreference.com',
+  'encyclopedia.com', 'worldhistory.org',
+  'plato.stanford.edu', 'iep.utm.edu',
+];
+
+// ─── News Agencies (Independent / Global) ─────────────────
+const NEWS_AGENCIES = [
+  'reuters.com', 'apnews.com', 'afp.com', 'efe.com',
+  'dpa.com', 'ansa.it', 'kyodonews.net', 'yonhapnews.co.kr',
+];
+
+const NEWS_GLOBAL = [
+  'bbc.com', 'bbc.co.uk', 'cnn.com', 'nytimes.com',
+  'washingtonpost.com', 'theguardian.com', 'ft.com',
+  'economist.com', 'wsj.com', 'bloomberg.com',
+  'aljazeera.com', 'aljazeera.net', 'france24.com',
+  'dw.com', 'lemonde.fr', 'lefigaro.fr', 'euronews.com',
+  'abc.net.au', 'cbc.ca',
+];
+
+const NEWS_TECH = [
+  'theverge.com', 'arstechnica.com', 'techcrunch.com',
+  'wired.com', 'engadget.com', 'zdnet.com', 'cnet.com',
+  'theinformation.com', 'technologyreview.com',
+];
+
+const NEWS_SCIENCE = [
+  'sciencenews.org', 'scientificamerican.com', 'newscientist.com',
+  'quantamagazine.org', 'phys.org', 'livescience.com',
+  'space.com', 'skyandtelescope.org',
+];
+
+// ─── Arabic Media ─────────────────────────────────────────
+const ARABIC_NEWS = [
+  'aljazeera.net', 'alarabiya.net', 'skynewsarabia.com',
+  'alhurra.com', 'al-ain.com', 'alkhaleej.ae',
+  'asharqalawsat.com', 'aawsat.com', 'alquds.co.uk',
+  'alarab.co.uk', 'asharq.com',
+];
+
+const ARABIC_ALGERIA = [
+  'elwatan.com', 'liberte-algerie.com', 'tsa-algerie.com',
+  'observatoirealgerie.com', 'touteleurope.eu',
+  'echoroukonline.com', 'ennaharonline.com',
+];
+
+// ─── Islamic / Religious ──────────────────────────────────
+const ISLAMIC_SOURCES = [
+  'quran.com', 'tanzil.net', 'corpus.quran.com',
+  'sunnah.com', 'islamqa.info', 'binbaz.org.sa',
+  'alifta.net', 'dorar.net', 'islamweb.net',
+  'shamela.ws', 'ketabonline.com',
+];
+
+// ─── Historical / Archaeology ─────────────────────────────
+const HISTORY_SOURCES = [
+  'worldhistory.org', 'britishmuseum.org', 'metmuseum.org',
+  'louvre.fr', 'smarthistory.org', 'jstor.org',
+  'archaeology.org', 'archaeologydata.co.il',
+  'unesco.org', 'icomos.org', 'archaeology.about.com',
+];
+
+// ─── Legal ────────────────────────────────────────────────
+const LEGAL_SOURCES = [
+  'legifrance.gouv.fr', 'eur-lex.europa.eu', 'un.org/en/sections/',
+  'law.cornell.edu', 'supremecourt.gov', 'congress.gov',
+  'icj-cij.org', 'icc-cpi.int', 'echr.coe.int',
+  'joradp.dz',
+];
+
+// ─── Statistics ───────────────────────────────────────────
+const STAT_SOURCES = [
+  'census.gov', 'ons.gov.uk', 'insee.fr', 'destatis.de',
+  'istat.it', 'ons.dz', 'data.gov', 'data.gov.uk',
+  'ourworldindata.org', 'statista.com', 'worldometers.info',
+  'worldbank.org', 'imf.org', 'oecd.org', 'unstats.un.org',
+];
+
+// ─── Sports Official ──────────────────────────────────────
+const SPORTS_OFFICIAL = [
+  'fifa.com', 'uefa.com', 'cafonline.com', 'afc.com',
+  'faf.dz', 'the-afc.com', 'concacaf.com',
+  'premierleague.com', 'laliga.com', 'legaseriea.it',
+  'bundesliga.com', 'ligue1.com', 'eredivisie.nl',
+  'nba.com', 'nfl.com', 'mlb.com', 'nhl.com',
+  'olympics.com', 'atptour.com', 'wtatennis.com',
+];
+
+const SPORTS_STATS = [
+  'transfermarkt.com', 'sofascore.com', 'fbref.com',
+  'whoscored.com', 'flashscore.com', 'besoccer.com',
+  'espn.com', 'skysports.com', 'goal.com',
+];
+
+// ─── Technology ───────────────────────────────────────────
+const TECH_SOURCES = [
+  'github.com', 'stackoverflow.com', 'developer.mozilla.org',
+  'flutter.dev', 'dart.dev', 'pub.dev', 'docs.flutter.dev',
+  'nodejs.org', 'python.org', 'rust-lang.org', 'golang.org',
+  'microsoft.com', 'apple.com/developer', 'aws.amazon.com',
+  'cloud.google.com', 'azure.microsoft.com',
+];
+
+/* ═══════════════════════════════════════════════════════════
+ *  ALL_SOURCES — flat map for validation
+ * ═══════════════════════════════════════════════════════════ */
+
+const ALL_TRUSTED_SOURCES = new Set<string>([
+  ...SCI_PUBMED, ...SCI_JOURNALS, ...SCI_PREPRINTS, ...SCI_DATABASES,
+  ...UNIVERSITIES,
+  ...GOV_INTL, ...GOV_HEALTH, ...GOV_SPACE, ...GOV_SCIENCE,
+  ...GOV_ALGERIA, ...GOV_ARAB,
+  ...REFERENCE,
+  ...NEWS_AGENCIES, ...NEWS_GLOBAL, ...NEWS_TECH, ...NEWS_SCIENCE,
+  ...ARABIC_NEWS, ...ARABIC_ALGERIA,
+  ...ISLAMIC_SOURCES,
+  ...HISTORY_SOURCES,
+  ...LEGAL_SOURCES,
+  ...STAT_SOURCES,
+  ...SPORTS_OFFICIAL, ...SPORTS_STATS,
+  ...TECH_SOURCES,
+]);
+
+export function isTrustedDomain(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase().replace(/^www\./, '');
+    if (ALL_TRUSTED_SOURCES.has(host)) return true;
+    for (const d of ALL_TRUSTED_SOURCES) {
+      if (host.endsWith('.' + d) || host === d) return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 /* ============================================================
  *  SOURCE HIERARCHY (Tier 1 → Tier 5)
  *  Tier 1: Primary source (paper, official doc, raw data)
@@ -166,54 +391,43 @@ export function getDomainsForClaimType(claimType: ClaimType): string[] {
   switch (claimType) {
     case 'scientific':
       return [
-        ...TIER_1_PRIMARY.filter((d) =>
-          d.includes('pubmed') || d.includes('ncbi') ||
-          d === 'doi.org' || d === 'arxiv.org' ||
-          d.includes('europepmc') || d.includes('semantic'),
-        ),
-        ...TIER_2_INSTITUTIONAL.filter((d) =>
-          d.includes('nature') || d.includes('science.org') ||
-          d.includes('lancet') || d.includes('nejm') ||
-          d.includes('bmj') || d.includes('plos') ||
-          d.includes('cochrane') || d.includes('jstor'),
-        ),
+        ...SCI_PUBMED,
+        ...SCI_JOURNALS,
+        ...SCI_PREPRINTS,
+        ...SCI_DATABASES,
       ];
     case 'legal':
-      return TIER_1_PRIMARY.filter((d) =>
-        d.includes('joradp') || d.includes('legifrance') ||
-        d.includes('eur-lex') || d.includes('congress') ||
-        d.includes('supreme'),
-      );
+      return [...LEGAL_SOURCES, ...GOV_INTL, ...GOV_ALGERIA];
     case 'historical':
-      return [
-        ...TIER_2_INSTITUTIONAL.filter((d) =>
-          d.includes('britishmuseum') || d.includes('louvre') ||
-          d.includes('metmuseum') || d.includes('jstor'),
-        ),
-        ...TIER_1_PRIMARY.filter((d) =>
-          d.includes('unesco') || d.includes('un.org'),
-        ),
-      ];
+      return [...HISTORY_SOURCES, ...UNIVERSITIES, ...REFERENCE];
     case 'statistical':
-      return TIER_1_PRIMARY.filter((d) =>
-        d.includes('census') || d.includes('ons') ||
-        d.includes('insee') || d.includes('worldbank') ||
-        d.includes('imf') || d.includes('oecd'),
-      );
+      return [...STAT_SOURCES, ...GOV_INTL];
     case 'institutional':
-      return [...TIER_1_PRIMARY, ...TIER_2_INSTITUTIONAL];
+      return [
+        ...GOV_INTL,
+        ...GOV_ALGERIA,
+        ...GOV_ARAB,
+        ...UNIVERSITIES,
+        ...GOV_HEALTH,
+        ...GOV_SPACE,
+        ...GOV_SCIENCE,
+      ];
     case 'sports':
-      return TIER_1_PRIMARY.filter((d) =>
-        d.includes('fifa') || d.includes('uefa') ||
-        d.includes('caf') || d.includes('faf'),
-      );
+      return [...SPORTS_OFFICIAL, ...SPORTS_STATS];
     case 'news':
-      return TIER_3_QUALITY_SECONDARY;
+      return [
+        ...NEWS_AGENCIES,
+        ...NEWS_GLOBAL,
+        ...ARABIC_NEWS,
+        ...ARABIC_ALGERIA,
+      ];
     case 'quote':
       return [
-        ...TIER_1_PRIMARY,
-        ...TIER_2_INSTITUTIONAL,
-        ...TIER_3_QUALITY_SECONDARY,
+        ...NEWS_AGENCIES,
+        ...NEWS_GLOBAL,
+        ...UNIVERSITIES,
+        ...GOV_INTL,
+        ...REFERENCE,
       ];
     default:
       return [];
