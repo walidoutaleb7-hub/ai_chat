@@ -1756,17 +1756,43 @@ class _ChatScreenState extends State<ChatScreen>
   /// Jumps to bottom repeatedly across frames.
   /// Needed because ListView.builder's maxScrollExtent grows lazily,
   /// so a single jump lands partway.
-  void _scrollToBottomRepeated({int attempts = 8}) {
-    if (!_scrollController.hasClients) return;
-    _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+  /// Jumps to bottom repeatedly for 500ms — handles lazy
+  /// maxScrollExtent growth in ListView.builder.
+  Timer? _scrollTimer;
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_scrollController.hasClients) return;
-      final pos = _scrollController.position;
-      final atBottom = pos.pixels >= pos.maxScrollExtent - 5;
-      if (atBottom || attempts <= 1) return;
-      _scrollToBottomRepeated(attempts: attempts - 1);
-    });
+  void _scrollToBottomRepeated() {
+    if (!_scrollController.hasClients) return;
+
+    // Cancel any previous timer
+    _scrollTimer?.cancel();
+
+    int elapsed = 0;
+    const interval = 16; // ~60fps
+    const maxDuration = 500;
+
+    // Immediate first jump for responsiveness
+    _scrollController.jumpTo(
+      _scrollController.position.maxScrollExtent,
+    );
+
+    _scrollTimer = Timer.periodic(
+      const Duration(milliseconds: interval),
+      (timer) {
+        if (!mounted || !_scrollController.hasClients) {
+          timer.cancel();
+          _scrollTimer = null;
+          return;
+        }
+        _scrollController.jumpTo(
+          _scrollController.position.maxScrollExtent,
+        );
+        elapsed += interval;
+        if (elapsed >= maxDuration) {
+          timer.cancel();
+          _scrollTimer = null;
+        }
+      },
+    );
   }
 
   void _scrollToBottom({bool animated = true}) {
@@ -2371,38 +2397,6 @@ class _ChatScreenState extends State<ChatScreen>
               child: _ChatBackground(colors: colors),
             ),
           ),
-          // ─── Scroll to bottom arrow ───
-          Positioned(
-            right: 16,
-            bottom: 140 + MediaQuery.viewInsetsOf(context).bottom,
-            child: AnimatedScale(
-              scale: _showScrollArrow ? 1.0 : 0.0,
-              duration: const Duration(milliseconds: 180),
-              curve: Curves.easeOutBack,
-              child: AnimatedOpacity(
-                opacity: _showScrollArrow ? 1.0 : 0.0,
-                duration: const Duration(milliseconds: 150),
-                child: Material(
-                  color: colors.accentGlow,
-                  shape: const CircleBorder(),
-                  elevation: 8,
-                  shadowColor: colors.accent.withValues(alpha: 0.6),
-                  child: InkWell(
-                    onTap: _scrollToBottomRepeated,
-                    customBorder: const CircleBorder(),
-                    child: Padding(
-                      padding: const EdgeInsets.all(10),
-                      child: Icon(
-                        Icons.keyboard_arrow_down_rounded,
-                        color: colors.background,
-                        size: 28,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
           Column(
             children: [
               SizedBox(
@@ -2443,19 +2437,57 @@ class _ChatScreenState extends State<ChatScreen>
               // so the keyboard animation only repaints the composer,
               // not the whole screen tree.
               RepaintBoundary(
-                child: Padding(
-                  padding: EdgeInsets.only(
-                    bottom: MediaQuery.viewInsetsOf(context).bottom,
-                  ),
-                  child: WeuraComposer(
-                    enabled: true,
-                    isLoading: _isLoading,
-                    onSend: _sendMessage,
-                    onAttach: () => _showAttachmentSheet(colors),
-                    onMode: () => _showModePicker(colors),
-                    onVoice: () => _handleVoice(colors),
-                    onStop: _cancelRequest,
-                  ),
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Padding(
+                      padding: EdgeInsets.only(
+                        bottom: MediaQuery.viewInsetsOf(context).bottom,
+                      ),
+                      child: WeuraComposer(
+                        enabled: true,
+                        isLoading: _isLoading,
+                        onSend: _sendMessage,
+                        onAttach: () => _showAttachmentSheet(colors),
+                        onMode: () => _showModePicker(colors),
+                        onVoice: () => _handleVoice(colors),
+                        onStop: _cancelRequest,
+                      ),
+                    ),
+                    // ─── Scroll to bottom arrow ───
+                    Positioned(
+                      right: 20,
+                      top: -58,
+                      child: AnimatedScale(
+                        scale: _showScrollArrow ? 1.0 : 0.0,
+                        duration: const Duration(milliseconds: 180),
+                        curve: Curves.easeOutBack,
+                        child: AnimatedOpacity(
+                          opacity: _showScrollArrow ? 1.0 : 0.0,
+                          duration: const Duration(milliseconds: 150),
+                          child: Material(
+                            color: colors.accentGlow,
+                            shape: const CircleBorder(),
+                            elevation: 6,
+                            shadowColor:
+                                colors.accent.withValues(alpha: 0.55),
+                            child: InkWell(
+                              onTap: _scrollToBottomRepeated,
+                              customBorder: const CircleBorder(),
+                              child: Padding(
+                                padding: const EdgeInsets.all(10),
+                                child: Icon(
+                                  Icons.keyboard_arrow_down_rounded,
+                                  color: colors.background,
+                                  size: 26,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
