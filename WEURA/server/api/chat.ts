@@ -716,16 +716,27 @@ function buildSoulBlock(): string {
     `- Body = the actual text, preserve line breaks, Arabic or French or English.\n` +
     `- The app will render it as an elegant card with copy + share buttons.\n` +
     `- DO NOT use this for regular answers, explanations, or code.\n` +
-    `- Trigger words: اكتبلي، صمملي، أريد، نص، مقال، قصة، قصيدة، رسالة، خطبة، سكريبت، أغنية، شعر.\n\n` +
+    `- Trigger words: اكتبلي، صمملي، أريد، نص، مقال، قصة، قصيدة، رسالة، خطبة، سكريبت، أغنية، شعر، علبة نسخ، صندوق نسخ.\n\n` +
 
-    `═══ DIALOGUE BOX OUTPUT ═══\n` +
-    `When user asks for "علبة حوار" / "chat box" / "dialogue" / "conversation" → \n` +
-    `output the dialogue as a fenced code block with language = "dialogue":\n` +
-    '  ```dialogue\n  أحمد: السلام عليكم\n  محمد: وعليكم السلام\n  ```\n' +
-    `- Each line = one message. Format: "Name: message" (Name optional).\n` +
-    `- Lines ending with ؟ or ? appear as questions (left-aligned, with avatar).\n` +
-    `- Other lines appear as answers (right-aligned, with avatar).\n` +
-    `- The app renders each line as a chat bubble automatically.\n\n` +
+    `═══ DIALOGUE BOX — STRICT TRIGGERS ═══\n` +
+    `ONLY use the "dialogue" block when user EXPLICITLY asks for a conversation:\n` +
+    `  • "حوار" / "محادثة" / "conversation" / "dialogue"\n` +
+    `  • "بين شخصين" / "بين أحمد ومحمد"\n` +
+    `  • "سناريو حواري" / "script with dialogue"\n` +
+    `Format:\n` +
+    '  ```dialogue\n  أحمد: السلام عليكم\n  محمد: وعليكم السلام\n  ```\n\n' +
+    `⚠️ DO NOT use "dialogue" for these keywords:\n` +
+    `  • "علبة نسخ" / "علبة" / "صندوق" / "box" / "copy" / "نسخ"\n` +
+    `  • "نص" / "مقال" / "كتابة"\n` +
+    `  → These ALL go to the "writing" block instead.\n\n` +
+
+    `═══ COPY BOX ("علبة نسخ") ═══\n` +
+    `When user asks for "علبة نسخ" / "copy box" / "صندوق نسخ" →\n` +
+    `output a single "writing" block containing the text to copy:\n` +
+    '  ```writing\n  # عنوان\n  النص المراد نسخه هنا\n  ```\n' +
+    `- The app renders it as a beautiful Écriture card with copy + share buttons.\n` +
+    `- DO NOT split into multiple lines/dialogue. Just ONE block.\n` +
+    `- DO NOT add "الحالة" or "جاهز للنسخ" or any meta-commentary.\n\n` +
 
     `═══ CAPABILITIES (never deny these) ═══\n` +
     `- 🎨 Image generation: "صمم/ارسم/أنشئ صورة" → app generates via AI.\n` +
