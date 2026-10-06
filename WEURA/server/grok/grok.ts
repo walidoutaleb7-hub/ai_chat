@@ -48,6 +48,19 @@ function setCooldown(
 function getProviders(): Provider[] {
   const providers: Provider[] = [];
 
+  // Gemini (primary — 1500 req/day free)
+  const geminiKey = process.env.GEMINI_API_KEY?.trim();
+  if (geminiKey) {
+    providers.push({
+      name: 'gemini',
+      url: 'https://generativelanguage.googleapis.com/v1beta/models',
+      apiKey: geminiKey,
+      model:
+        process.env.GEMINI_MODEL?.trim() || 'gemini-2.5-flash',
+    });
+  }
+
+  // Groq (fallback — 200k tokens/day)
   const groqKey = process.env.GROQ_API_KEY?.trim();
   if (groqKey) {
     providers.push({
@@ -132,6 +145,92 @@ async function callProvider(
   const temperature = options.temperature ?? 0.65;
   const maxTokens = options.maxTokens ?? 3072;
 
+  // ═══════════════════════════════════════════════════════════
+  //  GEMINI — different API format
+  // ═══════════════════════════════════════════════════════════
+  if (provider.name === 'gemini') {
+    try {
+      // Split system messages and chat messages.
+      const systemParts: string[] = [];
+      const contents: Array<{ role: string; parts: Array<{ text: string }> }> = [];
+
+      for (const msg of messages) {
+        if (msg.role === 'system') {
+          systemParts.push(msg.content);
+        } else {
+          contents.push({
+            role: msg.role === 'assistant' ? 'model' : 'user',
+            parts: [{ text: msg.content }],
+          });
+        }
+      }
+
+      const body: Record<string, unknown> = {
+        contents,
+        generationConfig: {
+          temperature,
+          maxOutputTokens: maxTokens,
+        },
+      };
+
+      if (systemParts.length > 0) {
+        body.systemInstruction = {
+          parts: [{ text: systemParts.join('\n\n') }],
+        };
+      }
+
+      const url = `${provider.url}/${provider.model}:generateContent?key=${provider.apiKey}`;
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+
+      const raw = await response.text();
+      let data: any;
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        throw new Error(
+          `${provider.name}: invalid response (HTTP ${response.status}).`,
+        );
+      }
+
+      if (!response.ok) {
+        const errMsg = data?.error?.message || `HTTP ${response.status}`;
+        throw new Error(`${provider.name}: ${errMsg}`);
+      }
+
+      const text =
+        data?.candidates?.[0]?.content?.parts
+          ?.map((p: any) => p?.text ?? '')
+          .join('') ?? '';
+
+      if (!text) {
+        throw new Error(`${provider.name}: returned empty response.`);
+      }
+
+      return {
+        content: text.trim(),
+        model: provider.model,
+        usage: data?.usageMetadata ?? null,
+        provider: provider.name,
+      };
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error(`${provider.name}: request timed out.`);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  OpenAI-compatible providers (Groq, OpenRouter, Cerebras, Mistral)
+  // ═══════════════════════════════════════════════════════════
   try {
     const response = await fetch(provider.url, {
       method: 'POST',
