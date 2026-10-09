@@ -785,7 +785,13 @@ function buildVerificationBlock(
     'STEP 6 — EVIDENCE CLASSIFICATION:',
     '  SUPPORTED | PARTIALLY_SUPPORTED | CONTRADICTED | DISPUTED | INSUFFICIENT_EVIDENCE | UNVERIFIED.',
     'STEP 7 — CONFIDENCE: high / medium / low / unknown.',
-    'STEP 8 — TEMPORAL: for current facts → use NEWEST source.',
+    'STEP 8 — TEMPORAL (CRITICAL):',
+    '  • For "current X" questions → use the NEWEST source by published date.',
+    '  • Older sources about a PREVIOUS manager/role are HISTORICAL, not current.',
+    '  • When sources conflict → ALWAYS trust the newest confirmed one.',
+    '  • If the newest source says Y → answer Y with confidence.',
+    '  • Do NOT refuse to answer just because old contradictory sources exist.',
+    '  • Mention the timeline if helpful: "X كان سابقاً، الآن Y."',
     'STEP 9 — SCIENTIFIC: never correlation → causation.',
     'STEP 10 — HISTORICAL: archaeology ≠ sagas ≠ interpretation.',
     'STEP 11 — COMPLETENESS: answer EVERY sub-question.',
@@ -1027,7 +1033,7 @@ async function buildMessages(
 
       const results = await searchTavily(
         reflection.searchQuery,
-        4,
+        8,
         {
           timeSensitive: isFootball ? false : true,
           football: isFootball,
@@ -1041,10 +1047,28 @@ async function buildMessages(
         resultCount = results.length;
         const today = todayISO();
 
+        // Sort: newest first, but prioritize sources that match the
+        // search query strongly (title contains key terms).
+        const qLower = reflection.searchQuery.toLowerCase();
+        const queryKeywords = qLower.split(/\s+/).filter(w => w.length > 3);
+
         results.sort((a, b) => {
+          // 1) Relevance score (title match count)
+          const aTitle = (a.title ?? '').toLowerCase();
+          const bTitle = (b.title ?? '').toLowerCase();
+          const aScore = queryKeywords.filter(k => aTitle.includes(k)).length;
+          const bScore = queryKeywords.filter(k => bTitle.includes(k)).length;
+          if (aScore !== bScore) return bScore - aScore;
+
+          // 2) Newest first (publishedDate)
           const da = a.publishedDate ?? '';
           const db = b.publishedDate ?? '';
-          return db.localeCompare(da);
+          if (da && db) return db.localeCompare(da);
+
+          // 3) Dated > undated
+          if (da && !db) return -1;
+          if (!da && db) return 1;
+          return 0;
         });
 
         const sources = results
