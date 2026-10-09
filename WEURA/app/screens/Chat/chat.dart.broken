@@ -3260,9 +3260,7 @@ class _ChatScreenState extends State<ChatScreen>
         onLongPress: msgIndex == -1
             ? null
             : () => _showUserMessageMenu(msgIndex, colors),
-        onTap: msgIndex == -1
-            ? null
-            : () => _showUserMessageMenu(msgIndex, colors),
+        onTap: msgIndex == -1 ? null : () => _showUserMessageMenu(msgIndex, colors),
         child: Padding(
           padding: const EdgeInsets.only(
             bottom: 24,
@@ -3335,13 +3333,9 @@ class _ChatScreenState extends State<ChatScreen>
                       const SizedBox(height: 10),
                   ],
                   if (message.text.trim().isNotEmpty)
-
                     _CollapsibleUserText(
-
                       text: message.text,
-
                       colors: colors,
-
                     ),
                 ],
               ),
@@ -3771,6 +3765,7 @@ class _ChatScreenState extends State<ChatScreen>
             ),
             child: Row(
               children: [
+                // ─── Icon with number badge ───
                 Stack(
                   clipBehavior: Clip.none,
                   children: [
@@ -3822,6 +3817,7 @@ class _ChatScreenState extends State<ChatScreen>
                   ],
                 ),
                 const SizedBox(width: 12),
+                // ─── Text info ───
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -3837,6 +3833,7 @@ class _ChatScreenState extends State<ChatScreen>
                                 color: colors.textPrimary,
                                 fontSize: 14,
                                 fontWeight: FontWeight.w700,
+                                letterSpacing: -0.2,
                               ),
                             ),
                           ),
@@ -3856,6 +3853,7 @@ class _ChatScreenState extends State<ChatScreen>
                                 color: baseColor,
                                 fontSize: 9.5,
                                 fontWeight: FontWeight.w700,
+                                letterSpacing: 0.4,
                               ),
                             ),
                           ),
@@ -3878,6 +3876,7 @@ class _ChatScreenState extends State<ChatScreen>
                   ),
                 ),
                 const SizedBox(width: 8),
+                // ─── Open indicator ───
                 Container(
                   width: 30,
                   height: 30,
@@ -3899,6 +3898,7 @@ class _ChatScreenState extends State<ChatScreen>
     );
   }
 
+  /// Classify a domain into one of known types.
   String _domainType(String domain) {
     final d = domain.toLowerCase();
     if (d.contains('wikipedia') || d.contains('wiki')) return 'wiki';
@@ -3949,14 +3949,23 @@ class _ChatScreenState extends State<ChatScreen>
         d.contains('dev.to')) {
       return 'tech';
     }
+    if (d.contains('twitter') ||
+        d.contains('x.com') ||
+        d.contains('facebook') ||
+        d.contains('instagram') ||
+        d.contains('tiktok')) {
+      return 'social';
+    }
     if (d.contains('britannica') ||
         d.contains('britishmuseum') ||
-        d.contains('louvre')) {
+        d.contains('louvre') ||
+        d.contains('history')) {
       return 'ref';
     }
     return 'other';
   }
 
+  /// Returns (icon, baseColor) for a given type.
   (IconData, Color) _iconForType(String type) {
     switch (type) {
       case 'wiki':
@@ -3973,6 +3982,8 @@ class _ChatScreenState extends State<ChatScreen>
         return (Icons.science_rounded, const Color(0xFF8E5BD6));
       case 'tech':
         return (Icons.code_rounded, const Color(0xFFE08F3A));
+      case 'social':
+        return (Icons.alternate_email_rounded, const Color(0xFF4DB6E2));
       case 'ref':
         return (Icons.library_books_rounded, const Color(0xFFB89968));
       default:
