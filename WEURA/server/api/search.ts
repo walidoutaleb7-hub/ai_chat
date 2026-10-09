@@ -687,7 +687,10 @@ async function runSearch(
 
   if (options.timeSensitive && !options.footballHistory) {
     body.topic = 'news';
-    body.days = options.football ? 90 : 180;
+    // Reduce window for current-fact questions: 60 days instead of 180.
+    // Long windows let old articles (e.g. previous managers) dominate
+    // and confuse Gemini's temporal reasoning.
+    body.days = options.football ? 60 : 60;
   } else {
     body.topic = 'general';
   }

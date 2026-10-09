@@ -1047,12 +1047,33 @@ async function buildMessages(
         resultCount = results.length;
         const today = todayISO();
 
+        // ─── Filter stale results for current-fact queries ───
+        // Drop anything older than 90 days when timeSensitive.
+        // Prevents old articles about previous managers from dominating.
+        const now = Date.now();
+        const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
+        let filtered = results;
+        if (!isFootball) {
+          const fresh = results.filter((r) => {
+            if (!r.publishedDate) return false; // undated → drop for current facts
+            const ts = Date.parse(r.publishedDate);
+            if (Number.isNaN(ts)) return true;  // unparsable → keep
+            return now - ts <= NINETY_DAYS_MS;
+          });
+          if (fresh.length >= 2) {
+            filtered = fresh;
+            console.log(
+              `[WEURA][${requestId}] Fresh filter: ${results.length} → ${fresh.length} (dropped ${results.length - fresh.length} stale)`,
+            );
+          }
+        }
+
         // Sort: newest first, but prioritize sources that match the
         // search query strongly (title contains key terms).
         const qLower = reflection.searchQuery.toLowerCase();
         const queryKeywords = qLower.split(/\s+/).filter(w => w.length > 3);
 
-        results.sort((a, b) => {
+        filtered.sort((a, b) => {
           // 1) Relevance score (title match count)
           const aTitle = (a.title ?? '').toLowerCase();
           const bTitle = (b.title ?? '').toLowerCase();
