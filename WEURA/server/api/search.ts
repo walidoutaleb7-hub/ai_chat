@@ -413,6 +413,52 @@ export type ClaimType =
   | 'scientific' | 'historical' | 'legal' | 'statistical'
   | 'news' | 'quote' | 'institutional' | 'sports' | 'general';
 
+export type TemporalIntent =
+  | 'current'
+  | 'recent'
+  | 'specific'
+  | 'historical'
+  | 'none';
+
+/**
+ * Detects the temporal intent of a query.
+ * - current   : today, now, latest → 30 days window
+ * - recent    : this month/year    → 180 days window
+ * - specific  : a specific year    → no filter (Tavily handles)
+ * - historical: old events         → no filter
+ * - none      : default
+ */
+export function detectTemporalIntent(query: string): TemporalIntent {
+  const q = query.toLowerCase();
+  const currentYear = new Date().getFullYear();
+
+  // 1) Strong "current" markers
+  if (/(اليوم|الآن|حالياً|حاليا|هذا\s*الأسبوع|آخر\s*أخبار|أحدث\s*أخبار|عاجل|آخر\s*تطورات|آخر\s*تطور|جديد|ا?حدث|breaking|today|right\s*now|latest|current|just\s*now)/i.test(q)) {
+    return 'current';
+  }
+
+  // 2) Historical markers
+  if (/(التاريخ|تاريخ\s+|قديماً|قديما|سابقاً|سابقا|في\s*الماضي|تاريخي|history|historical|ancient|in\s+the\s+past)/i.test(q)) {
+    return 'historical';
+  }
+
+  // 3) Specific year mentioned
+  const yearMatch = q.match(/\b(19\d{2}|20[0-3]\d)\b/);
+  if (yearMatch) {
+    const year = parseInt(yearMatch[1], 10);
+    if (year >= currentYear - 1) return 'current';
+    if (year <= currentYear - 5) return 'historical';
+    return 'specific';
+  }
+
+  // 4) Recent markers
+  if (/(هذا\s*العام|هذه\s*السنة|هذا\s*الشهر|recent|recently|this\s+year|this\s+month)/i.test(q)) {
+    return 'recent';
+  }
+
+  return 'none';
+}
+
 export function detectClaimType(query: string): ClaimType {
   const q = query.toLowerCase();
 
@@ -685,11 +731,24 @@ async function runSearch(
     search_depth: 'advanced',
   };
 
-  if (options.timeSensitive && !options.footballHistory) {
+  // ─── Temporal intent: adjust topic + days per question type ───
+  const temporal = detectTemporalIntent(query);
+
+  if (temporal === 'current') {
+    // "آخر أخبار" / "اليوم" → fresh news only (30 days)
     body.topic = 'news';
-    // Reduce window for current-fact questions: 60 days instead of 180.
-    // Long windows let old articles (e.g. previous managers) dominate
-    // and confuse Gemini's temporal reasoning.
+    body.days = 30;
+  } else if (temporal === 'recent') {
+    // "هذا العام" / "هذا الشهر" → recent news (180 days)
+    body.topic = 'news';
+    body.days = 180;
+  } else if (temporal === 'specific' || temporal === 'historical') {
+    // Specific year or historical question → general topic, no date filter
+    // (Tavily finds historical articles regardless of age)
+    body.topic = 'general';
+  } else if (options.timeSensitive && !options.footballHistory) {
+    // Fallback to legacy behavior
+    body.topic = 'news';
     body.days = options.football ? 60 : 60;
   } else {
     body.topic = 'general';
