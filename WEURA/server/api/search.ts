@@ -725,7 +725,7 @@ async function runSearch(
 
   const body: Record<string, unknown> = {
     query,
-    max_results: Math.min(limit, 10),
+    max_results: Math.min(limit, 20),
     include_answer: false,
     include_raw_content: needsRawContent,
     search_depth: 'advanced',
@@ -840,7 +840,7 @@ export async function searchTavily(
   limit: number = 6,
   options: SearchOptions = {},
 ): Promise<TavilyResult[]> {
-  const safeLimit = Math.min(Math.max(limit, 1), 10);
+  const safeLimit = Math.min(Math.max(limit, 1), 20);
   const cacheKey = `${query}|${safeLimit}|${JSON.stringify(options)}`;
   const now = Date.now();
 
