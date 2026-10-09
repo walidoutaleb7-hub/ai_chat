@@ -1,7 +1,7 @@
 import express from 'express';
 import crypto from 'crypto';
 import { askGrok, GrokMessage } from '../grok/grok';
-import { searchTavily, detectClaimType, ClaimType } from './search';
+import { searchTavily, detectClaimType, ClaimType, detectTemporalIntent } from './search';
 import {
   createRequestId,
   sanitizeMemory,
@@ -945,6 +945,46 @@ function pickTemperature(mode: string | null): number {
 function isMathOrFinancial(msg: string): boolean {
   const t = msg.toLowerCase();
   return /(احسب|احسبلي|كم يساوي|ناتج|معادلة|معدل|نسبة|سعر|ربح|خسارة|ضريبة|tva|فائدة|تكلفة|إيراد|percent|calculate|compute|interest|profit|tax|revenue|discount|percentile)/i.test(t);
+}
+
+/* ============================================================
+ *  CROSS-SOURCE AGREEMENT
+ *  Given search results, count unique domains and detect
+ *  how many independent sources agree on the main entities.
+ * ============================================================ */
+
+type SourceAgreement = {
+  uniqueDomains: number;
+  totalResults: number;
+  hasMultipleSources: boolean;
+  diversityLevel: 'high' | 'medium' | 'low';
+};
+
+function analyzeSourceAgreement(
+  results: Array<{ url: string; title: string; snippet: string }>,
+): SourceAgreement {
+  const domains = new Set<string>();
+
+  for (const r of results) {
+    try {
+      const host = new URL(r.url).hostname.replace(/^www\./, '');
+      domains.add(host);
+    } catch {
+      // ignore invalid URLs
+    }
+  }
+
+  const uniqueDomains = domains.size;
+  let diversityLevel: 'high' | 'medium' | 'low' = 'low';
+  if (uniqueDomains >= 6) diversityLevel = 'high';
+  else if (uniqueDomains >= 3) diversityLevel = 'medium';
+
+  return {
+    uniqueDomains,
+    totalResults: results.length,
+    hasMultipleSources: uniqueDomains >= 3,
+    diversityLevel,
+  };
 }
 
 /* ============================================================
