@@ -3150,6 +3150,94 @@ class _ChatScreenState extends State<ChatScreen>
     return _assistantMessage(colors, message, index, isLastAssistant);
   }
 
+  Future<void> _showUserMessageMenu(int index, WeuraColors colors) async {
+    if (index < 0 || index >= _messages.length) return;
+    final msg = _messages[index];
+    if (!msg.isUser) return;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: colors.surfaceAlt,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (sheetCtx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _menuTile(
+                  colors: colors,
+                  icon: Icons.copy_rounded,
+                  label: 'نسخ',
+                  onTap: () {
+                    Navigator.pop(sheetCtx);
+                    _copyMessage(msg.text);
+                    _showMessage('تم النسخ');
+                  },
+                ),
+                _menuTile(
+                  colors: colors,
+                  icon: Icons.edit_rounded,
+                  label: 'تعديل',
+                  onTap: () {
+                    Navigator.pop(sheetCtx);
+                    _editUserMessage(index, colors);
+                  },
+                ),
+                _menuTile(
+                  colors: colors,
+                  icon: Icons.share_outlined,
+                  label: 'مشاركة',
+                  onTap: () {
+                    Navigator.pop(sheetCtx);
+                    Share.share(msg.text);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _menuTile({
+    required WeuraColors colors,
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+          child: Row(
+            children: [
+              Icon(icon, color: colors.accentGlow, size: 22),
+              const SizedBox(width: 14),
+              Text(
+                label,
+                style: TextStyle(
+                  color: colors.textPrimary,
+                  fontSize: 15.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _userBubble(
     WeuraColors colors,
     _ChatMessage message,
@@ -3163,7 +3251,10 @@ class _ChatScreenState extends State<ChatScreen>
       child: GestureDetector(
         onLongPress: msgIndex == -1
             ? null
-            : () => _editUserMessage(msgIndex, colors),
+            : () => _showUserMessageMenu(msgIndex, colors),
+        onTap: msgIndex == -1
+            ? null
+            : () => _showUserMessageMenu(msgIndex, colors),
         child: Padding(
           padding: const EdgeInsets.only(
             bottom: 24,
