@@ -1758,21 +1758,26 @@ class _ChatScreenState extends State<ChatScreen>
   /// so a single jump lands partway.
   /// Instant + robust scroll to bottom.
   /// Uses jumpTo in a short burst (no timer, no animation).
+  bool _isAutoScrolling = false;
+
   Future<void> _scrollToBottomRepeated() async {
+    if (_isAutoScrolling) return;
     if (!_scrollController.hasClients) return;
+    _isAutoScrolling = true;
 
-    // Immediate jump
-    _scrollController.jumpTo(
-      _scrollController.position.maxScrollExtent,
-    );
-
-    // Wait one frame, jump again (handles lazy maxScrollExtent)
-    for (int i = 0; i < 10; i++) {
-      await Future<void>.delayed(const Duration(milliseconds: 30));
-      if (!mounted || !_scrollController.hasClients) return;
-      final pos = _scrollController.position;
-      if (pos.pixels >= pos.maxScrollExtent - 2) return;
-      _scrollController.jumpTo(pos.maxScrollExtent);
+    try {
+      // 20 iterations × 35ms ≈ 700ms of continuous jumping.
+      // No early return — we keep jumping because maxScrollExtent
+      // grows as ListView.builder renders new items.
+      for (int i = 0; i < 20; i++) {
+        if (!mounted || !_scrollController.hasClients) return;
+        _scrollController.jumpTo(
+          _scrollController.position.maxScrollExtent,
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 35));
+      }
+    } finally {
+      _isAutoScrolling = false;
     }
   }
 
@@ -2390,7 +2395,7 @@ class _ChatScreenState extends State<ChatScreen>
                         controller: _scrollController,
                         keyboardDismissBehavior:
                             ScrollViewKeyboardDismissBehavior.onDrag,
-                        padding: const EdgeInsets.fromLTRB(18, 22, 18, 24),
+                        padding: const EdgeInsets.fromLTRB(18, 22, 18, 100),
                         itemCount: _messages.length + (_isLoading ? 1 : 0),
                         itemBuilder: (context, index) {
                           if (_isLoading && index == _messages.length) {
@@ -2438,7 +2443,7 @@ class _ChatScreenState extends State<ChatScreen>
                     // ─── Scroll to bottom arrow ───
                     Positioned(
                       right: 20,
-                      top: -58,
+                      top: -100,
                       child: AnimatedScale(
                         scale: _showScrollArrow ? 1.0 : 0.0,
                         duration: const Duration(milliseconds: 180),
