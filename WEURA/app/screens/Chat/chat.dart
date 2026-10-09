@@ -2460,25 +2460,6 @@ class _ChatScreenState extends State<ChatScreen>
         ],
       ),
       extendBodyBehindAppBar: true,
-      floatingActionButton: _showScrollArrow
-          ? Padding(
-              padding: EdgeInsets.only(
-                bottom: 100 + MediaQuery.viewInsetsOf(context).bottom,
-              ),
-              child: FloatingActionButton(
-                mini: true,
-                backgroundColor: colors.accentGlow,
-                elevation: 4,
-                onPressed: _scrollToBottomRepeated,
-                child: Icon(
-                  Icons.keyboard_arrow_down_rounded,
-                  color: colors.background,
-                  size: 26,
-                ),
-              ),
-            )
-          : null,
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       body: Stack(
         children: [
           Positioned.fill(
@@ -2544,6 +2525,40 @@ class _ChatScreenState extends State<ChatScreen>
                         onStop: _cancelRequest,
                       ),
                     ),
+                    // ─── Scroll to bottom arrow ───
+                    Positioned(
+                      right: 20,
+                      top: -100,
+                      child: AnimatedScale(
+                        scale: _showScrollArrow ? 1.0 : 0.0,
+                        duration: const Duration(milliseconds: 180),
+                        curve: Curves.easeOutBack,
+                        child: AnimatedOpacity(
+                          opacity: _showScrollArrow ? 1.0 : 0.0,
+                          duration: const Duration(milliseconds: 150),
+                          child: Material(
+                            color: colors.accentGlow,
+                            shape: const CircleBorder(),
+                            elevation: 6,
+                            shadowColor:
+                                colors.accent.withValues(alpha: 0.55),
+                            child: InkWell(
+                              onTap: _scrollToBottomRepeated,
+                              customBorder: const CircleBorder(),
+                              child: Padding(
+                                padding: const EdgeInsets.all(10),
+                                child: Icon(
+                                  Icons.keyboard_arrow_down_rounded,
+                                  color: colors.background,
+                                  size: 26,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
