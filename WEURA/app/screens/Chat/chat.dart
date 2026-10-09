@@ -3066,6 +3066,94 @@ class _ChatScreenState extends State<ChatScreen>
     return _assistantMessage(colors, message, index, isLastAssistant);
   }
 
+  Future<void> _showUserMessageMenu(int index, WeuraColors colors) async {
+    if (index < 0 || index >= _messages.length) return;
+    final msg = _messages[index];
+    if (!msg.isUser) return;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: colors.surfaceAlt,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (sheetCtx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _menuTile(
+                  colors: colors,
+                  icon: Icons.copy_rounded,
+                  label: 'نسخ',
+                  onTap: () {
+                    Navigator.pop(sheetCtx);
+                    _copyMessage(msg.text);
+                    _showMessage('تم النسخ');
+                  },
+                ),
+                _menuTile(
+                  colors: colors,
+                  icon: Icons.edit_rounded,
+                  label: 'تعديل',
+                  onTap: () {
+                    Navigator.pop(sheetCtx);
+                    _editUserMessage(index, colors);
+                  },
+                ),
+                _menuTile(
+                  colors: colors,
+                  icon: Icons.share_outlined,
+                  label: 'مشاركة',
+                  onTap: () {
+                    Navigator.pop(sheetCtx);
+                    Share.share(msg.text);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _menuTile({
+    required WeuraColors colors,
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+          child: Row(
+            children: [
+              Icon(icon, color: colors.accentGlow, size: 22),
+              const SizedBox(width: 14),
+              Text(
+                label,
+                style: TextStyle(
+                  color: colors.textPrimary,
+                  fontSize: 15.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _userBubble(
     WeuraColors colors,
     _ChatMessage message,
@@ -3079,7 +3167,8 @@ class _ChatScreenState extends State<ChatScreen>
       child: GestureDetector(
         onLongPress: msgIndex == -1
             ? null
-            : () => _editUserMessage(msgIndex, colors),
+            : () => _showUserMessageMenu(msgIndex, colors),
+        onTap: msgIndex == -1 ? null : () => _showUserMessageMenu(msgIndex, colors),
         child: Padding(
           padding: const EdgeInsets.only(
             bottom: 24,
@@ -3152,14 +3241,9 @@ class _ChatScreenState extends State<ChatScreen>
                       const SizedBox(height: 10),
                   ],
                   if (message.text.trim().isNotEmpty)
-                    SelectableText(
-                      message.text,
-                      style: TextStyle(
-                        color: colors.userBubbleText,
-                        fontSize: 17,
-                        height: 1.55,
-                        letterSpacing: 0.1,
-                      ),
+                    _CollapsibleUserText(
+                      text: message.text,
+                      colors: colors,
                     ),
                 ],
               ),
@@ -3550,99 +3634,269 @@ class _ChatScreenState extends State<ChatScreen>
     final uri = Uri.tryParse(url);
     final domain = uri?.host ?? url;
     final path = uri?.path ?? '';
-    final displayDomain =
-        domain.startsWith('www.') ? domain.substring(4) : domain;
-    final letter =
-        displayDomain.isNotEmpty ? displayDomain[0].toUpperCase() : '?';
-    final color = _colorForDomain(displayDomain);
-    final shortPath =
-        path.length > 28 ? '${path.substring(0, 28)}...' : path;
+    final displayDomain = domain.startsWith('www.')
+        ? domain.substring(4)
+        : domain;
 
-    return Material(
-      color: colors.surface,
-      borderRadius: BorderRadius.circular(15),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(15),
-        onTap: () => _openUrl(url),
-        onLongPress: () => _copyMessage(url),
-        child: Container(
-          padding: const EdgeInsets.all(13),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(15),
-            border: Border.all(color: colors.border),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(11),
-                  border: Border.all(
-                    color: color.withValues(alpha: 0.30),
-                  ),
-                ),
-                child: Center(
-                  child: Text(
-                    letter,
-                    style: TextStyle(
-                      color: color,
-                      fontSize: 17,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
+    final type = _domainType(displayDomain);
+    final (icon, baseColor) = _iconForType(type);
+
+    final shortPath = path.length > 30
+        ? '${path.substring(0, 30)}...'
+        : path;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () => _openUrl(url),
+          onLongPress: () => _copyMessage(url),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  baseColor.withValues(alpha: 0.08),
+                  colors.surface,
+                ],
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: baseColor.withValues(alpha: 0.25),
+                width: 1,
+              ),
+            ),
+            child: Row(
+              children: [
+                // ─── Icon with number badge ───
+                Stack(
+                  clipBehavior: Clip.none,
                   children: [
-                    Text(
-                      displayDomain,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: colors.textPrimary,
-                        fontSize: 14.5,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    if (shortPath.isNotEmpty && shortPath != '/') ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        shortPath,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: colors.textMuted,
-                          fontSize: 11.5,
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            baseColor.withValues(alpha: 0.22),
+                            baseColor.withValues(alpha: 0.10),
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: baseColor.withValues(alpha: 0.35),
                         ),
                       ),
-                    ],
+                      child: Icon(icon, color: baseColor, size: 22),
+                    ),
+                    Positioned(
+                      top: -4,
+                      right: -4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 5,
+                          vertical: 1,
+                        ),
+                        decoration: BoxDecoration(
+                          color: baseColor,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: colors.background,
+                            width: 1.5,
+                          ),
+                        ),
+                        child: Text(
+                          '$index',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                width: 26,
-                height: 26,
-                decoration: BoxDecoration(
-                  color: colors.surfaceAlt,
-                  borderRadius: BorderRadius.circular(8),
+                const SizedBox(width: 12),
+                // ─── Text info ───
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              displayDomain,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: colors.textPrimary,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: -0.2,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 1,
+                            ),
+                            decoration: BoxDecoration(
+                              color: baseColor.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(5),
+                            ),
+                            child: Text(
+                              type,
+                              style: TextStyle(
+                                color: baseColor,
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.4,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (shortPath.isNotEmpty && shortPath != '/') ...[
+                        const SizedBox(height: 3),
+                        Text(
+                          shortPath,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: colors.textMuted,
+                            fontSize: 11.5,
+                            height: 1.2,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
-                child: Icon(
-                  Icons.arrow_outward_rounded,
-                  size: 15,
-                  color: colors.textSecondary,
+                const SizedBox(width: 8),
+                // ─── Open indicator ───
+                Container(
+                  width: 30,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    color: baseColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(9),
+                  ),
+                  child: Icon(
+                    Icons.arrow_outward_rounded,
+                    size: 16,
+                    color: baseColor,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
     );
+  }
+
+  /// Classify a domain into one of known types.
+  String _domainType(String domain) {
+    final d = domain.toLowerCase();
+    if (d.contains('wikipedia') || d.contains('wiki')) return 'wiki';
+    if (d.contains('reuters') ||
+        d.contains('apnews') ||
+        d.contains('bbc') ||
+        d.contains('cnn') ||
+        d.contains('aljazeera') ||
+        d.contains('guardian') ||
+        d.contains('nytimes') ||
+        d.contains('france24') ||
+        d.contains('lemonde')) {
+      return 'news';
+    }
+    if (d.endsWith('.gov') ||
+        d.contains('gov.') ||
+        d.contains('who.int') ||
+        d.contains('un.org') ||
+        d.contains('nasa.gov') ||
+        d.contains('unicef')) {
+      return 'official';
+    }
+    if (d.contains('statista') ||
+        d.contains('worldbank') ||
+        d.contains('ourworldindata') ||
+        d.contains('worldometers') ||
+        d.contains('census')) {
+      return 'stats';
+    }
+    if (d.contains('youtube') ||
+        d.contains('vimeo') ||
+        d.contains('dailymotion')) {
+      return 'video';
+    }
+    if (d.contains('nature.com') ||
+        d.contains('science.org') ||
+        d.contains('pubmed') ||
+        d.contains('ncbi') ||
+        d.contains('thelancet') ||
+        d.contains('nejm') ||
+        d.contains('arxiv') ||
+        d.contains('doi.org')) {
+      return 'science';
+    }
+    if (d.contains('github') ||
+        d.contains('stackoverflow') ||
+        d.contains('medium.com') ||
+        d.contains('dev.to')) {
+      return 'tech';
+    }
+    if (d.contains('twitter') ||
+        d.contains('x.com') ||
+        d.contains('facebook') ||
+        d.contains('instagram') ||
+        d.contains('tiktok')) {
+      return 'social';
+    }
+    if (d.contains('britannica') ||
+        d.contains('britishmuseum') ||
+        d.contains('louvre') ||
+        d.contains('history')) {
+      return 'ref';
+    }
+    return 'other';
+  }
+
+  /// Returns (icon, baseColor) for a given type.
+  (IconData, Color) _iconForType(String type) {
+    switch (type) {
+      case 'wiki':
+        return (Icons.menu_book_rounded, const Color(0xFF7E8CA0));
+      case 'news':
+        return (Icons.newspaper_rounded, const Color(0xFFE05252));
+      case 'official':
+        return (Icons.account_balance_rounded, const Color(0xFF4A7FE0));
+      case 'stats':
+        return (Icons.bar_chart_rounded, const Color(0xFF3BA776));
+      case 'video':
+        return (Icons.play_circle_fill_rounded, const Color(0xFFE53935));
+      case 'science':
+        return (Icons.science_rounded, const Color(0xFF8E5BD6));
+      case 'tech':
+        return (Icons.code_rounded, const Color(0xFFE08F3A));
+      case 'social':
+        return (Icons.alternate_email_rounded, const Color(0xFF4DB6E2));
+      case 'ref':
+        return (Icons.library_books_rounded, const Color(0xFFB89968));
+      default:
+        return (Icons.language_rounded, const Color(0xFF8E8E93));
+    }
   }
 
   Future<void> _openUrl(String url) async {
