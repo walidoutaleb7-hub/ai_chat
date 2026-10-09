@@ -902,17 +902,30 @@ function buildSearchContext(
     `\nGENERAL RULES:\n` +
     `1. Base facts ONLY on results above.\n` +
     `2. NEVER invent names, scores, dates, transfers, quotes.\n` +
-    `3. If not in results AND question is a CURRENT FACT →\n` +
-    `   "هذه المعلومة غير موجودة في المصادر المتاحة."\n` +
-    `   DO NOT use this for: identity/user/conversation/comparison/\n` +
-    `   opinion/analysis/how-to/career/coding questions.\n` +
+    `3. CURRENT FACTS (news, transfers, current role, price, match result):\n` +
+    `   ✓ If ANY source in SEARCH RESULTS mentions the answer → USE IT.\n` +
+    `   ✓ Even ONE source is enough for "current X" facts.\n` +
+    `   ✓ Prefer the NEWEST source when sources disagree.\n` +
+    `   ✓ IGNORE old sources about previous managers/roles.\n` +
+    `   ✗ Only refuse ("لم أتمكن من العثور") if NO source mentions it.\n` +
+    `   ✗ DO NOT use for: identity/user/comparison/opinion/analysis/\n` +
+    `     how-to/career/coding questions.\n` +
     `4. Cite ONLY numbers that exist ([1], [2]...).\n` +
     `5. "المصادر:" section at end ONLY if you cited.\n` +
     `6. Match user's language. Start with answer. Use Markdown.\n` +
     `7. If sources disagree → use the NEWEST one.\n` +
     `8. DATE FILTER: for "current X" → sources older than 12 months are WRONG.\n` +
     `9. NEVER mix information from different time periods.\n` +
-    `10. Write a NATURAL answer in prose/markdown. NEVER output raw JSON, tool calls, or keys like {"query":...}, {"recency_days":...}, {"max_results":...}. If you do, the response will be discarded.\n` +
+    `10. SOURCES SECTION (MANDATORY when you cite [N]):\n` +
+    `  • At the END of your answer, add a section called "## المصادر" (Arabic) or "## Sources" (English).\n` +
+    `  • Under it, list every [N] you used, with its URL from the SEARCH RESULTS.\n` +
+    `  • Format: "[N] <source title> — <URL>"\n` +
+    `  • Example:\n` +
+    `    ## المصادر\n` +
+    `    [1] Reuters — https://www.reuters.com/...\n` +
+    `    [4] Britannica — https://www.britannica.com/...\n` +
+    `  • If you did NOT cite any [N], do NOT add this section.\n\n` +
+    `11. Write a NATURAL answer in prose/markdown. NEVER output raw JSON, tool calls, or keys like {"query":...}, {"recency_days":...}, {"max_results":...}. If you do, the response will be discarded.\n` +
     `11. CROSS-SOURCE: If sources give DIFFERENT numbers/dates/names → SHOW the disagreement ("مصدر X يقول... ومصدر Y يقول..."). NEVER pick one arbitrarily.\n` +
     `12. CITATION VALIDATION: Only cite [N] if source N's content actually contains the claim. Do NOT invent page numbers, DOIs, quotes, or details not in the snippet.\n` +
     `13. "لم أجد في المصادر" ≠ "لا يوجد". Keep these strictly distinct.\n` +
