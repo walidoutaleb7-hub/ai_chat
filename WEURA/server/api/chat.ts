@@ -700,7 +700,18 @@ function buildSoulBlock(): string {
     `═══ OUTPUT FORMAT ═══\n` +
     `- Creative writing (مقال/قصة/قصيدة/رسالة) → wrap in \`\`\`writing block.\n` +
     `- Dialogue (حوار/محادثة between X and Y) → wrap in \`\`\`dialogue block.\n` +
-    `- Code → \`\`\`language block + brief explanation.\n` +
+    `- Code → \`\`\`language block + brief explanation.\n\n` +
+
+    `═══ TECHNIQUE DEMOS (encryption, algorithms, etc.) ═══\n` +
+    `When user asks you to WRITE something USING a technique (encryption,\n` +
+    `binary, base64, cipher):\n` +
+    `  ✗ Do NOT output the full encoded/obfuscated version as the answer.\n` +
+    `  ✓ Output the READABLE content first, then add a SHORT demo (max 3\n` +
+    `    lines) of the technique at the very end.\n` +
+    `Example — user: "اكتبلي تعليمات واستعمل بزاف تشفير"\n` +
+    `  ✓ Correct: Instructions in Arabic as normal text. Then last line:\n` +
+    `    "Demo (Base64): SGVsbG8=" or "Demo (Binary): 01001000 01101001"\n` +
+    `  ✗ Wrong: Output the whole response as binary/base64 blocks.\n\n` +
     `- Regular answers → markdown prose.\n\n` +
 
     `═══ STYLE ═══\n` +
@@ -1303,9 +1314,35 @@ function countEmojis(text: string): number {
   return matches ? matches.length : 0;
 }
 
+/* ============================================================
+ *  SUB-QUESTION DETECTION
+ *  Detects numbered/multi-part questions in the user message.
+ * ============================================================ */
+
+function countSubQuestions(msg: string): number {
+  // Patterns:
+  //   1. / 2. / 3.
+  //   1- / 2- / 3-
+  //   1) / 2) / 3)
+  //   أ) / ب) / ج)
+  //   أولاً / ثانياً / ثالثاً
+  //   - نقطة / * نقطة
+  const numbered = msg.match(/(?:^|\n)\s*(?:\d+[\.\-)]|[أ-ي][\.\-)]|[-*•])\s+/gm);
+  const ordinals = msg.match(/(?:أولاً|ثانياً|ثالثاً|رابعاً|خامساً|سادساً|سابعاً|ثامناً|تاسعاً|عاشراً|first|second|third|fourth|fifth)/gi);
+  const questionMarks = (msg.match(/[؟?]/g) || []).length;
+
+  // Best estimate: max of (numbered items, ordinals, question marks)
+  return Math.max(numbered ? numbered.length : 0, ordinals ? ordinals.length : 0, questionMarks);
+}
+
+
+
+
+
 function validateCompliance(
   response: string,
   constraints: Constraint[],
+  userMessage: string = '',
 ): Violation[] {
   const violations: Violation[] = [];
 
@@ -1371,6 +1408,27 @@ function validateCompliance(
     }
   }
 
+  // Multi-part completeness check:
+  // If user asked N numbered questions, response must mention at least N items.
+  const subQs = countSubQuestions(userMessage);
+  if (subQs >= 3) {
+    const responseItems = (response.match(
+      /(?:^|\n)\s*(?:\d+[\.\-)]|[أ-ي][\.\-)]|[-*•])\s+/gm,
+    ) || []).length;
+    if (responseItems < subQs - 1) {
+      violations.push({
+        constraint: {
+          kind: 'count',
+          type: 'sub_questions',
+          value: subQs,
+          raw: `${subQs} sub-questions`,
+        },
+        message: `User asked ${subQs} numbered questions, but response appears to address only ${responseItems}. Answer EVERY item explicitly (numbered 1, 2, 3...).`,
+      });
+    }
+  }
+
+  // Multi-part completeness check
   return violations;
 }
 
