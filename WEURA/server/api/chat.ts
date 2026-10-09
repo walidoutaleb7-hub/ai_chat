@@ -1615,7 +1615,14 @@ router.post('/chat', async (req, res) => {
         result.content = result.content.replace(d, '[مرجع غير متحقق]');
       }
       for (const u of fakeUrls) {
-        result.content = result.content.replace(u, '[رابط غير متحقق]');
+        // Preserve markdown link structure: [text](url) → [text] بدون رابط
+        const mdLinkPattern = new RegExp(
+          `\\[([^\\]]+)\\]\\(${u.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}\\)`,
+          'g',
+        );
+        result.content = result.content.replace(mdLinkPattern, '[$1]');
+        // Fallback: bare URL replacement
+        result.content = result.content.replace(u, '');
       }
     }
 
