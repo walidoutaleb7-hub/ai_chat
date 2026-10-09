@@ -633,7 +633,14 @@ function buildSoulBlock(): string {
     `- NEVER say you were made by OpenAI, Google, Meta, Anthropic, xAI.\n` +
     `- NEVER claim to be GPT, Claude, Gemini, Llama, or any public model.\n\n` +
 
-    `═══ MULTI-PERSONALITY SYSTEM (adapt to context) ═══\n` +
+    `═══ ANSWER WITH CONFIDENCE (critical) ═══\n` +
+    `When SEARCH RESULTS explicitly state a name/answer for a "current"\n` +
+    `question, USE IT without hesitation. Do not hedge.\n` +
+    `Example: results say "José Mourinho confirmed as Real Madrid manager" →\n` +
+    `answer: "المدرب الحالي لريال مدريد هو جوزيه مورينيو."\n` +
+    `No "لم أتمكن من العثور". No "المصادر لم تؤكد". Just answer.\n\n` +
+
+`═══ MULTI-PERSONALITY SYSTEM (adapt to context) ═══\n` +
     `You have 6 personalities. Pick automatically based on the user's need.\n\n` +
 
     `1) 🧑‍🤝‍🧑 COMPANION (default) — when user chats, shares feelings, casual talk.\n` +
@@ -943,15 +950,17 @@ function buildSearchContext(
     `7. If sources disagree → use the NEWEST one.\n` +
     `8. DATE FILTER: for "current X" → sources older than 12 months are WRONG.\n` +
     `9. NEVER mix information from different time periods.\n` +
-    `10. SOURCES SECTION (MANDATORY when you cite [N]):\n` +
-    `  • At the END of your answer, add a section called "## المصادر" (Arabic) or "## Sources" (English).\n` +
-    `  • Under it, list every [N] you used, with its URL from the SEARCH RESULTS.\n` +
-    `  • Format: "[N] <source title> — <URL>"\n` +
-    `  • Example:\n` +
+    `10. SOURCES SECTION (MANDATORY - STRICT):\n` +
+    `  • At the END of your answer, add "## المصادر".\n` +
+    `  • For EACH [N] you cited, you MUST include the EXACT URL.\n` +
+    `  • Format: "[N] <source title> — <URL from SEARCH RESULTS>"\n` +
+    `  • CRITICAL: If you do NOT include the URL → the answer is INVALID.\n` +
+    `  • DO NOT write "[N] Reuters — " with empty URL.\n` +
+    `  • Example (correct):\n` +
     `    ## المصادر\n` +
-    `    [1] Reuters — https://www.reuters.com/...\n` +
-    `    [4] Britannica — https://www.britannica.com/...\n` +
-    `  • If you did NOT cite any [N], do NOT add this section.\n\n` +
+    `    [4] The New York Times — https://www.nytimes.com/2026/...\n` +
+    `    [7] Reuters — https://www.reuters.com/world/...\n` +
+    `  • If you cannot find the exact URL for [N] → omit that source.\n\n` +
     `11. Write a NATURAL answer in prose/markdown. NEVER output raw JSON, tool calls, or keys like {"query":...}, {"recency_days":...}, {"max_results":...}. If you do, the response will be discarded.\n` +
     `11. CROSS-SOURCE: If sources give DIFFERENT numbers/dates/names → SHOW the disagreement ("مصدر X يقول... ومصدر Y يقول..."). NEVER pick one arbitrarily.\n` +
     `12. CITATION VALIDATION: Only cite [N] if source N's content actually contains the claim. Do NOT invent page numbers, DOIs, quotes, or details not in the snippet.\n` +
@@ -1218,8 +1227,13 @@ async function buildMessages(
 
   const history = safeMessages.slice(-MAX_HISTORY_MESSAGES);
 
-  for (const msg of history) {
-    const content = msg.content.length > MAX_HISTORY_CHARS
+  // Do NOT truncate the LAST message — the AI must read it fully,
+  // even if it's thousands of lines. Only older messages get trimmed.
+  const lastIdx = history.length - 1;
+  for (let i = 0; i < history.length; i++) {
+    const msg = history[i];
+    const isLast = i === lastIdx;
+    const content = (!isLast && msg.content.length > MAX_HISTORY_CHARS)
       ? msg.content.slice(0, MAX_HISTORY_CHARS) + '...'
       : msg.content;
     out.push({ role: msg.role, content });

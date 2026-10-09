@@ -59,7 +59,7 @@ class _CollapsibleUserText extends StatefulWidget {
 }
 
 class _CollapsibleUserTextState extends State<_CollapsibleUserText> {
-  static const int _threshold = 150;
+  static const int _threshold = 1000;
   bool _expanded = false;
 
   @override
