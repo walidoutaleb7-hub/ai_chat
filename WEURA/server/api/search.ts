@@ -431,10 +431,10 @@ export function detectClaimType(query: string): ClaimType {
   if (/(quote|said|statement|اقتباس|قال|صرح|بيان)/.test(q)) {
     return 'quote';
   }
-  if (/(official|government|ministry|رسمي|حكومة|وزارة|مؤسسة)/.test(q)) {
+  if (/(official|government|ministry|president|prime\s*minister|minister|king|emir|رسمي|حكومة|وزارة|مؤسسة|رئيس\s*(الجمهورية|الوزراء|الدولة)?|وزير|ملك|أمير)/.test(q)) {
     return 'institutional';
   }
-  if (/(match|player|club|league|مباراة|لاعب|نادي|دوري|بطولة)/.test(q)) {
+  if (/(match|player|club|league|manager|coach|transfer|striker|goalkeeper|referee|championship|tournament|world\s*cup|cup|fixture|goal|مباراة|لاعب|نادي|دوري|بطولة|مدرب|انتقال|منتخب|هداف|حارس|حكم|كأس\s*العالم|كأس|ترتيب\s*(الدوري|الفرق)|دوري\s*أبطال|تصفيات)/.test(q)) {
     return 'sports';
   }
   if (/(news|latest|breaking|آخر|عاجل|اليوم|الآن)/.test(q)) {
