@@ -139,7 +139,7 @@ const GOV_INTL = [
 
 const GOV_HEALTH = [
   'who.int', 'cdc.gov', 'nih.gov', 'fda.gov', 'ema.europa.eu',
-  'nhs.uk', 'gov.uk/government', 'health.gov', 'mayoclinic.org',
+  'nhs.uk', 'gov.uk', 'health.gov', 'mayoclinic.org',
   'clevelandclinic.org', 'hopkinsmedicine.org',
 ];
 
@@ -232,7 +232,7 @@ const HISTORY_SOURCES = [
 
 // ─── Legal ────────────────────────────────────────────────
 const LEGAL_SOURCES = [
-  'legifrance.gouv.fr', 'eur-lex.europa.eu', 'un.org/en/sections/',
+  'legifrance.gouv.fr', 'eur-lex.europa.eu', 'un.org',
   'law.cornell.edu', 'supremecourt.gov', 'congress.gov',
   'icj-cij.org', 'icc-cpi.int', 'echr.coe.int',
   'joradp.dz',
@@ -267,7 +267,7 @@ const TECH_SOURCES = [
   'github.com', 'stackoverflow.com', 'developer.mozilla.org',
   'flutter.dev', 'dart.dev', 'pub.dev', 'docs.flutter.dev',
   'nodejs.org', 'python.org', 'rust-lang.org', 'golang.org',
-  'microsoft.com', 'apple.com/developer', 'aws.amazon.com',
+  'microsoft.com', 'apple.com', 'aws.amazon.com',
   'cloud.google.com', 'azure.microsoft.com',
 ];
 
@@ -290,6 +290,62 @@ const ALL_TRUSTED_SOURCES = new Set<string>([
   ...SPORTS_OFFICIAL, ...SPORTS_STATS,
   ...TECH_SOURCES,
 ]);
+
+/* ============================================================
+ *  STARTUP VALIDATION — run once when server boots.
+ *  Verifies all trusted lists contain plain domains only.
+ * ============================================================ */
+
+function validateTrustedLists(): void {
+  const lists: Record<string, string[]> = {
+    TRUSTED_GENERAL,
+    TRUSTED_FOOTBALL,
+    TRUSTED_TECH,
+    SCI_PUBMED,
+    SCI_JOURNALS,
+    SCI_PREPRINTS,
+    SCI_DATABASES,
+    UNIVERSITIES,
+    GOV_INTL,
+    GOV_HEALTH,
+    GOV_SPACE,
+    GOV_SCIENCE,
+    GOV_ALGERIA,
+    GOV_ARAB,
+    REFERENCE,
+    NEWS_AGENCIES,
+    NEWS_GLOBAL,
+    NEWS_TECH,
+    NEWS_SCIENCE,
+    ARABIC_NEWS,
+    ARABIC_ALGERIA,
+    ISLAMIC_SOURCES,
+    HISTORY_SOURCES,
+    LEGAL_SOURCES,
+    STAT_SOURCES,
+    SPORTS_OFFICIAL,
+    SPORTS_STATS,
+    TECH_SOURCES,
+  };
+
+  const invalid: string[] = [];
+  for (const [name, list] of Object.entries(lists)) {
+    for (const d of list) {
+      if (INVALID_DOMAIN_CHARS.test(d)) {
+        invalid.push(`${name}: "${d}"`);
+      }
+    }
+  }
+
+  if (invalid.length > 0) {
+    console.error('[WEURA] ⚠️  Invalid include_domains detected at startup:');
+    for (const item of invalid) console.error(`  - ${item}`);
+  } else {
+    console.log('[WEURA] ✅ All trusted domain lists contain plain domains only');
+  }
+}
+
+
 
 export function isTrustedDomain(url: string): boolean {
   try {
@@ -475,6 +531,45 @@ function buildDomainList(options: SearchOptions): string[] | null {
 }
 
 /* ============================================================
+ *  DOMAIN SANITIZER — Tavily does NOT accept:
+ *    - wildcards (*)
+ *    - paths (/xxx)
+ *    - query strings (?xxx)
+ *    - fragments (#xxx)
+ *  This helper filters out invalid entries and logs a warning.
+ * ============================================================ */
+
+const INVALID_DOMAIN_CHARS = /[/?*#]/;
+
+export function sanitizeDomains(
+  domains: string[],
+  requestId: string = '-',
+): string[] {
+  const clean: string[] = [];
+  const seen = new Set<string>();
+
+  for (const raw of domains) {
+    if (typeof raw !== 'string') continue;
+    const trimmed = raw.trim().toLowerCase();
+    if (trimmed.length === 0) continue;
+
+    if (INVALID_DOMAIN_CHARS.test(trimmed)) {
+      console.warn(
+        `[WEURA][${requestId}] Dropped invalid include_domain: "${trimmed}" (contains one of / ? * #)`,
+      );
+      continue;
+    }
+
+    if (seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    clean.push(trimmed);
+  }
+
+  return clean;
+}
+
+
+/* ============================================================
  *  DuckDuckGo FALLBACK
  *  Free, no API key, no quota. Used when Tavily fails or
  *  returns no results.
@@ -597,8 +692,15 @@ async function runSearch(
     body.topic = 'general';
   }
 
-  const domains = buildDomainList(options);
-  if (domains) body.include_domains = domains;
+  const rawDomains = buildDomainList(options);
+  const domains = rawDomains ? sanitizeDomains(rawDomains) : null;
+  if (domains && domains.length > 0) {
+    body.include_domains = domains;
+  } else if (rawDomains && rawDomains.length > 0 && domains && domains.length === 0) {
+    console.warn(
+      '[WEURA] All include_domains were filtered out by sanitizer; sending request without include_domains.',
+    );
+  }
 
   // ── Helper to run a single Tavily call ──────────────────
   async function callTavily(reqBody: Record<string, unknown>) {
@@ -780,5 +882,8 @@ router.get('/search', async (req, res) => {
     });
   }
 });
+
+// Validate all trusted domain lists at module init.
+validateTrustedLists();
 
 export default router;
