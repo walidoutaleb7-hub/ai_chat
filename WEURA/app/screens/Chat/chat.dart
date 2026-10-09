@@ -2460,6 +2460,25 @@ class _ChatScreenState extends State<ChatScreen>
         ],
       ),
       extendBodyBehindAppBar: true,
+      floatingActionButton: _showScrollArrow
+          ? Padding(
+              padding: EdgeInsets.only(
+                bottom: 100 + MediaQuery.viewInsetsOf(context).bottom,
+              ),
+              child: FloatingActionButton(
+                mini: true,
+                backgroundColor: colors.accentGlow,
+                elevation: 4,
+                onPressed: _scrollToBottomRepeated,
+                child: Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  color: colors.background,
+                  size: 26,
+                ),
+              ),
+            )
+          : null,
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       body: Stack(
         children: [
           Positioned.fill(
