@@ -87,6 +87,7 @@ class _ChatScreenState extends State<ChatScreen>
   AIMode _mode = AIMode.auto;
   bool _isLoading = false;
   bool _showScrollArrow = false;
+  bool _userAtBottom = true;
   bool _requestCancelled = false;
   bool _isFootballQuestion = false;
   ChatSession? _session;
@@ -132,6 +133,11 @@ class _ChatScreenState extends State<ChatScreen>
     if (!_scrollController.hasClients) return;
     final pos = _scrollController.position;
     final distanceFromBottom = pos.maxScrollExtent - pos.pixels;
+
+    // Track whether the user is (close to) the bottom.
+    final atBottom = distanceFromBottom < 80;
+    _userAtBottom = atBottom;
+
     final shouldShow = distanceFromBottom > 250;
     if (shouldShow != _showScrollArrow) {
       setState(() => _showScrollArrow = shouldShow);
@@ -381,18 +387,11 @@ class _ChatScreenState extends State<ChatScreen>
     } catch (_) {}
   }
 
+  /// Called while AI is streaming. Only follows if the user is
+  /// already near the bottom. Never drags them.
   void _autoScrollDuringTyping() {
-    if (!_scrollController.hasClients) return;
-
-    // Always follow the AI as it types. Defer to next frame to
-    // avoid feedback loops (which caused shaking before).
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_scrollController.hasClients) return;
-      final p2 = _scrollController.position;
-      if (p2.pixels < p2.maxScrollExtent) {
-        _scrollController.jumpTo(p2.maxScrollExtent);
-      }
-    });
+    if (!_userAtBottom) return;
+    _scrollToBottom(animated: false, force: false);
   }
 
   Future<void> _editUserMessage(int index, WeuraColors colors) async {
@@ -1775,37 +1774,47 @@ class _ChatScreenState extends State<ChatScreen>
     if (_isAutoScrolling) return;
     if (!_scrollController.hasClients) return;
     _isAutoScrolling = true;
+    _userAtBottom = true;
 
     try {
-      // 20 iterations × 35ms ≈ 700ms of continuous jumping.
-      // No early return — we keep jumping because maxScrollExtent
-      // grows as ListView.builder renders new items.
-      for (int i = 0; i < 20; i++) {
+      for (int i = 0; i < 12; i++) {
         if (!mounted || !_scrollController.hasClients) return;
-        _scrollController.jumpTo(
+        _scrollController.animateTo(
           _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
         );
-        await Future<void>.delayed(const Duration(milliseconds: 35));
+        await Future<void>.delayed(const Duration(milliseconds: 180));
       }
     } finally {
       _isAutoScrolling = false;
     }
   }
 
-  void _scrollToBottom({bool animated = true}) {
+  void _scrollToBottom({bool animated = true, bool force = true}) {
+    // Two post-frame callbacks: the first ensures the new message
+    // is laid out; the second catches the final maxScrollExtent
+    // after lazy list expansion.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollController.hasClients) return;
-      final maxExtent = _scrollController.position.maxScrollExtent;
 
-      // Don't force-scroll if user scrolled up manually.
-      final distanceFromBottom = maxExtent - _scrollController.position.pixels;
-      if (distanceFromBottom > 400) return;
+      // Respect user position unless explicitly forced.
+      if (!force && !_userAtBottom) return;
+
+      final maxExtent = _scrollController.position.maxScrollExtent;
+      final distanceFromBottom =
+          maxExtent - _scrollController.position.pixels;
+
+      // If user scrolled far up and not forced → skip.
+      if (!force && distanceFromBottom > 400) return;
+
+      _userAtBottom = true;
 
       if (animated) {
         _scrollController.animateTo(
           maxExtent,
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOutCubic,
         );
       } else {
         _scrollController.jumpTo(maxExtent);

@@ -3,8 +3,8 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
 import '../../../core/Theme/weura_theme.dart';
 
-/// Renders Markdown progressively with a typing animation
-/// and a blinking cursor.
+/// Renders Markdown instantly (formatted) with a glowing cursor that
+/// disappears after a short delay — mimicking Gemini/ChatGPT streaming.
 class TypedMarkdown extends StatefulWidget {
   const TypedMarkdown({
     super.key,
@@ -29,117 +29,38 @@ class TypedMarkdown extends StatefulWidget {
 
 class _TypedMarkdownState extends State<TypedMarkdown>
     with TickerProviderStateMixin {
-  late AnimationController _controller;
-  late AnimationController _cursorController;
-  late String _visibleText = '';
-  bool _done = false;
-  bool _controllerReady = false;
+  late final AnimationController _fadeController;
+  late final AnimationController _cursorController;
 
-  // Renders images inside Markdown with rounded corners + shadow.
-  Widget _buildMarkdownImage(
-    WeuraColors colors,
-    Uri uri,
-    String? title,
-    String? alt,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          decoration: BoxDecoration(
-            boxShadow: [
-              BoxShadow(
-                color: colors.accentGlow.withValues(alpha: 0.20),
-                blurRadius: 18,
-                spreadRadius: 1,
-              ),
-            ],
-          ),
-          child: Image.network(
-            uri.toString(),
-            fit: BoxFit.cover,
-            loadingBuilder: (_, child, progress) {
-              if (progress == null) return child;
-              return Container(
-                height: 200,
-                color: colors.surfaceAlt,
-                child: Center(
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: colors.accentGlow,
-                  ),
-                ),
-              );
-            },
-            errorBuilder: (_, __, ___) => Container(
-              height: 120,
-              color: colors.surfaceAlt,
-              child: Center(
-                child: Icon(
-                  Icons.broken_image_outlined,
-                  color: colors.textFaint,
-                  size: 32,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  bool _showCursor = true;
 
   @override
   void initState() {
     super.initState();
 
+    _fadeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 220),
+    );
+
     _cursorController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1200),
-    );
-    _cursorController.value = 0.7;
-    _cursorController.repeat(reverse: true);
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
 
-    _startTyping(widget.fullText);
-  }
+    _fadeController.forward();
 
-  void _startTyping(String text) {
-    if (_controllerReady) {
-      _controller.removeListener(_onTick);
-      _controller.dispose();
-    }
-
-    final len = text.length;
-
-    if (len > 4000) {
-      _visibleText = text;
-      _done = true;
-      _controller = AnimationController(vsync: this);
-      _controllerReady = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        widget.onComplete?.call();
-      });
-      _cursorController.stop();
-      return;
-    }
-
-    final durationMs = (len * 8).clamp(300, 3000);
-
-    _controller = AnimationController(
-      vsync: this,
-      duration: Duration(milliseconds: durationMs),
-    );
-    _controllerReady = true;
-
-    _visibleText = '';
-    _done = false;
-
-    _controller.addListener(_onTick);
-    _controller.forward().whenComplete(() {
+    // Hide the cursor after a short delay (feels like "done typing").
+    Future.delayed(const Duration(milliseconds: 1400), () {
       if (!mounted) return;
-      _done = true;
+      setState(() => _showCursor = false);
       _cursorController.stop();
       widget.onComplete?.call();
+    });
+
+    // Notify parent once so it can adjust scroll.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      widget.onTick?.call();
     });
   }
 
@@ -147,112 +68,78 @@ class _TypedMarkdownState extends State<TypedMarkdown>
   void didUpdateWidget(covariant TypedMarkdown oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.fullText != widget.fullText) {
-      _startTyping(widget.fullText);
-      if (mounted) setState(() {});
+      // New content → show cursor briefly again.
+      setState(() => _showCursor = true);
+      _cursorController.repeat(reverse: true);
+      Future.delayed(const Duration(milliseconds: 1200), () {
+        if (!mounted) return;
+        setState(() => _showCursor = false);
+        _cursorController.stop();
+        widget.onComplete?.call();
+      });
     }
-  }
-
-  String _stripUrls(String text) {
-    return text.replaceAllMapped(
-      RegExp(r'\[(\d+)\]\([^)]*\)'),
-      (m) => '[${m[1]}]',
-    );
-  }
-
-  void _onTick() {
-    // Use runes instead of code units to avoid splitting emoji or
-    // Arabic letters + combining marks during the typing animation.
-    final fullRunes = widget.fullText.runes.toList();
-    final total = fullRunes.length;
-    if (total == 0) return;
-
-    final count = (_controller.value * total).floor().clamp(0, total);
-    final nextVisible =
-        String.fromCharCodes(fullRunes.take(count));
-    if (nextVisible == _visibleText) return;
-
-    setState(() {
-      _visibleText = nextVisible;
-    });
-
-    widget.onTick?.call();
   }
 
   @override
   void dispose() {
-    _controller.removeListener(_onTick);
-    _controller.dispose();
+    _fadeController.dispose();
     _cursorController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_done) {
-      return MarkdownBody(
-        data: _visibleText,
-        selectable: true,
-        styleSheet: widget.styleSheet,
-        builders: widget.builders,
-        imageBuilder: widget.imageBuilder ??
-            ((uri, title, alt) => _buildMarkdownImage(
-                  WeuraColors.of(context),
-                  uri,
-                  title,
-                  alt,
-                )),
-      );
-    }
-
-    final baseStyle = widget.styleSheet.p ??
-        const TextStyle(fontSize: 17, height: 1.85);
     final colors = WeuraColors.of(context);
 
-    return AnimatedBuilder(
-      animation: _cursorController,
-      builder: (context, _) {
-        final t = _cursorController.value;
-        return RichText(
-          text: TextSpan(
-            style: baseStyle,
-            children: [
-              TextSpan(text: _stripUrls(_visibleText)),
-              WidgetSpan(
-                alignment: PlaceholderAlignment.middle,
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 4),
-                  child: Opacity(
-                    opacity: 0.55 + (t * 0.45),
+    return FadeTransition(
+      opacity: _fadeController,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          MarkdownBody(
+            data: widget.fullText,
+            selectable: true,
+            styleSheet: widget.styleSheet,
+            builders: widget.builders,
+            imageBuilder: widget.imageBuilder,
+          ),
+          if (_showCursor)
+            Padding(
+              padding: const EdgeInsets.only(top: 6, left: 2),
+              child: AnimatedBuilder(
+                animation: _cursorController,
+                builder: (context, _) {
+                  final t = _cursorController.value;
+                  return Opacity(
+                    opacity: 0.35 + (t * 0.55),
                     child: Container(
-                      width: 3,
-                      height: 22,
+                      width: 34,
+                      height: 3,
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
                           colors: [
+                            colors.accentGlow.withValues(alpha: 0.0),
                             colors.accentGlow,
-                            colors.accentGlow.withValues(alpha: 0.5),
+                            colors.accentGlow.withValues(alpha: 0.0),
                           ],
                         ),
-                        borderRadius: BorderRadius.circular(2.5),
+                        borderRadius: BorderRadius.circular(2),
                         boxShadow: [
                           BoxShadow(
                             color: colors.accentGlow
                                 .withValues(alpha: 0.7 * t),
-                            blurRadius: 10,
-                            spreadRadius: 1.5,
+                            blurRadius: 8,
+                            spreadRadius: 1,
                           ),
                         ],
                       ),
                     ),
-                  ),
-                ),
+                  );
+                },
               ),
-            ],
-          ),
-        );
-      },
+            ),
+        ],
+      ),
     );
   }
 }
