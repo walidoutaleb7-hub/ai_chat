@@ -4,8 +4,6 @@ const router = express.Router();
 
 const BASE = 'https://www.thesportsdb.com/api/v1/json/3';
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const CEREBRAS_API_URL = 'https://api.cerebras.ai/v1/chat/completions';
 const TAVILY_URL = 'https://api.tavily.com/search';
 
 /* ============================================================
