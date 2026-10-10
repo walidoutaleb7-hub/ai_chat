@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter_highlight/themes/atom-one-dark.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:markdown/markdown.dart' as md;
 import 'package:share_plus/share_plus.dart';
-import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../../core/Theme/weura_theme.dart';
-
+import 'dialogue_block.dart';
+import 'latex_block.dart';
+import 'writing_block.dart';
 
 class CodeBlockBuilder extends MarkdownElementBuilder {
   CodeBlockBuilder({required this.colors});
