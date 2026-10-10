@@ -7,6 +7,7 @@ import 'package:markdown/markdown.dart' as md;
 import 'package:share_plus/share_plus.dart';
 
 import '../../../core/Theme/weura_theme.dart';
+import '../widgets/inline_image.dart';
 import 'compare_block.dart';
 import 'diagram_block.dart';
 import 'dialogue_block.dart';
@@ -16,9 +17,13 @@ import 'timeline_block.dart';
 import 'writing_block.dart';
 
 class CodeBlockBuilder extends MarkdownElementBuilder {
-  CodeBlockBuilder({required this.colors});
+  CodeBlockBuilder({
+    required this.colors,
+    required this.serverUrl,
+  });
 
   final WeuraColors colors;
+  final String serverUrl;
 
   @override
   Widget? visitElementAfter(md.Element element, TextStyle? preferredStyle) {
@@ -75,6 +80,15 @@ class CodeBlockBuilder extends MarkdownElementBuilder {
         colors: colors,
         onCopy: () => Clipboard.setData(ClipboardData(text: code)),
         onShare: () => Share.share(code),
+      );
+    }
+
+    // Inline image request
+    if (language == 'inline-image' || language == 'img') {
+      return InlineImage(
+        query: code.trim(),
+        serverUrl: serverUrl,
+        colors: colors,
       );
     }
 

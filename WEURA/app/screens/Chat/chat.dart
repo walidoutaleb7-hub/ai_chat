@@ -2949,6 +2949,19 @@ class _ChatScreenState extends State<ChatScreen>
 
   /// Converts inline [N] references to markdown links pointing
   /// to the actual source URLs so they render as tappable icons.
+  /// Converts [[IMG: query]] markup into a fenced ```inline-image block
+  /// so the Markdown parser renders an actual image instead of raw text.
+  String _preprocessInlineImages(String text) {
+    return text.replaceAllMapped(
+      RegExp(r'\[\[IMG:\s*([^\]]+?)\]\]', caseSensitive: false),
+      (m) {
+        final query = m.group(1)!.trim();
+        if (query.isEmpty) return '';
+        return '\n\n```inline-image\n$query\n```\n\n';
+      },
+    );
+  }
+
   String _linkifySourceRefs(String text, List<String> sources) {
     if (sources.isEmpty) {
       // No sources at all → strip [N] markers to keep the text clean.
@@ -3600,9 +3613,10 @@ class _ChatScreenState extends State<ChatScreen>
     final mainText = parsed.$1;
     final sources = parsed.$2;
 
+    final withImages = _preprocessInlineImages(mainText);
     final linkedText = sources.isNotEmpty
-        ? _linkifySourceRefs(mainText, sources)
-        : mainText;
+        ? _linkifySourceRefs(withImages, sources)
+        : withImages;
 
     final isTyping = _typingIndices.contains(index);
 
@@ -3620,7 +3634,7 @@ class _ChatScreenState extends State<ChatScreen>
                 fullText: linkedText,
                 styleSheet: _markdownStyle(colors),
                 builders: {
-                  'code': CodeBlockBuilder(colors: colors),
+                  'code': CodeBlockBuilder(colors: colors, serverUrl: _serverUrl),
                   'a': SourceLinkBuilder(
                     colors: colors,
                     onTap: (url) { _openUrl(url); },
@@ -3639,7 +3653,7 @@ class _ChatScreenState extends State<ChatScreen>
                 selectable: true,
                 styleSheet: _markdownStyle(colors),
                 builders: {
-                  'code': CodeBlockBuilder(colors: colors),
+                  'code': CodeBlockBuilder(colors: colors, serverUrl: _serverUrl),
                   'a': SourceLinkBuilder(
                     colors: colors,
                     onTap: (url) { _openUrl(url); },
