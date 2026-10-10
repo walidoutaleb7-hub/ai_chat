@@ -44,6 +44,7 @@ jobs:
           sed -i 's|id "org.jetbrains.kotlin.android" version "[^"]*"|id "org.jetbrains.kotlin.android" version "2.1.0"|' settings.gradle 2>/dev/null || true
           sed -i 's|^\(\s*\)compileSdk = .*|\1compileSdk = 35|' app/build.gradle 2>/dev/null || true
           sed -i 's|^\(\s*\)compileSdkVersion .*|\1compileSdkVersion 35|' app/build.gradle 2>/dev/null || true
+          sed -i 's|distributionUrl=.*gradle-[0-9.]*-all.zip|distributionUrl=https://services.gradle.org/distributions/gradle-8.9-all.zip|' gradle/wrapper/gradle-wrapper.properties 2>/dev/null || true
           sed -i 's|^\(\s*\)minSdk = .*|\1minSdk = 24|' app/build.gradle 2>/dev/null || true
           sed -i 's|^\(\s*\)minSdkVersion .*|\1minSdkVersion 24|' app/build.gradle 2>/dev/null || true
 
