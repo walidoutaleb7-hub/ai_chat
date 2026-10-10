@@ -2851,28 +2851,39 @@ class _ChatScreenState extends State<ChatScreen>
   }
 
   (String, List<String>) _splitSources(String raw) {
-    final markers = <String>['المصادر:', 'المصدر:', 'Sources:', 'Source:'];
-    int splitIndex = -1;
-    String? matchedMarker;
-    for (final marker in markers) {
-      final idx = raw.lastIndexOf(marker);
-      if (idx != -1 && idx > splitIndex) {
-        splitIndex = idx;
-        matchedMarker = marker;
-      }
-    }
-    if (splitIndex == -1 || matchedMarker == null) {
+    // Flexible markers: with or without colon, optional ## prefix.
+    final markerRegex = RegExp(
+      r'(?:^|\n)\s*#{0,6}\s*(المصادر|المصدر|Sources?|References?)\s*:?\s*\n',
+      multiLine: true,
+    );
+    final matches = markerRegex.allMatches(raw).toList();
+    if (matches.isEmpty) {
       return (raw, const []);
     }
-    final mainText = raw.substring(0, splitIndex).trimRight();
-    final sourcesBlock = raw.substring(splitIndex + matchedMarker.length);
+    final match = matches.last;
+    final mainText = raw.substring(0, match.start).trimRight();
+    final sourcesBlock = raw.substring(match.end);
+
+    // Extract URLs from the whole raw text (main + sources).
     final urlRegex = RegExp(r'https?://[^\s\)\]\>,]+');
-    final matches = urlRegex.allMatches(sourcesBlock);
-    final urls = matches
+    final urlMatches = urlRegex.allMatches(raw);
+    final urls = urlMatches
         .map((m) => m.group(0)!)
         .map((u) => u.replaceAll(RegExp(r'[.,;:]+$'), ''))
         .where((u) => u.isNotEmpty)
         .toList();
+
+    // If no URLs found, fall back to non-URL source titles.
+    if (urls.isEmpty) {
+      final lines = sourcesBlock
+          .split('\n')
+          .map((l) => l.replaceAll(RegExp(r'^\s*\[\d+\]\s*'), '').trim())
+          .where((l) => l.isNotEmpty)
+          .take(10)
+          .toList();
+      return (mainText, lines);
+    }
+
     final seen = <String>{};
     final uniqueUrls = <String>[];
     for (final url in urls) {
@@ -2884,7 +2895,10 @@ class _ChatScreenState extends State<ChatScreen>
   /// Converts inline [N] references to markdown links pointing
   /// to the actual source URLs so they render as tappable icons.
   String _linkifySourceRefs(String text, List<String> sources) {
-    if (sources.isEmpty) return text;
+    if (sources.isEmpty) {
+      // No sources at all → strip [N] markers to keep the text clean.
+      return text.replaceAll(RegExp(r'\s*\[(\d+)\]'), '');
+    }
     return text.replaceAllMapped(
       RegExp(r'\[(\d+)\](?!\()'),
       (match) {
@@ -2892,7 +2906,12 @@ class _ChatScreenState extends State<ChatScreen>
         if (n == null || n < 1 || n > sources.length) {
           return match.group(0)!;
         }
-        return '[${match.group(1)}](${sources[n - 1]})';
+        final source = sources[n - 1];
+        if (source.startsWith('http')) {
+          return '[${match.group(1)}]($source)';
+        }
+        // No URL → just remove the marker (title shown in sources list).
+        return '[${match.group(1)}](#)';
       },
     );
   }
