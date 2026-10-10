@@ -70,6 +70,53 @@ jobs:
           echo "=== settings.gradle ==="
           cat settings.gradle
 
+      - name: Apply Google Services plugin to app
+        working-directory: WEURA/android/app
+        run: |
+          echo "=== BEFORE: app/build.gradle plugins block ==="
+          head -25 build.gradle
+
+          python3 << 'PYEOF2'
+          with open('build.gradle', 'r') as f:
+              content = f.read()
+
+          if 'com.google.gms.google-services' in content:
+              print('already present — skipping')
+          else:
+              # Try all common formats
+              patterns = [
+                  'id "dev.flutter.flutter-gradle-plugin"',
+                  "id 'dev.flutter.flutter-gradle-plugin'",
+                  'id("dev.flutter.flutter-gradle-plugin")',
+              ]
+              added = False
+              for pat in patterns:
+                  if pat in content:
+                      content = content.replace(
+                          pat,
+                          pat + '\n    id "com.google.gms.google-services"',
+                          1,
+                      )
+                      added = True
+                      print(f'matched: {pat}')
+                      break
+
+              if not added:
+                  # Fallback: add after first closing of plugins block
+                  content = content.replace(
+                      'plugins {',
+                      'plugins {\n    id "com.google.gms.google-services"',
+                      1,
+                  )
+                  print('fallback: added to plugins block top')
+
+              with open('build.gradle', 'w') as f:
+                  f.write(content)
+          PYEOF2
+
+          echo "=== AFTER: app/build.gradle plugins block ==="
+          head -25 build.gradle
+
       - name: Get dependencies
         working-directory: WEURA
         run: flutter pub get
