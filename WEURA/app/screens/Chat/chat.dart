@@ -6,6 +6,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter_highlight/themes/atom-one-dark.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
@@ -4036,27 +4037,27 @@ class _ChatScreenState extends State<ChatScreen>
 
   MarkdownStyleSheet _markdownStyle(WeuraColors colors) {
     return MarkdownStyleSheet(
-      p: TextStyle(
+      p: GoogleFonts.inter(
         color: colors.textPrimary,
         fontSize: 17,
         height: 1.85,
         letterSpacing: 0.15,
       ),
-      h1: TextStyle(
+      h1: GoogleFonts.inter(
         color: colors.textPrimary,
         fontSize: 28,
         fontWeight: FontWeight.w800,
         height: 1.4,
         letterSpacing: -0.5,
       ),
-      h2: TextStyle(
+      h2: GoogleFonts.inter(
         color: colors.textPrimary,
         fontSize: 23,
         fontWeight: FontWeight.w700,
         height: 1.45,
         letterSpacing: -0.3,
       ),
-      h3: TextStyle(
+      h3: GoogleFonts.inter(
         color: colors.textPrimary,
         fontSize: 19.5,
         fontWeight: FontWeight.w700,

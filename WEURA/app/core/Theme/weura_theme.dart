@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 /// WEURA AI — Theme tokens.
 ///
@@ -170,7 +171,7 @@ class WeuraColors extends ThemeExtension<WeuraColors> {
 ThemeData weuraDarkTheme() {
   const colors = WeuraColors.dark;
 
-  return ThemeData(
+  final base = ThemeData(
     brightness: Brightness.dark,
     scaffoldBackgroundColor: colors.background,
     useMaterial3: true,
@@ -223,12 +224,16 @@ ThemeData weuraDarkTheme() {
     splashColor: colors.accent.withValues(alpha: 0.08),
     highlightColor: colors.accent.withValues(alpha: 0.04),
   );
+
+  return base.copyWith(
+    textTheme: GoogleFonts.interTextTheme(base.textTheme),
+  );
 }
 
 ThemeData weuraLightTheme() {
   const colors = WeuraColors.light;
 
-  return ThemeData(
+  final base = ThemeData(
     brightness: Brightness.light,
     scaffoldBackgroundColor: colors.background,
     useMaterial3: true,
@@ -280,5 +285,9 @@ ThemeData weuraLightTheme() {
     ),
     splashColor: colors.accent.withValues(alpha: 0.08),
     highlightColor: colors.accent.withValues(alpha: 0.04),
+  );
+
+  return base.copyWith(
+    textTheme: GoogleFonts.interTextTheme(base.textTheme),
   );
 }
