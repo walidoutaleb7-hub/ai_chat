@@ -7,8 +7,12 @@ import 'package:markdown/markdown.dart' as md;
 import 'package:share_plus/share_plus.dart';
 
 import '../../../core/Theme/weura_theme.dart';
+import 'compare_block.dart';
+import 'diagram_block.dart';
 import 'dialogue_block.dart';
 import 'latex_block.dart';
+import 'steps_block.dart';
+import 'timeline_block.dart';
 import 'writing_block.dart';
 
 class CodeBlockBuilder extends MarkdownElementBuilder {
@@ -72,6 +76,30 @@ class CodeBlockBuilder extends MarkdownElementBuilder {
         onCopy: () => Clipboard.setData(ClipboardData(text: code)),
         onShare: () => Share.share(code),
       );
+    }
+
+    // Steps block
+    if (language == 'steps' || language == 'step') {
+      return StepsBlock(content: code, colors: colors);
+    }
+
+    // Diagram block
+    if (language == 'diagram' ||
+        language == 'ascii' ||
+        language == 'flow') {
+      return DiagramBlock(content: code, colors: colors);
+    }
+
+    // Compare table
+    if (language == 'compare' ||
+        language == 'comparison' ||
+        language == 'vs') {
+      return CompareBlock(content: code, colors: colors);
+    }
+
+    // Timeline
+    if (language == 'timeline' || language == 'history') {
+      return TimelineBlock(content: code, colors: colors);
     }
 
     return Directionality(
