@@ -12,7 +12,7 @@ class ChatMessage {
     this.isError = false,
     this.imageUrl,
     this.imagePrompt,
-    this.visionImagePath,
+    this.visionImagePaths,
     this.playerData,
     this.imageLocalPath,
     this.isImageLoading = false,
