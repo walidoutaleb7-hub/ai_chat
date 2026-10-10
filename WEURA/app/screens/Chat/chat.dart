@@ -2801,6 +2801,22 @@ class _ChatScreenState extends State<ChatScreen>
     return (mainText, uniqueUrls);
   }
 
+  /// Converts inline [N] references to markdown links pointing
+  /// to the actual source URLs so they render as tappable icons.
+  String _linkifySourceRefs(String text, List<String> sources) {
+    if (sources.isEmpty) return text;
+    return text.replaceAllMapped(
+      RegExp(r'\[(\d+)\](?!\()'),
+      (match) {
+        final n = int.tryParse(match.group(1)!);
+        if (n == null || n < 1 || n > sources.length) {
+          return match.group(0)!;
+        }
+        return '[${match.group(1)}](${sources[n - 1]})';
+      },
+    );
+  }
+
   // ============================================================
   // IMAGE SEARCH — bubble (grid of Pexels results)
   // ============================================================
@@ -3386,6 +3402,10 @@ class _ChatScreenState extends State<ChatScreen>
     final mainText = parsed.$1;
     final sources = parsed.$2;
 
+    final linkedText = sources.isNotEmpty
+        ? _linkifySourceRefs(mainText, sources)
+        : mainText;
+
     final isTyping = _typingIndices.contains(index);
 
     return Container(
@@ -3399,10 +3419,14 @@ class _ChatScreenState extends State<ChatScreen>
               _errorMessage(colors, mainText)
             else if (isTyping)
               _TypedMarkdown(
-                fullText: mainText,
+                fullText: linkedText,
                 styleSheet: _markdownStyle(colors),
                 builders: {
                   'code': _CodeBlockBuilder(colors: colors),
+                  'a': _SourceLinkBuilder(
+                    colors: colors,
+                    onTap: (url) { _openUrl(url); },
+                  ),
                 },
                 onComplete: () {
                   if (mounted) {
@@ -3413,11 +3437,15 @@ class _ChatScreenState extends State<ChatScreen>
               )
             else
               MarkdownBody(
-                data: mainText,
+                data: linkedText,
                 selectable: true,
                 styleSheet: _markdownStyle(colors),
                 builders: {
                   'code': _CodeBlockBuilder(colors: colors),
+                  'a': _SourceLinkBuilder(
+                    colors: colors,
+                    onTap: (url) { _openUrl(url); },
+                  ),
                 },
                 imageBuilder: (uri, title, alt) =>
                     _buildMarkdownImage(colors, uri, title, alt),
@@ -4241,6 +4269,13 @@ class _TypedMarkdownState extends State<_TypedMarkdown>
     }
   }
 
+  String _stripUrls(String text) {
+    return text.replaceAllMapped(
+      RegExp(r'\[(\d+)\]\([^)]*\)'),
+      (m) => '[${m[1]}]',
+    );
+  }
+
   void _onTick() {
   // ✅ FIXED: use runes instead of code units.
   //
@@ -4298,7 +4333,7 @@ class _TypedMarkdownState extends State<_TypedMarkdown>
           text: TextSpan(
             style: baseStyle,
             children: [
-              TextSpan(text: _visibleText),
+              TextSpan(text: _stripUrls(_visibleText)),
               WidgetSpan(
                 alignment: PlaceholderAlignment.middle,
                 child: Padding(
@@ -4708,6 +4743,58 @@ class _WritingBlock extends StatelessWidget {
               icon,
               size: 18,
               color: colors.textMuted,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SourceLinkBuilder extends MarkdownElementBuilder {
+  _SourceLinkBuilder({
+    required this.colors,
+    required this.onTap,
+  });
+
+  final WeuraColors colors;
+  final void Function(String url) onTap;
+
+  @override
+  Widget? visitElementAfter(md.Element element, TextStyle? preferredStyle) {
+    final href = element.attributes['href'] ?? '';
+    final label = element.textContent;
+
+    if (!RegExp(r'^\d+$').hasMatch(label)) return null;
+    if (!href.startsWith('http')) return null;
+
+    final host = Uri.tryParse(href)?.host ?? href;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
+      child: Tooltip(
+        message: host,
+        child: Material(
+          color: colors.accentSoft,
+          borderRadius: BorderRadius.circular(6),
+          child: InkWell(
+            onTap: () => onTap(href),
+            borderRadius: BorderRadius.circular(6),
+            child: Container(
+              width: 22,
+              height: 22,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(
+                  color: colors.accentGlow.withValues(alpha: 0.45),
+                ),
+              ),
+              child: Icon(
+                Icons.link_rounded,
+                size: 12,
+                color: colors.accentGlow,
+              ),
             ),
           ),
         ),
