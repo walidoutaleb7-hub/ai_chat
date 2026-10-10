@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/Theme/weura_theme.dart';
 
 /// Collapsible text used inside user message bubbles.
-/// Long messages (>1000 chars) get collapsed to 3 lines by default.
+/// Long messages (> 8 lines) get collapsed by default.
 class CollapsibleUserText extends StatefulWidget {
   const CollapsibleUserText({
     super.key,
@@ -19,47 +19,45 @@ class CollapsibleUserText extends StatefulWidget {
 }
 
 class _CollapsibleUserTextState extends State<CollapsibleUserText> {
-  static const int _threshold = 1000;
+  /// Collapse when the message exceeds this many lines.
+  static const int _maxLinesCollapsed = 8;
+
+  /// Also collapse very long single-paragraph messages.
+  static const int _maxCharsCollapsed = 500;
+
   bool _expanded = false;
+
+  bool get _shouldCollapse {
+    final lineCount = widget.text.split('\n').length;
+    if (lineCount > _maxLinesCollapsed) return true;
+    if (widget.text.length > _maxCharsCollapsed) return true;
+    return false;
+  }
 
   @override
   Widget build(BuildContext context) {
-    if (widget.text.length <= _threshold) {
-      return SelectableText(
-        widget.text,
-        style: TextStyle(
-          color: widget.colors.userBubbleText,
-          fontSize: 17,
-          height: 1.55,
-          letterSpacing: 0.1,
-        ),
-      );
+    final style = TextStyle(
+      color: widget.colors.userBubbleText,
+      fontSize: 17,
+      height: 1.55,
+      letterSpacing: 0.1,
+    );
+
+    if (!_shouldCollapse) {
+      return SelectableText(widget.text, style: style);
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (_expanded)
-          SelectableText(
-            widget.text,
-            style: TextStyle(
-              color: widget.colors.userBubbleText,
-              fontSize: 17,
-              height: 1.55,
-              letterSpacing: 0.1,
-            ),
-          )
+          SelectableText(widget.text, style: style)
         else
           Text(
             widget.text,
-            maxLines: 3,
+            maxLines: _maxLinesCollapsed,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: widget.colors.userBubbleText,
-              fontSize: 17,
-              height: 1.55,
-              letterSpacing: 0.1,
-            ),
+            style: style,
           ),
         const SizedBox(height: 6),
         InkWell(
