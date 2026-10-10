@@ -1192,7 +1192,7 @@ async function buildMessages(
           return 0;
         });
 
-        const sources = results
+        const sources = filtered
           .map(
             (r, i) =>
               `[${i + 1}] ${cleanSnippet(r.title, 80)}\n` +
@@ -1201,6 +1201,12 @@ async function buildMessages(
               `Content: ${cleanSnippet(r.snippet, 300)}`,
           )
           .join('\n\n');
+
+        // ✅ Track used sources for the citation sanitizer.
+        for (const r of filtered) {
+          if (r.url) usedSources.push(r.url);
+        }
+        rawSearchText = sources;
 
         out.push({
           role: 'system',
@@ -1636,6 +1642,41 @@ router.post('/chat', async (req, res) => {
       temperature: pickTemperature(mode),
       maxTokens,
     });
+
+    // ─── Post-process: inject missing URLs into المصادر section ───
+    // The LLM often writes "المصادر\n[1] Title" without URLs.
+    // We fix that here by appending the actual URLs we searched.
+    if (built.usedSources.length > 0) {
+      const srcSection = /(المصادر|Sources?|References?)\s*:?\s*\n/i;
+      const hasSection = srcSection.test(result.content);
+
+      if (!hasSection) {
+        // No sources section → append it at the end.
+        const list = built.usedSources
+          .slice(0, 8)
+          .map((u, i) => `[${i + 1}] ${u}`)
+          .join('\n');
+        result.content += `\n\n**المصادر:**\n${list}`;
+      } else {
+        // Section exists → ensure each [N] line has a URL.
+        result.content = result.content.replace(
+          /(^|\n)(\s*\[(\d+)\]\s*)([^\n]+?)(\n|$)/g,
+          (match, before, prefix, numStr, body, after) => {
+            // Already has a URL? Skip.
+            if (/https?:\/\//.test(body)) return match;
+
+            const n = parseInt(numStr, 10);
+            const url =
+              n >= 1 && n <= built.usedSources.length
+                ? built.usedSources[n - 1]
+                : '';
+            if (!url) return match;
+
+            return `${before}${prefix}${body} — ${url}${after}`;
+          },
+        );
+      }
+    }
 
     // ─── Citation Sanitizer: remove invented DOIs / fake URLs ───
     // Detects common hallucination patterns and replaces them with
