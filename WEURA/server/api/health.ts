@@ -5,7 +5,8 @@ const router = express.Router();
 const startedAt = Date.now();
 
 function activeProvider(): string {
-  // Groq is PRIMARY. Cerebras is FALLBACK.
+  // Gemini is PRIMARY. Groq is FALLBACK.
+  if (process.env.GEMINI_API_KEY?.trim()) return 'gemini';
   if (process.env.GROQ_API_KEY?.trim()) return 'groq';
   if (process.env.CEREBRAS_API_KEY?.trim()) return 'cerebras';
   return 'none';

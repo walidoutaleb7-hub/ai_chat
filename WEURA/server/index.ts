@@ -204,6 +204,7 @@ app.use(
 
 const server = app.listen(PORT, HOST, () => {
   const groqReady = Boolean(process.env.GROQ_API_KEY?.trim());
+  const geminiReady = Boolean(process.env.GEMINI_API_KEY?.trim());
   const cerebrasReady = Boolean(process.env.CEREBRAS_API_KEY?.trim());
   const mistralReady = Boolean(process.env.MISTRAL_API_KEY?.trim());
   const tavilyReady = Boolean(process.env.TAVILY_API_KEY?.trim());
@@ -219,12 +220,13 @@ const server = app.listen(PORT, HOST, () => {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log(`Bind:        ${HOST}:${PORT}`);
   console.log(`Health:      /health`);
-  console.log(`Groq:        ${groqReady ? 'READY (primary)' : 'MISSING'}`);
+  console.log(`Gemini:      ${geminiReady ? 'READY (primary)' : 'MISSING'}`);
+  console.log(`Groq:        ${groqReady ? 'READY (fallback)' : 'MISSING'}`);
   console.log(`Cerebras:    ${cerebrasReady ? 'READY (fallback)' : 'MISSING'}`);
   console.log(`Mistral:     ${mistralReady ? 'READY (fallback)' : 'MISSING'}`);
   console.log(`Tavily:      ${tavilyReady ? 'READY' : 'MISSING'}`);
   console.log(`Cloudflare:  ${cfReady ? 'READY' : 'MISSING'}`);
-  console.log(`Vision:      ${groqReady ? 'READY' : 'MISSING'}`);
+  console.log(`Vision:      ${geminiReady ? 'READY' : 'MISSING'}`);
   console.log(`Players:     READY`);
   console.log(`Files:       READY`);
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
