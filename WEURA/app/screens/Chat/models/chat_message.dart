@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import '../../../services/Grok/grok_service.dart';
+
 /// Internal model representing a single message in the chat.
 ///
 /// Supports text, image generation, vision analysis, player cards,
@@ -19,6 +21,7 @@ class ChatMessage {
     this.searchResults,
     this.searchQuery,
     this.isSearching = false,
+    this.reflection,
   });
 
   final String text;
@@ -47,4 +50,7 @@ class ChatMessage {
   final List<Map<String, dynamic>>? searchResults;
   final String? searchQuery;
   final bool isSearching;
+
+  // Reflection metadata
+  final GrokReflection? reflection;
 }

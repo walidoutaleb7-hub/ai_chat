@@ -43,6 +43,7 @@ import 'blocks/latex_block.dart';
 import 'blocks/dialogue_block.dart';
 import 'blocks/code_block.dart';
 import 'widgets/collapsible_user_text.dart';
+import 'widgets/reflection_card.dart';
 import 'animations/chat_background.dart';
 import 'animations/football_thinking.dart';
 import 'animations/image_loader.dart';
@@ -1653,7 +1654,11 @@ class _ChatScreenState extends State<ChatScreen>
       } else {
         setState(() {
           _messages.add(
-            ChatMessage(text: result.content, isUser: false),
+            ChatMessage(
+              text: result.content,
+              isUser: false,
+              reflection: result.reflection,
+            ),
           );
           _typingIndices.add(_messages.length - 1);
         });
@@ -3665,6 +3670,19 @@ class _ChatScreenState extends State<ChatScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ─── Reflection pill (only for assistant, non-error) ───
+            if (!message.isError && message.reflection != null)
+              ReflectionCard(
+                reflection: message.reflection!,
+                searchUsed: message.reflection!.needSearch,
+                memoryUsed: message.reflection!.reason
+                    .toLowerCase()
+                    .contains('memory'),
+                football: false,
+                resultCount: message.reflection!.needSearch ? 8 : 0,
+                colors: colors,
+              ),
+
             if (message.isError)
               _errorMessage(colors, mainText)
             else if (isTyping)

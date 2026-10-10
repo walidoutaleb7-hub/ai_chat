@@ -17,6 +17,36 @@ class GrokMessage {
   }
 }
 
+class GrokReflection {
+  const GrokReflection({
+    required this.needSearch,
+    required this.reason,
+    required this.searchQuery,
+    required this.angle,
+  });
+
+  final bool needSearch;
+  final String reason;
+  final String searchQuery;
+  final String angle;
+
+  factory GrokReflection.fromJson(Map<String, dynamic> json) {
+    return GrokReflection(
+      needSearch: json['need_search'] == true,
+      reason: (json['reason'] ?? '').toString(),
+      searchQuery: (json['search_query'] ?? '').toString(),
+      angle: (json['angle'] ?? '').toString(),
+    );
+  }
+
+  static const empty = GrokReflection(
+    needSearch: false,
+    reason: '',
+    searchQuery: '',
+    angle: '',
+  );
+}
+
 class GrokResponse {
   final String content;
   final String? model;
@@ -27,6 +57,7 @@ class GrokResponse {
   final bool football;
   final bool tech;
   final int resultCount;
+  final GrokReflection reflection;
 
   const GrokResponse({
     required this.content,
@@ -38,6 +69,7 @@ class GrokResponse {
     this.football = false,
     this.tech = false,
     this.resultCount = 0,
+    this.reflection = GrokReflection.empty,
   });
 }
 
@@ -187,6 +219,14 @@ class GrokService {
       throw const GrokException('The AI returned an empty response.');
     }
 
+    GrokReflection reflection = GrokReflection.empty;
+    final rawReflection = data['reflection'];
+    if (rawReflection is Map) {
+      reflection = GrokReflection.fromJson(
+        Map<String, dynamic>.from(rawReflection),
+      );
+    }
+
     return GrokResponse(
       content: content,
       model: data['model']?.toString(),
@@ -200,6 +240,7 @@ class GrokService {
       resultCount: (data['resultCount'] is int)
           ? data['resultCount'] as int
           : 0,
+      reflection: reflection,
     );
   }
 
