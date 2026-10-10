@@ -7,6 +7,7 @@ const GEMINI_API_URL =
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
 const MAX_IMAGE_DATA_URL_LENGTH = 6_000_000;
+const MAX_IMAGES_PER_REQUEST = 10;
 const MAX_QUESTION_LENGTH = 2000;
 const MODEL_TIMEOUT_MS = 45_000;
 const MAX_OUTPUT_TOKENS = 800;
@@ -61,6 +62,18 @@ function validateImageData(raw: string): string | null {
   return null;
 }
 
+function validateImages(images: string[]): string | null {
+  if (images.length === 0) return 'At least one image is required.';
+  if (images.length > MAX_IMAGES_PER_REQUEST) {
+    return `Too many images. Maximum is ${MAX_IMAGES_PER_REQUEST}.`;
+  }
+  for (let i = 0; i < images.length; i++) {
+    const err = validateImageData(images[i]);
+    if (err) return `Image ${i + 1}: ${err}`;
+  }
+  return null;
+}
+
 function sanitizeQuestion(raw: unknown): string {
   if (typeof raw !== 'string') return 'Describe this image in detail.';
   const clean = raw
@@ -85,17 +98,27 @@ function parseDataUrl(
 async function callGeminiVision(
   model: string,
   apiKey: string,
-  imageData: string,
+  imagesData: string[],
   question: string,
 ): Promise<CallResult> {
   try {
-    const parsed = parseDataUrl(imageData);
-    if (!parsed) {
-      return {
-        ok: false,
-        status: 400,
-        error: 'gemini: invalid image data URL.',
-      };
+    const parts: Array<Record<string, unknown>> = [{ text: question }];
+
+    for (const imageData of imagesData) {
+      const parsed = parseDataUrl(imageData);
+      if (!parsed) {
+        return {
+          ok: false,
+          status: 400,
+          error: 'gemini: invalid image data URL.',
+        };
+      }
+      parts.push({
+        inline_data: {
+          mime_type: parsed.mime,
+          data: parsed.base64,
+        },
+      });
     }
 
     const url = `${GEMINI_API_URL}/${model}:generateContent?key=${apiKey}`;
@@ -107,15 +130,7 @@ async function callGeminiVision(
       contents: [
         {
           role: 'user',
-          parts: [
-            { text: question },
-            {
-              inline_data: {
-                mime_type: parsed.mime,
-                data: parsed.base64,
-              },
-            },
-          ],
+          parts,
         },
       ],
       generationConfig: {
@@ -222,10 +237,20 @@ function extractRetryAfterMs(error: string): number {
 async function callGroqVision(
   model: string,
   apiKey: string,
-  imageData: string,
+  imagesData: string[],
   question: string,
 ): Promise<CallResult> {
   try {
+    const userContent: Array<Record<string, unknown>> = [
+      { type: 'text', text: question },
+    ];
+    for (const imageData of imagesData) {
+      userContent.push({
+        type: 'image_url',
+        image_url: { url: imageData },
+      });
+    }
+
     const response = await fetch(GROQ_API_URL, {
       method: 'POST',
       headers: {
@@ -236,13 +261,7 @@ async function callGroqVision(
         model,
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
-          {
-            role: 'user',
-            content: [
-              { type: 'text', text: question },
-              { type: 'image_url', image_url: { url: imageData } },
-            ],
-          },
+          { role: 'user', content: userContent },
         ],
         temperature: 0.3,
         max_tokens: MAX_OUTPUT_TOKENS,
@@ -306,13 +325,27 @@ async function callGroqVision(
 
 router.post('/vision', async (req, res) => {
   try {
-    const body = req.body as { image?: unknown; question?: unknown };
+    const body = req.body as {
+      image?: unknown;
+      images?: unknown;
+      question?: unknown;
+    };
 
-    const imageData =
-      typeof body.image === 'string' ? body.image.trim() : '';
+    // Support both single image (backwards compat) and images array.
+    const images: string[] = [];
+    if (Array.isArray(body.images)) {
+      for (const img of body.images) {
+        if (typeof img === 'string' && img.trim().length > 0) {
+          images.push(img.trim());
+        }
+      }
+    } else if (typeof body.image === 'string' && body.image.trim().length > 0) {
+      images.push(body.image.trim());
+    }
+
     const question = sanitizeQuestion(body.question);
 
-    const imageError = validateImageData(imageData);
+    const imageError = validateImages(images);
     if (imageError) {
       return res
         .status(400)
@@ -328,7 +361,7 @@ router.post('/vision', async (req, res) => {
         const result = await callGeminiVision(
           model,
           geminiKey,
-          imageData,
+          images,
           question,
         );
 
@@ -359,7 +392,7 @@ router.post('/vision', async (req, res) => {
           const result = await callGroqVision(
             model,
             groqKey,
-            imageData,
+            images,
             question,
           );
 

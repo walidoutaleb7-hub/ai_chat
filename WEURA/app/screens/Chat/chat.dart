@@ -195,7 +195,8 @@ class _ChatScreenState extends State<ChatScreen>
   bool _isFootballQuestion = false;
   ChatSession? _session;
   WeuraFile? _attachedFile;
-  XFile? _attachedImage;
+  final List<XFile> _attachedImages = [];
+  static const int _maxImages = 10;
 
   static final String _serverUrl = EnvironmentConfig.production.apiBaseUrl;
       
@@ -574,8 +575,8 @@ class _ChatScreenState extends State<ChatScreen>
       return;
     }
 
-    if (_attachedImage != null) {
-      _showMessage('Remove the attached image first.');
+    if (_attachedImages.isNotEmpty) {
+      _showMessage('Remove the attached images first.');
       return;
     }
 
@@ -1279,24 +1280,45 @@ class _ChatScreenState extends State<ChatScreen>
       _showMessage('Remove the attached file first.');
       return;
     }
-    if (_attachedImage != null) {
-      _showMessage('Already have an image attached.');
+    if (_attachedImages.length >= _maxImages) {
+      _showMessage('Maximum $_maxImages images.');
       return;
     }
 
     try {
-      final XFile? picked = await _imagePicker.pickImage(
-        source: source,
-        maxWidth: 1024,
-        maxHeight: 1024,
-        imageQuality: 55,
-      );
+      final List<XFile> picked = [];
 
-      if (picked == null) return;
+      if (source == ImageSource.gallery) {
+        final remaining = _maxImages - _attachedImages.length;
+        final files = await _imagePicker.pickMultiImage(
+          maxWidth: 1024,
+          maxHeight: 1024,
+          imageQuality: 55,
+          limit: remaining,
+        );
+        picked.addAll(files);
+      } else {
+        final file = await _imagePicker.pickImage(
+          source: source,
+          maxWidth: 1024,
+          maxHeight: 1024,
+          imageQuality: 55,
+        );
+        if (file != null) picked.add(file);
+      }
+
+      if (picked.isEmpty) return;
+
+      final remaining = _maxImages - _attachedImages.length;
+      final toAdd = picked.take(remaining).toList();
 
       setState(() {
-        _attachedImage = picked;
+        _attachedImages.addAll(toAdd);
       });
+
+      if (picked.length > remaining) {
+        _showMessage('Only $remaining added (max $_maxImages).');
+      }
     } catch (error) {
       debugPrint('[WEURA] Pick image error: $error');
       if (!mounted) return;
@@ -1319,16 +1341,18 @@ class _ChatScreenState extends State<ChatScreen>
     return editWords.any(t.contains);
   }
 
-  Future<void> _analyzeImage(
-    XFile image, {
+  Future<void> _analyzeImages(
+    List<XFile> images, {
     bool addUserMessage = true,
     String? customQuestion,
   }) async {
-    if (_isLoading) return;
+    if (_isLoading || images.isEmpty) return;
 
     final defaultQuestion = (customQuestion?.trim().isNotEmpty ?? false)
         ? customQuestion!.trim()
-        : 'اشرح هذه الصورة بالتفصيل.';
+        : (images.length > 1
+            ? 'قارن بين هذه الصور واشرح كل واحدة بالتفصيل.'
+            : 'اشرح هذه الصورة بالتفصيل.');
 
     await _ensureSession('🖼️ Image analysis');
 
@@ -1338,7 +1362,7 @@ class _ChatScreenState extends State<ChatScreen>
           _ChatMessage(
             text: defaultQuestion,
             isUser: true,
-            visionImagePath: image.path,
+            visionImagePath: images.first.path,
           ),
         );
         _isLoading = true;
@@ -1355,21 +1379,23 @@ class _ChatScreenState extends State<ChatScreen>
     }
 
     try {
-      final bytes = await image.readAsBytes();
+      final dataUrls = <String>[];
+      for (final image in images) {
+        final bytes = await image.readAsBytes();
+        final sizeKB = bytes.length / 1024;
 
-      final base64Data = base64Encode(bytes);
-      final dataUrl = 'data:image/jpeg;base64,$base64Data';
+        if (sizeKB > 4000) {
+          throw const GrokException(
+            'إحدى الصور كبيرة بزاف (أكثر من 4 ميغا). جرّب صورة أصغر.',
+          );
+        }
 
-      final sizeKB = bytes.length / 1024;
-      debugPrint(
-        '[WEURA] Vision payload: ${sizeKB.toStringAsFixed(0)} KB',
-      );
-
-      if (sizeKB > 4000) {
-        throw const GrokException(
-          'الصورة كبيرة بزاف (أكثر من 4 ميغا). جرّب صورة أصغر.',
-        );
+        dataUrls.add('data:image/jpeg;base64,${base64Encode(bytes)}');
       }
+
+      debugPrint(
+        '[WEURA] Vision payload: ${images.length} image(s)',
+      );
 
       final uri = Uri.parse('$_serverUrl/api/vision');
 
@@ -1381,7 +1407,7 @@ class _ChatScreenState extends State<ChatScreen>
               'Accept': 'application/json',
             },
             body: jsonEncode({
-              'image': dataUrl,
+              'images': dataUrls,
               'question': defaultQuestion,
             }),
           )
@@ -1581,15 +1607,17 @@ class _ChatScreenState extends State<ChatScreen>
 
     final message = text.trim();
 
-    if (_attachedImage != null) {
-      final img = _attachedImage!;
-      setState(() => _attachedImage = null);
+    if (_attachedImages.isNotEmpty) {
+      final imgs = List<XFile>.from(_attachedImages);
+      setState(() => _attachedImages.clear());
 
-      if (message.isNotEmpty && _isEditRequest(message)) {
-        await _editImage(img, message);
+      if (imgs.length == 1 &&
+          message.isNotEmpty &&
+          _isEditRequest(message)) {
+        await _editImage(imgs.first, message);
       } else {
-        await _analyzeImage(
-          img,
+        await _analyzeImages(
+          imgs,
           customQuestion: message.isEmpty ? null : message,
         );
       }
@@ -1819,7 +1847,7 @@ class _ChatScreenState extends State<ChatScreen>
     if (visionPath != null && visionPath.isNotEmpty) {
       final file = File(visionPath);
       if (file.existsSync()) {
-        _analyzeImage(XFile(visionPath), addUserMessage: false);
+        _analyzeImages([XFile(visionPath)], addUserMessage: false);
         return;
       }
     }
@@ -2522,8 +2550,8 @@ class _ChatScreenState extends State<ChatScreen>
                         },
                       ),
               ),
-              if (_attachedImage != null)
-                _attachedImageChip(colors, _attachedImage!),
+              if (_attachedImages.isNotEmpty)
+                _attachedImagesRow(colors),
               if (_attachedFile != null)
                 _attachedFileChip(colors, _attachedFile!),
               // Isolated composer: uses viewInsetsOf (not MediaQuery.of)
@@ -2557,77 +2585,123 @@ class _ChatScreenState extends State<ChatScreen>
     );
   }
 
-  Widget _attachedImageChip(WeuraColors colors, XFile image) {
+  Widget _attachedImagesRow(WeuraColors colors) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 4, 14, 0),
-      child: Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: colors.surface,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: colors.accentGlow.withValues(alpha: 0.30),
-          ),
-        ),
-        child: Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: Image.file(
-                File(image.path),
-                width: 56,
-                height: 56,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Container(
-                  width: 56,
-                  height: 56,
-                  color: colors.surfaceAlt,
-                  child: Icon(
-                    Icons.broken_image_outlined,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 4, bottom: 6),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.image_rounded,
+                  size: 14,
+                  color: colors.accentGlow,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  '${_attachedImages.length} / $_maxImages',
+                  style: TextStyle(
                     color: colors.textMuted,
-                    size: 22,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'صورة ملصقة',
-                    style: TextStyle(
-                      color: colors.textPrimary,
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w600,
+                const Spacer(),
+                if (_attachedImages.length > 1)
+                  TextButton.icon(
+                    onPressed: () =>
+                        setState(() => _attachedImages.clear()),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    icon: Icon(
+                      Icons.close_rounded,
+                      size: 14,
+                      color: colors.danger,
+                    ),
+                    label: Text(
+                      'Clear all',
+                      style: TextStyle(
+                        color: colors.danger,
+                        fontSize: 11.5,
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 3),
-                  Text(
-                    'اكتب سؤالك أو طلب التعديل',
-                    style: TextStyle(
-                      color: colors.textMuted,
-                      fontSize: 11,
+              ],
+            ),
+          ),
+          SizedBox(
+            height: 72,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              itemCount: _attachedImages.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              itemBuilder: (context, i) {
+                final image = _attachedImages[i];
+                return Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        width: 72,
+                        height: 72,
+                        decoration: BoxDecoration(
+                          color: colors.surface,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: colors.accentGlow
+                                .withValues(alpha: 0.30),
+                          ),
+                        ),
+                        child: Image.file(
+                          File(image.path),
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Icon(
+                            Icons.broken_image_outlined,
+                            color: colors.textMuted,
+                            size: 22,
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
-                ],
-              ),
+                    Positioned(
+                      top: -6,
+                      right: -6,
+                      child: Material(
+                        color: colors.danger,
+                        shape: const CircleBorder(),
+                        child: InkWell(
+                          onTap: () {
+                            setState(() => _attachedImages.removeAt(i));
+                          },
+                          customBorder: const CircleBorder(),
+                          child: const Padding(
+                            padding: EdgeInsets.all(4),
+                            child: Icon(
+                              Icons.close_rounded,
+                              size: 12,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
-            InkWell(
-              onTap: () => setState(() => _attachedImage = null),
-              borderRadius: BorderRadius.circular(8),
-              child: Padding(
-                padding: const EdgeInsets.all(6),
-                child: Icon(
-                  Icons.close_rounded,
-                  size: 18,
-                  color: colors.textMuted,
-                ),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
