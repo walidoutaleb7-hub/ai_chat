@@ -2962,6 +2962,26 @@ class _ChatScreenState extends State<ChatScreen>
     );
   }
 
+  /// Cleans up orphaned markdown markers (unbalanced **, *, _, `).
+  String _cleanOrphanMarkdown(String text) {
+    var t = text;
+
+    // Remove unbalanced ** pairs
+    final count = '**'.allMatches(t).length;
+    if (count.isOdd) {
+      // Find the orphan `**` (usually at the end)
+      final lastIdx = t.lastIndexOf('**');
+      if (lastIdx != -1) {
+        t = t.substring(0, lastIdx) + t.substring(lastIdx + 2);
+      }
+    }
+
+    // Remove lone asterisks not forming pairs
+    t = t.replaceAll(RegExp(r'(?<![\w*])\*(?![\w*])'), '');
+
+    return t.trimRight();
+  }
+
   String _linkifySourceRefs(String text, List<String> sources) {
     if (sources.isEmpty) {
       // No sources at all → strip [N] markers to keep the text clean.
@@ -3614,9 +3634,10 @@ class _ChatScreenState extends State<ChatScreen>
     final sources = parsed.$2;
 
     final withImages = _preprocessInlineImages(mainText);
+    final cleaned = _cleanOrphanMarkdown(withImages);
     final linkedText = sources.isNotEmpty
-        ? _linkifySourceRefs(withImages, sources)
-        : withImages;
+        ? _linkifySourceRefs(cleaned, sources)
+        : cleaned;
 
     final isTyping = _typingIndices.contains(index);
 
