@@ -1,15 +1,16 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
 import 'core/Settings/app_settings.dart';
 import 'core/Theme/weura_theme.dart';
-import 'screens/Home/home.dart';
-import 'screens/Splash/splash.dart';
+import 'screens/Auth/auth_gate.dart';
 import 'services/Storage/storage_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   try {
+    await Firebase.initializeApp();
     await StorageService.init();
     await AppSettingsManager.instance.load();
   } catch (error, stackTrace) {
@@ -31,7 +32,6 @@ class WeuraApp extends StatelessWidget {
         final settings = AppSettingsManager.instance;
 
         // Key forces full rebuild when language/direction/theme changes.
-        // Without this, switching language did nothing on screen.
         return MaterialApp(
           key: ValueKey(
             '${settings.effectiveLanguage}-${settings.direction}-${settings.themeMode}',
@@ -41,7 +41,7 @@ class WeuraApp extends StatelessWidget {
           themeMode: settings.themeMode,
           theme: weuraLightTheme(),
           darkTheme: weuraDarkTheme(),
-          home: const _WeuraEntry(),
+          home: const AuthGate(),
           builder: (context, child) {
             return Directionality(
               textDirection: settings.textDirection,
@@ -51,31 +51,5 @@ class WeuraApp extends StatelessWidget {
         );
       },
     );
-  }
-}
-
-class _WeuraEntry extends StatefulWidget {
-  const _WeuraEntry();
-
-  @override
-  State<_WeuraEntry> createState() => _WeuraEntryState();
-}
-
-class _WeuraEntryState extends State<_WeuraEntry> {
-  bool _showSplash = true;
-
-  void _finishSplash() {
-    if (!mounted) return;
-    setState(() {
-      _showSplash = false;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_showSplash) {
-      return SplashScreen(onFinished: _finishSplash);
-    }
-    return const HomeScreen();
   }
 }

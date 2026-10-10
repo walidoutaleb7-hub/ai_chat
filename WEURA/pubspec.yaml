@@ -21,6 +21,12 @@ dependencies:
   # ─── Networking ─────────────────────────────────────
   http: ^1.2.0
 
+  # ─── Firebase (Auth + storage of user data) ─────────
+  firebase_core: ^3.6.0
+  firebase_auth: ^5.3.1
+  google_sign_in: ^6.2.1
+  cloud_firestore: ^5.4.4
+
   # ─── Markdown & Code ────────────────────────────────
   flutter_markdown_plus: ^1.0.3
   markdown: ^7.2.0
