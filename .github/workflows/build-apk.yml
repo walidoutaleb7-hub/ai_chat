@@ -42,8 +42,9 @@ jobs:
         working-directory: WEURA/android
         run: |
           sed -i 's|id "org.jetbrains.kotlin.android" version "[^"]*"|id "org.jetbrains.kotlin.android" version "2.1.0"|' settings.gradle 2>/dev/null || true
-          sed -i 's|^\(\s*\)compileSdk = .*|\1compileSdk = 35|' app/build.gradle 2>/dev/null || true
-          sed -i 's|^\(\s*\)compileSdkVersion .*|\1compileSdkVersion 35|' app/build.gradle 2>/dev/null || true
+          sed -i 's|^\(\s*\)compileSdk = .*|\1compileSdk = 36|' app/build.gradle 2>/dev/null || true
+          sed -i 's|^\(\s*\)compileSdkVersion .*|\1compileSdkVersion 36|' app/build.gradle 2>/dev/null || true
+          sed -i 's|^\(\s*\)ndkVersion = .*|\1ndkVersion = "27.0.12077973"|' app/build.gradle 2>/dev/null || true
           sed -i 's|distributionUrl=.*gradle-[0-9.]*-all.zip|distributionUrl=https://services.gradle.org/distributions/gradle-8.9-all.zip|' gradle/wrapper/gradle-wrapper.properties 2>/dev/null || true
           sed -i 's|^\(\s*\)minSdk = .*|\1minSdk = 24|' app/build.gradle 2>/dev/null || true
           sed -i 's|^\(\s*\)minSdkVersion .*|\1minSdkVersion 24|' app/build.gradle 2>/dev/null || true
@@ -64,7 +65,7 @@ jobs:
       - name: Re-apply Android config
         working-directory: WEURA/android
         run: |
-          sed -i 's|^\(\s*\)compileSdk = .*|\1compileSdk = 35|' app/build.gradle 2>/dev/null || true
+          sed -i 's|^\(\s*\)compileSdk = .*|\1compileSdk = 36|' app/build.gradle 2>/dev/null || true
           sed -i 's|^\(\s*\)minSdk = .*|\1minSdk = 24|' app/build.gradle 2>/dev/null || true
 
           # Bump Android Gradle Plugin to 8.7.2+ (required by webkit 1.14)

@@ -196,7 +196,7 @@ class _ChatScreenState extends State<ChatScreen>
   WeuraFile? _attachedFile;
   XFile? _attachedImage;
 
-  static const String _serverUrl = EnvironmentConfig.production.apiBaseUrl;
+  static final String _serverUrl = EnvironmentConfig.production.apiBaseUrl;
       
   static const String _feedbackKey = 'weura_message_feedback';
 
