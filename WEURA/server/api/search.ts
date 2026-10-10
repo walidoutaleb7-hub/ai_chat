@@ -41,11 +41,99 @@ setInterval(pruneCache, 10 * 60 * 1000).unref();
  * ============================================================ */
 
 const TRUSTED_GENERAL = [
-  'reuters.com', 'apnews.com', 'bbc.com',
-  'aljazeera.net', 'aljazeera.com', 'cnn.com',
-  'nytimes.com', 'theguardian.com', 'euronews.com',
-  'france24.com', 'lemonde.fr',
-  'wikipedia.org', 'britannica.com',
+  // ─── Wire services (fast, neutral) ───
+  'reuters.com', 'apnews.com', 'afp.com', 'efe.com',
+  'dpa.com', 'ansa.it', 'kyodonews.net', 'yonhapnews.co.kr',
+  'ptinews.com', 'belta.by', 'tanjug.rs',
+
+  // ─── Global news ───
+  'bbc.com', 'bbc.co.uk', 'cnn.com', 'nytimes.com',
+  'washingtonpost.com', 'theguardian.com', 'ft.com',
+  'economist.com', 'wsj.com', 'bloomberg.com',
+  'aljazeera.net', 'aljazeera.com', 'france24.com',
+  'dw.com', 'lemonde.fr', 'lefigaro.fr', 'euronews.com',
+  'abc.net.au', 'cbc.ca', 'nbcnews.com', 'cbsnews.com',
+  'abcnews.go.com', 'politico.com', 'axios.com',
+  'npr.org', 'pbs.org', 'usatoday.com', 'latimes.com',
+  'chicagotribune.com', 'bostonglobe.com', 'nydailynews.com',
+  'thetimes.co.uk', 'telegraph.co.uk', 'independent.co.uk',
+  'theatlantic.com', 'vox.com', 'slate.com', 'salon.com',
+  'time.com', 'newsweek.com', 'foreignpolicy.com',
+  'foreignaffairs.com', 'cfr.org', 'brookings.edu',
+  'carnegieendowment.org', 'rand.org', 'chathamhouse.org',
+
+  // ─── European ───
+  'spiegel.de', 'zeit.de', 'faz.net', 'sueddeutsche.de',
+  'welt.de', 'tagesschau.de', 'elpais.com', 'elmundo.es',
+  'abc.es', 'lavanguardia.com', 'corriere.it', 'repubblica.it',
+  'lastampa.it', 'ilsole24ore.com', 'lefigaro.fr',
+  'liberation.fr', 'lesechos.fr', 'rtbf.be', 'lesoir.be',
+  'nrc.nl', 'volkskrant.nl', 'telegraaf.nl', 'aftenposten.no',
+  'dn.se', 'svd.se', 'hs.fi', 'yle.fi', 'politiken.dk',
+
+  // ─── Tech / Science press ───
+  'arstechnica.com', 'techcrunch.com', 'theverge.com',
+  'wired.com', 'engadget.com', 'cnet.com', 'zdnet.com',
+  'gizmodo.com', 'mashable.com', 'venturebeat.com',
+  'sciencenews.org', 'scientificamerican.com',
+  'newscientist.com', 'phys.org', 'quantamagazine.org',
+  'space.com', 'nature.com', 'science.org', 'smithsonianmag.com',
+
+  // ─── Reference / Encyclopedia ───
+  'wikipedia.org', 'britannica.com', 'encyclopedia.com',
+  'worldhistory.org', 'oxfordreference.com',
+  'merriam-webster.com', 'plato.stanford.edu', 'iep.utm.edu',
+  'britishmuseum.org', 'metmuseum.org', 'louvre.fr',
+  'smarthistory.org', 'archaeology.org',
+
+  // ─── Business / Finance ───
+  'hbr.org', 'mckinsey.com', 'bcg.com', 'deloitte.com',
+  'pwc.com', 'kpmg.com', 'ey.com', 'goldmansachs.com',
+  'jpmorgan.com', 'morganstanley.com', 'investopedia.com',
+  'marketwatch.com', 'cnbc.com', 'forbes.com', 'fortune.com',
+  'businessinsider.com', 'inc.com', 'fastcompany.com',
+
+  // ─── Health / Medical ───
+  'mayoclinic.org', 'clevelandclinic.org', 'hopkinsmedicine.org',
+  'health.harvard.edu', 'medscape.com', 'webmd.com',
+  'medicalnewstoday.com', 'healthline.com', 'everydayhealth.com',
+  'nih.gov', 'cdc.gov', 'who.int', 'nhs.uk',
+
+  // ─── Sports (all) ───
+  'espn.com', 'skysports.com', 'goal.com', 'bbc.com/sport',
+  'theathletic.com', 'bleacherreport.com', 'si.com',
+  'transfermarkt.com', 'sofascore.com', 'fotmob.com',
+  'flashscore.com', 'besoccer.com', 'whoscored.com',
+
+  // ─── Arabic media (broad) ───
+  'alarabiya.net', 'skynewsarabia.com', 'alhurra.com',
+  'al-ain.com', 'alkhaleej.ae', 'asharqalawsat.com',
+  'aawsat.com', 'alquds.co.uk', 'alarab.co.uk', 'asharq.com',
+  'elwatan.com', 'liberte-algerie.com', 'tsa-algerie.com',
+  'echoroukonline.com', 'ennaharonline.com', 'hespress.com',
+  'le360.ma', 'h24info.ma', 'assabah.ma', 'akhbarona.com',
+  'masrawy.com', 'youm7.com', 'almasryalyoum.com', 'alkahera24.com',
+
+  // ─── Fact-check / Verif ───
+  'snopes.com', 'politifact.com', 'factcheck.org',
+  'fullfact.org', 'afp.com/factcheck', 'poystn.org',
+  'misbar.com', 'fatabyyano.net', 'verify-sy.com',
+
+  // ─── Education / Academic ───
+  'harvard.edu', 'mit.edu', 'stanford.edu', 'berkeley.edu',
+  'ox.ac.uk', 'cam.ac.uk', 'ethz.ch', 'epfl.ch',
+  'coursera.org', 'edx.org', 'khanacademy.org', 'ted.com',
+
+  // ─── Data / Stats ───
+  'ourworldindata.org', 'statista.com', 'worldometers.info',
+  'data.worldbank.org', 'data.un.org', 'data.gov',
+  'data.gov.uk', 'europa.eu', 'eurostat.ec.europa.eu',
+  'unstats.un.org', 'oecd.org', 'imf.org',
+
+  // ─── Miscellaneous trusted ───
+  'nationalgeographic.com', 'livescience.com', 'howstuffworks.com',
+  'thoughtco.com', 'verywellmind.com', 'psychologytoday.com',
+  'apa.org', 'ncbi.nlm.nih.gov', 'nature.com',
 ];
 
 /**
@@ -276,6 +364,7 @@ const TECH_SOURCES = [
  * ═══════════════════════════════════════════════════════════ */
 
 const ALL_TRUSTED_SOURCES = new Set<string>([
+  ...TRUSTED_GENERAL, ...TRUSTED_FOOTBALL, ...TRUSTED_TECH,
   ...SCI_PUBMED, ...SCI_JOURNALS, ...SCI_PREPRINTS, ...SCI_DATABASES,
   ...UNIVERSITIES,
   ...GOV_INTL, ...GOV_HEALTH, ...GOV_SPACE, ...GOV_SCIENCE,
