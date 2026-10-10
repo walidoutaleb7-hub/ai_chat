@@ -85,6 +85,69 @@ jobs:
             sed -i 's|<application|<meta-data android:name="io.flutter.embedding.android.EnableImpeller" android:value="false" />\n    <application|' "$MANIFEST"
           fi
 
+      - name: Decode keystore
+        working-directory: WEURA
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/app/weura-release.jks
+          ls -la android/app/weura-release.jks
+
+      - name: Create key.properties
+        working-directory: WEURA/android
+        run: |
+          cat > key.properties <<EOF
+          storePassword=${{ secrets.KEYSTORE_PASSWORD }}
+          keyPassword=${{ secrets.KEY_PASSWORD }}
+          keyAlias=${{ secrets.KEY_ALIAS }}
+          storeFile=weura-release.jks
+          EOF
+          echo "key.properties created"
+
+      - name: Configure signing in build.gradle
+        working-directory: WEURA/android/app
+        run: |
+          # Insert signing config block before 'buildTypes'
+          python3 << 'PYEOF2'
+          import re
+          path = 'build.gradle'
+          with open(path, 'r') as f:
+              content = f.read()
+
+          if 'signingConfigs' in content:
+              print('signingConfigs already present')
+          else:
+              signing_block = '''    signingConfigs {
+                  release {
+                      keyAlias keystoreProperties['keyAlias']
+                      keyPassword keystoreProperties['keyPassword']
+                      storeFile file(keystoreProperties['storeFile'])
+                      storePassword keystoreProperties['storePassword']
+                  }
+              }
+              '''
+              # Load key.properties at top
+              props_loader = '''def keystoreProperties = new Properties()
+              def keystorePropertiesFile = rootProject.file('key.properties')
+              if (keystorePropertiesFile.exists()) {
+                  keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+              }
+
+              '''
+              # Prepend props loader after plugins block
+              content = content.replace('android {', props_loader + 'android {', 1)
+              # Insert signingConfigs after 'android {'
+              content = content.replace('android {', 'android {\n' + signing_block, 1)
+              # Replace buildTypes release config
+              content = re.sub(
+                  r'(buildTypes\s*\{\s*release\s*\{)',
+                  r'\1\n            signingConfig signingConfigs.release',
+                  content,
+                  count=1,
+              )
+              with open(path, 'w') as f:
+                  f.write(content)
+              print('signingConfigs injected')
+          PYEOF2
+
       - name: Build APK
         working-directory: WEURA
         run: flutter build apk --release --target=app/main.dart
