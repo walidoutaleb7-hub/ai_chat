@@ -84,3 +84,9 @@ desktop.ini
 # Keep it in Git for reproducible builds.
 package-lock.json
 /package-lock.json
+
+# ─── Release keystore (NEVER commit) ───
+*.jks
+*.b64
+*.keystore
+weura-release.*
