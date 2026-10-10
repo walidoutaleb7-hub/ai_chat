@@ -4,6 +4,8 @@ import 'package:markdown/markdown.dart' as md;
 
 import '../../../core/Theme/weura_theme.dart';
 
+/// Renders inline [N] citations as small favicon badges that open
+/// the source URL. Falls back to a link icon if favicon fails.
 class SourceLinkBuilder extends MarkdownElementBuilder {
   SourceLinkBuilder({
     required this.colors,
@@ -21,32 +23,51 @@ class SourceLinkBuilder extends MarkdownElementBuilder {
     if (!RegExp(r'^\d+$').hasMatch(label)) return null;
     if (!href.startsWith('http')) return null;
 
-    final host = Uri.tryParse(href)?.host ?? href;
+    final host = Uri.tryParse(href)?.host ?? '';
+    final faviconUrl =
+        'https://www.google.com/s2/favicons?domain=$host&sz=64';
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
+      padding: const EdgeInsets.symmetric(horizontal: 1, vertical: 1),
       child: Tooltip(
         message: host,
         child: Material(
           color: colors.accentSoft,
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(5),
           child: InkWell(
             onTap: () => onTap(href),
-            borderRadius: BorderRadius.circular(6),
+            borderRadius: BorderRadius.circular(5),
             child: Container(
-              width: 22,
-              height: 22,
+              width: 20,
+              height: 20,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(6),
+                borderRadius: BorderRadius.circular(5),
                 border: Border.all(
-                  color: colors.accentGlow.withValues(alpha: 0.45),
+                  color: colors.accentGlow.withValues(alpha: 0.35),
                 ),
               ),
-              child: Icon(
-                Icons.link_rounded,
-                size: 12,
-                color: colors.accentGlow,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(3),
+                child: Image.network(
+                  faviconUrl,
+                  width: 12,
+                  height: 12,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Icon(
+                    Icons.link_rounded,
+                    size: 11,
+                    color: colors.accentGlow,
+                  ),
+                  loadingBuilder: (_, child, progress) {
+                    if (progress == null) return child;
+                    return Icon(
+                      Icons.link_rounded,
+                      size: 11,
+                      color: colors.accentGlow.withValues(alpha: 0.5),
+                    );
+                  },
+                ),
               ),
             ),
           ),

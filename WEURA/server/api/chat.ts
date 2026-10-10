@@ -394,6 +394,11 @@ NO SEARCH (need_search = false):
 - Greetings, thanks, casual chat, follow-ups
 - Personal questions about the user (use memory)
 - Identity questions about WEURA
+- **Questions about Walid Outaleb / وليد أوطالب / "من هو وليد"** →
+  he is WEURA's developer. Answer from identity block:
+  "وليد أوطالب هو مطور WEURA." / "Walid Outaleb is the developer of WEURA."
+  NEVER search the web for this. NEVER list his personal life.
+- **Questions about WEURA's creator / developer / origin** → NO search.
 - Math, science, programming concepts, definitions
 - Writing, coding, translations, creativity
 - Stable historical facts (before 2020) — EXCEPT football
@@ -575,6 +580,14 @@ function fallbackNeedsSearch(message: string): boolean {
   const text = message.trim();
   if (text.length < 3) return false;
   if (/^[\d\s+\-*/().%,]+$/.test(text)) return false;
+
+  // Questions about WEURA's developer → never search.
+  if (
+    /(وليد|أوطالب|اوطالب|outaleb|walid)/i.test(text) &&
+    /(من هو|من هي|who is|عرفني|حدثني|احكيلي|معلومات)/i.test(text)
+  ) {
+    return false;
+  }
 
   if (isFootballQuestion(text)) return true;
 

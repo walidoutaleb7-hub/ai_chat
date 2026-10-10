@@ -3646,6 +3646,22 @@ class _ChatScreenState extends State<ChatScreen>
     );
   }
 
+  /// Checks if the user asked for sources in the recent messages.
+  bool _userAskedForSources(int index) {
+    for (int i = index - 1; i >= 0; i--) {
+      if (_messages[i].isUser) {
+        final text = _messages[i].text.toLowerCase();
+        return text.contains('مصدر') ||
+            text.contains('المصادر') ||
+            text.contains('source') ||
+            text.contains('reference') ||
+            text.contains('cite') ||
+            text.contains('مصادر');
+      }
+    }
+    return false;
+  }
+
   Widget _assistantMessage(
     WeuraColors colors,
     ChatMessage message,
@@ -3725,7 +3741,9 @@ class _ChatScreenState extends State<ChatScreen>
                     _buildMarkdownImage(colors, uri, title, alt),
               ),
 
-            if (sources.isNotEmpty && !isTyping)
+            if (sources.isNotEmpty &&
+                !isTyping &&
+                _userAskedForSources(index))
               Padding(
                 padding: const EdgeInsets.only(top: 18),
                 child: _sourcesSection(colors, sources),
