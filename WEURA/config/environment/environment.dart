@@ -45,7 +45,7 @@ class EnvironmentConfig {
 
   static const production = EnvironmentConfig(
     environment: WeuraEnvironment.production,
-    apiBaseUrl: 'https://api.example.com',
+    apiBaseUrl: 'https://ai-chat-tlol.onrender.com',
     defaultLanguage: 'en',
   );
 
