@@ -301,13 +301,70 @@ const FOOTBALL_KEYWORDS = [
   'salah', 'neymar', 'hakimi', 'mahrez', 'ziyech', 'bono',
 ];
 
+// Follow-up phrases that are NOT football questions even if they
+// mention a country / team. e.g. "واش دخل البرتغال؟" = "what does
+// Portugal have to do with it?" (conversational, not football).
+const FOOTBALL_FOLLOWUP_PATTERNS = [
+  /(واش|شنو|شو|ايش|إيش|what)\s+(دخل|علاقة|علاقه|دخلة)\s+/i,
+  /(واش|شنو)\s+(البرتغال|فرنسا|إسبانيا|اسبانيا|ميسي|رونالدو|ريال|برشلونة)/i,
+  /(دخل|علاقة)\s+(البرتغال|فرنسا|إسبانيا)/i,
+  /what\s+(does|has)\s+\w+\s+(have to do|to do)/i,
+];
+
+// Country and club names alone are weak signals. If the message
+// contains ONLY these (no strong football term), skip football mode.
+const WEAK_FOOTBALL_SIGNALS = [
+  'البرتغال', 'فرنسا', 'إسبانيا', 'اسبانيا', 'إنجلترا', 'انجلترا',
+  'ألمانيا', 'المانيا', 'إيطاليا', 'ايطاليا', 'هولندا', 'بلجيكا',
+  'الأرجنتين', 'الارجنتين', 'البرازيل', 'المغرب', 'الجزائر', 'تونس',
+  'مصر', 'السعودية', 'قطر', 'الإمارات', 'الامارات',
+  'portugal', 'france', 'spain', 'england', 'germany', 'italy',
+  'netherlands', 'belgium', 'argentina', 'brazil', 'morocco',
+  'algeria', 'tunisia', 'egypt', 'saudi', 'qatar', 'uae',
+];
+
+// Strong football terms (unambiguous).
+const STRONG_FOOTBALL_TERMS = [
+  'مباراة', 'ماتش', 'لاعب', 'فريق', 'هدف', 'أهداف', 'دوري',
+  'كأس', 'ملعب', 'بطولة', 'انتقال', 'مدرب', 'تشكيلة', 'نتيجة',
+  'ترتيب', 'تصفيات', 'منتخب', 'الدوري', 'الكأس', 'الهداف',
+  'صانع ألعاب', 'حراس', 'وسط الميدان', 'تحكيم', 'حكم', 'ركلة',
+  'ضربة جزاء', 'بنلتي', 'تسلل', 'أوفسايد', 'فار', 'var',
+  'ميسي', 'رونالدو', 'مبابي', 'هالاند', 'بنزيمة', 'صلاح', 'نيمار',
+  'حكيمي', 'محرز', 'زياش', 'بونو', 'أوناحي', 'فينيسيوس',
+  'بيلينغهام', 'رودري', 'رافينيا', 'موسيالا', 'يامال',
+  'ريال مدريد', 'برشلونة', 'ليفربول', 'مانشستر', 'تشيلسي',
+  'أرسنال', 'بايرن', 'يوفنتوس', 'ميلان', 'إنتر', 'سان جيرمان',
+  'الهلال', 'النصر', 'الاتحاد', 'الأهلي', 'الزمالك', 'الترجي',
+  'الوداد', 'الرجاء',
+  'match', 'player', 'team', 'goal', 'league', 'cup', 'stadium',
+  'championship', 'transfer', 'coach', 'manager', 'lineup',
+  'striker', 'goalkeeper', 'defender', 'midfielder', 'referee',
+  'penalty', 'offside', 'premier league', 'la liga', 'serie a',
+  'champions league', 'world cup', 'ballon d',
+  'messi', 'ronaldo', 'mbappe', 'haaland', 'benzema', 'salah',
+  'neymar', 'hakimi', 'mahrez', 'ziyech',
+  'real madrid', 'barcelona', 'liverpool', 'manchester',
+  'chelsea', 'arsenal', 'bayern', 'juventus', 'psg',
+];
+
 function isFootballQuestion(message: string): boolean {
   const text = message.toLowerCase().trim();
   if (text.length < 3) return false;
 
-  for (const kw of FOOTBALL_KEYWORDS) {
-    if (text.includes(kw.toLowerCase())) return true;
+  // 1. Reject conversational follow-ups that only mention a country.
+  for (const pat of FOOTBALL_FOLLOWUP_PATTERNS) {
+    if (pat.test(text)) return false;
   }
+
+  // 2. Strong football term → definitely football.
+  for (const term of STRONG_FOOTBALL_TERMS) {
+    if (text.includes(term.toLowerCase())) return true;
+  }
+
+  // 3. Weak signal only (country alone) → NOT football.
+  //    The user might just be talking about the country in general.
+  //    Skip — let the reflection layer decide.
   return false;
 }
 
