@@ -32,7 +32,7 @@ jobs:
         working-directory: WEURA
         run: |
           rm -rf android
-          flutter create . --platforms=android --project-name=weura --org com.weura --no-pub
+          flutter create . --platforms=android --project-name=weura --org com --no-pub
 
       - name: Restore pubspec
         working-directory: WEURA
