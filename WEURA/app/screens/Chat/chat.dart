@@ -35,6 +35,19 @@ import '../../services/Voice/voice_output_service.dart';
 import '../History/history.dart';
 import '../Memory/memory.dart';
 import '../Settings/settings.dart';
+import 'models/chat_message.dart';
+import 'blocks/typed_markdown.dart';
+import 'blocks/writing_block.dart';
+import 'blocks/source_link_builder.dart';
+import 'blocks/latex_block.dart';
+import 'blocks/dialogue_block.dart';
+import 'blocks/code_block.dart';
+import 'widgets/collapsible_user_text.dart';
+import 'animations/chat_background.dart';
+import 'animations/football_thinking.dart';
+import 'animations/image_loader.dart';
+import 'animations/thinking.dart';
+import 'viewers/image_zoom_viewer.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({
@@ -52,123 +65,6 @@ class ChatScreen extends StatefulWidget {
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _CollapsibleUserText extends StatefulWidget {
-  const _CollapsibleUserText({required this.text, required this.colors});
-  final String text;
-  final WeuraColors colors;
-  @override
-  State<_CollapsibleUserText> createState() => _CollapsibleUserTextState();
-}
-
-class _CollapsibleUserTextState extends State<_CollapsibleUserText> {
-  static const int _threshold = 1000;
-  bool _expanded = false;
-
-  @override
-  Widget build(BuildContext context) {
-    if (widget.text.length <= _threshold) {
-      return SelectableText(
-        widget.text,
-        style: TextStyle(
-          color: widget.colors.userBubbleText,
-          fontSize: 17,
-          height: 1.55,
-          letterSpacing: 0.1,
-        ),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (_expanded)
-          SelectableText(
-            widget.text,
-            style: TextStyle(
-              color: widget.colors.userBubbleText,
-              fontSize: 17,
-              height: 1.55,
-              letterSpacing: 0.1,
-            ),
-          )
-        else
-          Text(
-            widget.text,
-            maxLines: 3,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: widget.colors.userBubbleText,
-              fontSize: 17,
-              height: 1.55,
-              letterSpacing: 0.1,
-            ),
-          ),
-        const SizedBox(height: 6),
-        InkWell(
-          onTap: () => setState(() => _expanded = !_expanded),
-          borderRadius: BorderRadius.circular(6),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 2),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  _expanded ? 'عرض أقل' : 'عرض المزيد',
-                  style: TextStyle(
-                    color: widget.colors.userBubbleText.withValues(alpha: 0.75),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(width: 4),
-                Icon(
-                  _expanded
-                      ? Icons.keyboard_arrow_up_rounded
-                      : Icons.keyboard_arrow_down_rounded,
-                  size: 16,
-                  color: widget.colors.userBubbleText.withValues(alpha: 0.75),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _ChatMessage {
-  const _ChatMessage({
-    required this.text,
-    required this.isUser,
-    this.isError = false,
-    this.imageUrl,
-    this.imagePrompt,
-    this.visionImagePath,
-    this.playerData,
-    this.imageLocalPath,
-    this.isImageLoading = false,
-    this.searchResults,
-    this.searchQuery,
-    this.isSearching = false,
-  });
-
-  final String text;
-  final bool isUser;
-  final bool isError;
-  final String? imageUrl;
-  final String? imagePrompt;
-  final String? visionImagePath;
-  final Map<String, dynamic>? playerData;
-  final String? imageLocalPath;
-  final bool isImageLoading;
-
-  // Image search (Pexels)
-  final List<Map<String, dynamic>>? searchResults;
-  final String? searchQuery;
-  final bool isSearching;
-}
-
 class _ChatScreenState extends State<ChatScreen>
     with TickerProviderStateMixin {
   final GlobalKey<ScaffoldState> _scaffoldKey =
@@ -184,7 +80,7 @@ class _ChatScreenState extends State<ChatScreen>
 
   late final GrokService _grok;
 
-  final List<_ChatMessage> _messages = [];
+  final List<ChatMessage> _messages = [];
   final Map<int, String> _ratings = {};
   final Set<int> _typingIndices = {};
 
@@ -291,7 +187,7 @@ class _ChatScreenState extends State<ChatScreen>
             continue;
           }
           _messages.add(
-            _ChatMessage(
+            ChatMessage(
               text: msg.text,
               isUser: msg.isUser,
               imageUrl: msg.imageUrl,
@@ -559,7 +455,7 @@ class _ChatScreenState extends State<ChatScreen>
     final newText = result.trim();
     if (newText.isEmpty || newText == currentText) return;
 
-    _messages[index] = _ChatMessage(text: newText, isUser: true);
+    _messages[index] = ChatMessage(text: newText, isUser: true);
     _messages.removeRange(index + 1, _messages.length);
     _ratings.removeWhere((key, _) => key > index);
     _typingIndices.clear();
@@ -612,7 +508,7 @@ class _ChatScreenState extends State<ChatScreen>
 
     setState(() {
       _messages.add(
-        _ChatMessage(
+        ChatMessage(
           text: question.isEmpty
               ? 'حلل هذا الملف: ${file.name}'
               : question,
@@ -681,7 +577,7 @@ class _ChatScreenState extends State<ChatScreen>
       }
 
       setState(() {
-        _messages.add(_ChatMessage(text: content, isUser: false));
+        _messages.add(ChatMessage(text: content, isUser: false));
         _typingIndices.add(_messages.length - 1);
         _attachedFile = null;
       });
@@ -692,7 +588,7 @@ class _ChatScreenState extends State<ChatScreen>
       if (!mounted || _requestCancelled) return;
       setState(() {
         _messages.add(
-          _ChatMessage(
+          ChatMessage(
             text: _cleanError(error),
             isUser: false,
             isError: true,
@@ -744,7 +640,7 @@ class _ChatScreenState extends State<ChatScreen>
     await _ensureSession('بطاقة $playerName');
 
     setState(() {
-      _messages.add(_ChatMessage(text: userMessage, isUser: true));
+      _messages.add(ChatMessage(text: userMessage, isUser: true));
       _isLoading = true;
       _isFootballQuestion = true;
       _requestCancelled = false;
@@ -786,7 +682,7 @@ class _ChatScreenState extends State<ChatScreen>
 
       setState(() {
         _messages.add(
-          _ChatMessage(
+          ChatMessage(
             text: '',
             isUser: false,
             playerData: data,
@@ -801,7 +697,7 @@ class _ChatScreenState extends State<ChatScreen>
 
       setState(() {
         _messages.add(
-          _ChatMessage(
+          ChatMessage(
             text: _cleanError(error),
             isUser: false,
             isError: true,
@@ -1035,9 +931,9 @@ class _ChatScreenState extends State<ChatScreen>
     await _ensureSession(userMessage);
 
     setState(() {
-      _messages.add(_ChatMessage(text: userMessage, isUser: true));
+      _messages.add(ChatMessage(text: userMessage, isUser: true));
       _messages.add(
-        _ChatMessage(
+        ChatMessage(
           text: '',
           isUser: false,
           searchQuery: query,
@@ -1114,7 +1010,7 @@ class _ChatScreenState extends State<ChatScreen>
       setState(() {
         _messages.removeLast(); // remove placeholder
         _messages.add(
-          _ChatMessage(
+          ChatMessage(
             text: '',
             isUser: false,
             searchResults: results,
@@ -1129,7 +1025,7 @@ class _ChatScreenState extends State<ChatScreen>
       setState(() {
         _messages.removeLast();
         _messages.add(
-          _ChatMessage(
+          ChatMessage(
             text: 'فشل البحث عن الصور. حاول مرة أخرى.',
             isUser: false,
             isError: true,
@@ -1148,9 +1044,9 @@ class _ChatScreenState extends State<ChatScreen>
     final imageUrl = _buildImageUrl(prompt);
 
     setState(() {
-      _messages.add(_ChatMessage(text: userMessage, isUser: true));
+      _messages.add(ChatMessage(text: userMessage, isUser: true));
       _messages.add(
-        _ChatMessage(
+        ChatMessage(
           text: '',
           isUser: false,
           imageUrl: imageUrl,
@@ -1172,7 +1068,7 @@ class _ChatScreenState extends State<ChatScreen>
 
     setState(() {
       if (localPath != null) {
-        _messages[idx] = _ChatMessage(
+        _messages[idx] = ChatMessage(
           text: '',
           isUser: false,
           imageUrl: imageUrl,
@@ -1181,7 +1077,7 @@ class _ChatScreenState extends State<ChatScreen>
           isImageLoading: false,
         );
       } else {
-        _messages[idx] = _ChatMessage(
+        _messages[idx] = ChatMessage(
           text: 'تعذر إنشاء الصورة. جرّب مرة أخرى.',
           isUser: false,
           isError: true,
@@ -1203,7 +1099,7 @@ class _ChatScreenState extends State<ChatScreen>
     final newUrl = _buildImageUrl(original.imagePrompt!, seed: seed);
 
     setState(() {
-      _messages[index] = _ChatMessage(
+      _messages[index] = ChatMessage(
         text: '',
         isUser: false,
         imageUrl: newUrl,
@@ -1220,7 +1116,7 @@ class _ChatScreenState extends State<ChatScreen>
 
     setState(() {
       if (localPath != null) {
-        _messages[index] = _ChatMessage(
+        _messages[index] = ChatMessage(
           text: '',
           isUser: false,
           imageUrl: newUrl,
@@ -1228,7 +1124,7 @@ class _ChatScreenState extends State<ChatScreen>
           imageLocalPath: localPath,
         );
       } else {
-        _messages[index] = _ChatMessage(
+        _messages[index] = ChatMessage(
           text: 'تعذر إنشاء الصورة. جرّب مرة أخرى.',
           isUser: false,
           isError: true,
@@ -1359,7 +1255,7 @@ class _ChatScreenState extends State<ChatScreen>
     if (addUserMessage) {
       setState(() {
         _messages.add(
-          _ChatMessage(
+          ChatMessage(
             text: defaultQuestion,
             isUser: true,
             visionImagePath: images.first.path,
@@ -1445,7 +1341,7 @@ class _ChatScreenState extends State<ChatScreen>
       }
 
       setState(() {
-        _messages.add(_ChatMessage(text: content, isUser: false));
+        _messages.add(ChatMessage(text: content, isUser: false));
         _typingIndices.add(_messages.length - 1);
       });
 
@@ -1456,7 +1352,7 @@ class _ChatScreenState extends State<ChatScreen>
 
       setState(() {
         _messages.add(
-          _ChatMessage(
+          ChatMessage(
             text: _cleanError(error),
             isUser: false,
             isError: true,
@@ -1483,14 +1379,14 @@ class _ChatScreenState extends State<ChatScreen>
 
     setState(() {
       _messages.add(
-        _ChatMessage(
+        ChatMessage(
           text: instruction,
           isUser: true,
           visionImagePath: image.path,
         ),
       );
       _messages.add(
-        _ChatMessage(
+        ChatMessage(
           text: '',
           isUser: false,
           imagePrompt: instruction,
@@ -1568,7 +1464,7 @@ class _ChatScreenState extends State<ChatScreen>
       await file.writeAsBytes(response.bodyBytes);
 
       setState(() {
-        _messages[idx] = _ChatMessage(
+        _messages[idx] = ChatMessage(
           text: '',
           isUser: false,
           imagePrompt: instruction,
@@ -1583,7 +1479,7 @@ class _ChatScreenState extends State<ChatScreen>
       if (!mounted || _requestCancelled) return;
 
       setState(() {
-        _messages[idx] = _ChatMessage(
+        _messages[idx] = ChatMessage(
           text: _cleanError(error),
           isUser: false,
           isError: true,
@@ -1667,7 +1563,7 @@ class _ChatScreenState extends State<ChatScreen>
 
     if (addUserMessage) {
       setState(() {
-        _messages.add(_ChatMessage(text: message, isUser: true));
+        _messages.add(ChatMessage(text: message, isUser: true));
         _isLoading = true;
         _isFootballQuestion = isFootball;
         _requestCancelled = false;
@@ -1698,7 +1594,7 @@ class _ChatScreenState extends State<ChatScreen>
       //    message that triggered them.
       // 2. Guarantee no consecutive user messages.
       final history = <GrokMessage>[];
-      final buffer = <_ChatMessage>[];
+      final buffer = <ChatMessage>[];
 
       for (final m in _messages) {
         // Reset buffer when we hit a special feature message.
@@ -1741,7 +1637,7 @@ class _ChatScreenState extends State<ChatScreen>
       if (result.content.trim().isEmpty) {
         setState(() {
           _messages.add(
-            const _ChatMessage(
+            const ChatMessage(
               text: 'WEURA did not return an answer. Please try again.',
               isUser: false,
               isError: true,
@@ -1751,7 +1647,7 @@ class _ChatScreenState extends State<ChatScreen>
       } else {
         setState(() {
           _messages.add(
-            _ChatMessage(text: result.content, isUser: false),
+            ChatMessage(text: result.content, isUser: false),
           );
           _typingIndices.add(_messages.length - 1);
         });
@@ -1769,7 +1665,7 @@ class _ChatScreenState extends State<ChatScreen>
 
       setState(() {
         _messages.add(
-          _ChatMessage(
+          ChatMessage(
             text: _cleanError(error),
             isUser: false,
             isError: true,
@@ -1965,7 +1861,7 @@ class _ChatScreenState extends State<ChatScreen>
         barrierColor: Colors.black,
         transitionDuration: const Duration(milliseconds: 250),
         reverseTransitionDuration: const Duration(milliseconds: 200),
-        pageBuilder: (_, __, ___) => _ImageZoomViewer(
+        pageBuilder: (_, __, ___) => ImageZoomViewer(
           imageUrl: imageUrl,
           localPath: localPath,
           onSave: () => _saveImageToGallery(
@@ -2515,7 +2411,7 @@ class _ChatScreenState extends State<ChatScreen>
           Positioned.fill(
             child: TickerMode(
               enabled: _messages.isNotEmpty || _isLoading,
-              child: _ChatBackground(colors: colors),
+              child: ChatBackground(colors: colors),
             ),
           ),
           Column(
@@ -2535,8 +2431,8 @@ class _ChatScreenState extends State<ChatScreen>
                         itemBuilder: (context, index) {
                           if (_isLoading && index == _messages.length) {
                             return _isFootballQuestion
-                                ? _FootballThinking(colors: colors)
-                                : _WeuraThinking(colors: colors);
+                                ? FootballThinking(colors: colors)
+                                : WeuraThinking(colors: colors);
                           }
                           final message = _messages[index];
                           final isLastAssistant = !message.isUser &&
@@ -3005,7 +2901,7 @@ class _ChatScreenState extends State<ChatScreen>
   // IMAGE SEARCH — bubble (grid of Pexels results)
   // ============================================================
 
-  Widget _imageSearchBubble(WeuraColors colors, _ChatMessage message) {
+  Widget _imageSearchBubble(WeuraColors colors, ChatMessage message) {
     // Loading state
     if (message.isSearching) {
       return Align(
@@ -3301,7 +3197,7 @@ class _ChatScreenState extends State<ChatScreen>
 
   Widget _messageBubble(
     WeuraColors colors,
-    _ChatMessage message,
+    ChatMessage message,
     int index,
     bool isLastAssistant,
   ) {
@@ -3428,7 +3324,7 @@ class _ChatScreenState extends State<ChatScreen>
 
   Widget _userBubble(
     WeuraColors colors,
-    _ChatMessage message,
+    ChatMessage message,
     int index,
   ) {
     final bubbleDirection = _detectDirection(message.text);
@@ -3516,7 +3412,7 @@ class _ChatScreenState extends State<ChatScreen>
                   ],
                   if (message.text.trim().isNotEmpty)
 
-                    _CollapsibleUserText(
+                    CollapsibleUserText(
 
                       text: message.text,
 
@@ -3575,7 +3471,7 @@ class _ChatScreenState extends State<ChatScreen>
 
   Widget _assistantMessage(
     WeuraColors colors,
-    _ChatMessage message,
+    ChatMessage message,
     int index,
     bool isLastAssistant,
   ) {
@@ -3602,12 +3498,12 @@ class _ChatScreenState extends State<ChatScreen>
             if (message.isError)
               _errorMessage(colors, mainText)
             else if (isTyping)
-              _TypedMarkdown(
+              TypedMarkdown(
                 fullText: linkedText,
                 styleSheet: _markdownStyle(colors),
                 builders: {
-                  'code': _CodeBlockBuilder(colors: colors),
-                  'a': _SourceLinkBuilder(
+                  'code': CodeBlockBuilder(colors: colors),
+                  'a': SourceLinkBuilder(
                     colors: colors,
                     onTap: (url) { _openUrl(url); },
                   ),
@@ -3625,8 +3521,8 @@ class _ChatScreenState extends State<ChatScreen>
                 selectable: true,
                 styleSheet: _markdownStyle(colors),
                 builders: {
-                  'code': _CodeBlockBuilder(colors: colors),
-                  'a': _SourceLinkBuilder(
+                  'code': CodeBlockBuilder(colors: colors),
+                  'a': SourceLinkBuilder(
                     colors: colors,
                     onTap: (url) { _openUrl(url); },
                   ),
@@ -3722,7 +3618,7 @@ class _ChatScreenState extends State<ChatScreen>
 
   Widget _imageBubble(
     WeuraColors colors,
-    _ChatMessage message,
+    ChatMessage message,
     int index,
   ) {
     final isLoading = message.isImageLoading;
@@ -3781,7 +3677,7 @@ class _ChatScreenState extends State<ChatScreen>
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(color: colors.border),
                   ),
-                  child: _ImageGeneratingLoader(colors: colors),
+                  child: ImageGeneratingLoader(colors: colors),
                 ),
               )
             else if (hasLocal)
@@ -4135,7 +4031,7 @@ class _ChatScreenState extends State<ChatScreen>
 
   Widget _actionBar(
     WeuraColors colors,
-    _ChatMessage message,
+    ChatMessage message,
     int index,
     bool isLastAssistant,
   ) {
@@ -4311,2780 +4207,28 @@ class _ChatScreenState extends State<ChatScreen>
 // Typing markdown
 // ---------------------------------------------------------------------------
 
-class _TypedMarkdown extends StatefulWidget {
-  const _TypedMarkdown({
-    required this.fullText,
-    required this.styleSheet,
-    this.builders = const {},
-    this.onComplete,
-    this.onTick,
-    this.imageBuilder,
-  });
-
-  final String fullText;
-  final MarkdownStyleSheet styleSheet;
-  final Map<String, MarkdownElementBuilder> builders;
-  final VoidCallback? onComplete;
-  final VoidCallback? onTick;
-  final Widget Function(Uri, String?, String?)? imageBuilder;
-
-  @override
-  State<_TypedMarkdown> createState() => _TypedMarkdownState();
-}
-
-class _TypedMarkdownState extends State<_TypedMarkdown>
-    with TickerProviderStateMixin {
-  late AnimationController _controller;
-  late AnimationController _cursorController;
-  late String _visibleText;
-  bool _done = false;
-  bool _controllerReady = false;
-
-  // Renders images inside Markdown with rounded corners + shadow.
-  Widget _buildMarkdownImage(
-      WeuraColors colors, Uri uri, String? title, String? alt) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          decoration: BoxDecoration(
-            boxShadow: [
-              BoxShadow(
-                color: colors.accentGlow.withValues(alpha: 0.20),
-                blurRadius: 18,
-                spreadRadius: 1,
-              ),
-            ],
-          ),
-          child: Image.network(
-            uri.toString(),
-            fit: BoxFit.cover,
-            loadingBuilder: (_, child, progress) {
-              if (progress == null) return child;
-              return Container(
-                height: 200,
-                color: colors.surfaceAlt,
-                child: Center(
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: colors.accentGlow,
-                  ),
-                ),
-              );
-            },
-            errorBuilder: (_, __, ___) => Container(
-              height: 120,
-              color: colors.surfaceAlt,
-              child: Center(
-                child: Icon(
-                  Icons.broken_image_outlined,
-                  color: colors.textFaint,
-                  size: 32,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  @override
-  void initState() {
-    super.initState();
-
-    _cursorController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1200),  // slower = less redraws
-    );
-    _cursorController.value = 0.7;
-    _cursorController.repeat(reverse: true);
-
-    _startTyping(widget.fullText);
-  }
-
-  void _startTyping(String text) {
-    if (_controllerReady) {
-      _controller.removeListener(_onTick);
-      _controller.dispose();
-    }
-
-    final len = text.length;
-
-    if (len > 4000) {
-      _visibleText = text;
-      _done = true;
-      _controller = AnimationController(vsync: this);
-      _controllerReady = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        widget.onComplete?.call();
-      });
-      _cursorController.stop();
-      return;
-    }
-
-    final durationMs = (len * 8).clamp(300, 3000);  // faster + less screen time
-
-    _controller = AnimationController(
-      vsync: this,
-      duration: Duration(milliseconds: durationMs),
-    );
-    _controllerReady = true;
-
-    _visibleText = '';
-    _done = false;
-
-    _controller.addListener(_onTick);
-    _controller.forward().whenComplete(() {
-      if (!mounted) return;
-      _done = true;
-      _cursorController.stop();
-      widget.onComplete?.call();
-    });
-  }
-
-  @override
-  void didUpdateWidget(covariant _TypedMarkdown oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.fullText != widget.fullText) {
-      _startTyping(widget.fullText);
-      if (mounted) setState(() {});
-    }
-  }
-
-  String _stripUrls(String text) {
-    return text.replaceAllMapped(
-      RegExp(r'\[(\d+)\]\([^)]*\)'),
-      (m) => '[${m[1]}]',
-    );
-  }
-
-  void _onTick() {
-  // ✅ FIXED: use runes instead of code units.
-  //
-  // substring() cuts at code-unit boundaries, which can split an emoji
-  // (2 code units) or an Arabic letter + combining mark, producing
-  // broken glyphs (e.g. "�") during the typing animation.
-  //
-  // runes gives full Unicode code points, so emoji and Arabic stay intact.
-  final fullRunes = widget.fullText.runes.toList();
-  final total = fullRunes.length;
-  if (total == 0) return;
-
-  final count = (_controller.value * total).floor().clamp(0, total);
-  final nextVisible = String.fromCharCodes(fullRunes.take(count));
-  if (nextVisible == _visibleText) return;
-
-  setState(() {
-    _visibleText = nextVisible;
-  });
-
-  widget.onTick?.call();
-  }
-
-  @override
-  void dispose() {
-    _controller.removeListener(_onTick);
-    _controller.dispose();
-    _cursorController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_done) {
-      return MarkdownBody(
-        data: _visibleText,
-        selectable: true,
-        styleSheet: widget.styleSheet,
-        builders: widget.builders,
-        imageBuilder: widget.imageBuilder ??
-            ((uri, title, alt) =>
-                _buildMarkdownImage(WeuraColors.of(context), uri, title, alt)),
-      );
-    }
-
-    final baseStyle = widget.styleSheet.p ??
-        const TextStyle(fontSize: 17, height: 1.85);
-    final colors = WeuraColors.of(context);
-
-    return AnimatedBuilder(
-      animation: _cursorController,
-      builder: (context, _) {
-        final t = _cursorController.value;
-        return RichText(
-          text: TextSpan(
-            style: baseStyle,
-            children: [
-              TextSpan(text: _stripUrls(_visibleText)),
-              WidgetSpan(
-                alignment: PlaceholderAlignment.middle,
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 4),
-                  child: Opacity(
-                    opacity: 0.55 + (t * 0.45),
-                    child: Container(
-                      width: 3,
-                      height: 22,
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            colors.accentGlow,
-                            colors.accentGlow.withValues(alpha: 0.5),
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(2.5),
-                        boxShadow: [
-                          BoxShadow(
-                            color: colors.accentGlow
-                                .withValues(alpha: 0.7 * t),
-                            blurRadius: 10,
-                            spreadRadius: 1.5,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Code block builder
 // ---------------------------------------------------------------------------
-
-class _LatexBlock extends StatelessWidget {
-  const _LatexBlock({required this.latex, required this.colors});
-
-  final String latex;
-  final WeuraColors colors;
-
-  String _clean(String raw) {
-    var s = raw.trim();
-    s = s.replaceAll(r'\[', '').replaceAll(r'\]', '');
-    s = s.replaceAll(r'\(', '').replaceAll(r'\)', '');
-    if (s.startsWith(r'$$') && s.endsWith(r'$$')) {
-      s = s.substring(2, s.length - 2);
-    } else if (s.startsWith(r'$') && s.endsWith(r'$')) {
-      s = s.substring(1, s.length - 1);
-    }
-    return s.trim();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final cleaned = _clean(latex);
-    if (cleaned.isEmpty) return const SizedBox.shrink();
-
-    final hexColor = '#${(colors.textPrimary.value & 0xFFFFFF).toRadixString(16).padLeft(6, '0')}';
-    final bgColor = '#${(colors.surface.value & 0xFFFFFF).toRadixString(16).padLeft(6, '0')}';
-
-    // Escape LaTeX for JS string.
-    final escaped = cleaned
-        .replaceAll(r'\\', r'\\\\')
-        .replaceAll('`', r'\\`')
-        .replaceAll(r'$', r'\\$');
-
-    final html = """
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
-<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
- onload="renderMathInElement(document.body,{delimiters:[{left:'\\\\[',right:'\\\\]',display:true}],throwOnError:false})"></script>
-<style>
-  html,body{margin:0;padding:14px;background:$bgColor;color:$hexColor;
-  font-size:19px;font-family:'Times New Roman',serif;text-align:center;
-  overflow-x:auto;overflow-y:hidden;}
-  .katex{color:$hexColor!important;font-size:1.1em;}
-</style>
-</head>
-<body>\\\\[$escaped\\\\]</body>
-</html>
-""";
-
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 14),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: colors.surface,
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: colors.accentGlow.withValues(alpha: 0.25)),
-      ),
-      child: SizedBox(
-        height: 130,
-        child: _LatexWebView(html: html),
-      ),
-    );
-  }
-}
-
-class _LatexWebView extends StatefulWidget {
-  const _LatexWebView({required this.html});
-  final String html;
-
-  @override
-  State<_LatexWebView> createState() => _LatexWebViewState();
-}
-
-class _LatexWebViewState extends State<_LatexWebView> {
-  late final WebViewController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(Colors.transparent)
-      ..loadHtmlString(widget.html);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return WebViewWidget(controller: _controller);
-  }
-}
-
-/// Elegant card for creative writing (articles, stories, poetry).
-/// Similar to ChatGPT's "Écriture" card.
-/// Renders a chat bubble with avatar, like a conversation snapshot.
-/// Used when user asks for "علبة حوار" or "dialogue box".
-class _DialogueBlock extends StatelessWidget {
-  const _DialogueBlock({required this.content, required this.colors});
-
-  final String content;
-  final WeuraColors colors;
-
-  @override
-  Widget build(BuildContext context) {
-    // Parse optional lines: "Name: message" or just "message".
-    final lines = content
-        .split('\n')
-        .map((l) => l.trim())
-        .where((l) => l.isNotEmpty)
-        .toList();
-
-    if (lines.isEmpty) return const SizedBox.shrink();
-
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 12),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: colors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: colors.accentGlow.withValues(alpha: 0.20),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: lines.map((line) {
-          // Split "Name: msg" if colon found.
-          String speaker = '';
-          String msg = line;
-          final colonIdx = line.indexOf(':');
-          if (colonIdx > 0 && colonIdx < 30) {
-            speaker = line.substring(0, colonIdx).trim();
-            msg = line.substring(colonIdx + 1).trim();
-          }
-
-          // Alternate alignment for dialogue
-          final isQuestion = msg.trim().endsWith('؟') ||
-              msg.trim().endsWith('?');
-
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Row(
-              mainAxisAlignment: isQuestion
-                  ? MainAxisAlignment.start
-                  : MainAxisAlignment.end,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (speaker.isNotEmpty && isQuestion) ...[
-                  _avatar(speaker),
-                  const SizedBox(width: 8),
-                ],
-                Flexible(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isQuestion
-                          ? colors.surfaceAlt
-                          : colors.accentGlow.withValues(alpha: 0.18),
-                      borderRadius: BorderRadius.only(
-                        topLeft: const Radius.circular(16),
-                        topRight: const Radius.circular(16),
-                        bottomLeft: Radius.circular(isQuestion ? 4 : 16),
-                        bottomRight: Radius.circular(isQuestion ? 16 : 4),
-                      ),
-                      border: Border.all(
-                        color: colors.accentGlow
-                            .withValues(alpha: isQuestion ? 0.15 : 0.25),
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (speaker.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 4),
-                            child: Text(
-                              speaker,
-                              style: TextStyle(
-                                color: colors.accentGlow,
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                        SelectableText(
-                          msg,
-                          style: TextStyle(
-                            color: colors.textPrimary,
-                            fontSize: 15,
-                            height: 1.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                if (speaker.isNotEmpty && !isQuestion) ...[
-                  const SizedBox(width: 8),
-                  _avatar(speaker),
-                ],
-              ],
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-
-  Widget _avatar(String name) {
-    final letter = name.isNotEmpty ? name[0].toUpperCase() : '?';
-    return Container(
-      width: 32,
-      height: 32,
-      decoration: BoxDecoration(
-        color: colors.accentGlow.withValues(alpha: 0.25),
-        shape: BoxShape.circle,
-      ),
-      child: Center(
-        child: Text(
-          letter,
-          style: TextStyle(
-            color: colors.accentGlow,
-            fontSize: 14,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _WritingBlock extends StatelessWidget {
-  const _WritingBlock({
-    required this.title,
-    required this.body,
-    required this.colors,
-    this.onCopy,
-    this.onShare,
-  });
-
-  final String title;
-  final String body;
-  final WeuraColors colors;
-  final VoidCallback? onCopy;
-  final VoidCallback? onShare;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 14),
-      decoration: BoxDecoration(
-        color: colors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: colors.accentGlow.withValues(alpha: 0.22),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: colors.accent.withValues(alpha: 0.08),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // ─── Header ───
-          Container(
-            padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
-            decoration: BoxDecoration(
-              color: colors.surfaceAlt,
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(16),
-                topRight: Radius.circular(16),
-              ),
-              border: Border(
-                bottom: BorderSide(
-                  color: colors.accentGlow.withValues(alpha: 0.15),
-                ),
-              ),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.edit_note_rounded,
-                  size: 18,
-                  color: colors.accentGlow,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: TextStyle(
-                      color: colors.textPrimary,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.2,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                if (onCopy != null)
-                  _iconBtn(
-                    icon: Icons.copy_rounded,
-                    tooltip: 'نسخ',
-                    onTap: onCopy!,
-                  ),
-                if (onShare != null) ...[
-                  const SizedBox(width: 4),
-                  _iconBtn(
-                    icon: Icons.share_outlined,
-                    tooltip: 'مشاركة',
-                    onTap: onShare!,
-                  ),
-                ],
-              ],
-            ),
-          ),
-          // ─── Body ───
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
-            child: Directionality(
-              textDirection: TextDirection.rtl,
-              child: SelectableText(
-                body,
-                style: TextStyle(
-                  color: colors.textPrimary,
-                  fontSize: 16,
-                  height: 1.9,
-                  letterSpacing: 0.1,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _iconBtn({
-    required IconData icon,
-    required String tooltip,
-    required VoidCallback onTap,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: Tooltip(
-        message: tooltip,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(8),
-          child: Padding(
-            padding: const EdgeInsets.all(6),
-            child: Icon(
-              icon,
-              size: 18,
-              color: colors.textMuted,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SourceLinkBuilder extends MarkdownElementBuilder {
-  _SourceLinkBuilder({
-    required this.colors,
-    required this.onTap,
-  });
-
-  final WeuraColors colors;
-  final void Function(String url) onTap;
-
-  @override
-  Widget? visitElementAfter(md.Element element, TextStyle? preferredStyle) {
-    final href = element.attributes['href'] ?? '';
-    final label = element.textContent;
-
-    if (!RegExp(r'^\d+$').hasMatch(label)) return null;
-    if (!href.startsWith('http')) return null;
-
-    final host = Uri.tryParse(href)?.host ?? href;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
-      child: Tooltip(
-        message: host,
-        child: Material(
-          color: colors.accentSoft,
-          borderRadius: BorderRadius.circular(6),
-          child: InkWell(
-            onTap: () => onTap(href),
-            borderRadius: BorderRadius.circular(6),
-            child: Container(
-              width: 22,
-              height: 22,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(
-                  color: colors.accentGlow.withValues(alpha: 0.45),
-                ),
-              ),
-              child: Icon(
-                Icons.link_rounded,
-                size: 12,
-                color: colors.accentGlow,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _CodeBlockBuilder extends MarkdownElementBuilder {
-  _CodeBlockBuilder({required this.colors});
-
-  final WeuraColors colors;
-
-  @override
-  Widget? visitElementAfter(md.Element element, TextStyle? preferredStyle) {
-    final cls = element.attributes['class'];
-
-    if (cls == null || !cls.startsWith('language-')) {
-      return null;
-    }
-
-    final language = cls.substring('language-'.length).trim().toLowerCase();
-    final code = element.textContent.trimRight();
-
-    // LaTeX math block
-    if (language == 'latex' ||
-        language == 'math' ||
-        language == 'tex' ||
-        language == 'katex') {
-      return _LatexBlock(latex: code, colors: colors);
-    }
-
-    // Dialogue / chat box
-    if (language == 'dialogue' ||
-        language == 'chat' ||
-        language == 'bubble' ||
-        language == 'conversation') {
-      return _DialogueBlock(content: code, colors: colors);
-    }
-
-    // Creative writing block (articles, stories, poetry)
-    if (language == 'writing' ||
-        language == 'article' ||
-        language == 'poem' ||
-        language == 'story' ||
-        language == 'text') {
-      // First line = title (if it starts with '# '), body = rest
-      final lines = code.split('\n');
-      String title = 'Écriture';
-      String body = code;
-
-      if (lines.isNotEmpty && lines.first.startsWith('# ')) {
-        title = lines.first.substring(2).trim();
-        body = lines.sublist(1).join('\n').trim();
-      } else if (lines.isNotEmpty && lines.first.trim().isNotEmpty &&
-                 lines.first.length < 60 &&
-                 lines.length > 1) {
-        // First short line = title
-        title = lines.first.trim();
-        body = lines.sublist(1).join('\n').trim();
-      }
-
-      return _WritingBlock(
-        title: title,
-        body: body,
-        colors: colors,
-        onCopy: () => Clipboard.setData(ClipboardData(text: code)),
-        onShare: () => Share.share(code),
-      );
-    }
-
-    return Directionality(
-      textDirection: TextDirection.ltr,
-      child: _CodeBlock(
-        code: code,
-        language: language,
-        colors: colors,
-      ),
-    );
-  }
-}
-
-class _CodeBlock extends StatefulWidget {
-  const _CodeBlock({
-    required this.code,
-    required this.language,
-    required this.colors,
-  });
-
-  final String code;
-  final String language;
-  final WeuraColors colors;
-
-  @override
-  State<_CodeBlock> createState() => _CodeBlockState();
-}
-
-class _CodeBlockState extends State<_CodeBlock> {
-  bool _copied = false;
-
-  Future<void> _copy() async {
-    await Clipboard.setData(ClipboardData(text: widget.code));
-    if (!mounted) return;
-    setState(() => _copied = true);
-    await Future<void>.delayed(const Duration(seconds: 2));
-    if (mounted) setState(() => _copied = false);
-  }
-
-  Map<String, TextStyle> _theme() {
-    final base = Map<String, TextStyle>.from(atomOneDarkTheme);
-    base['root'] = const TextStyle(
-      backgroundColor: Colors.transparent,
-      color: Color(0xFFE6E6E6),
-    );
-    return base;
-  }
-
-  String _normalizeLanguage(String raw) {
-    final l = raw.toLowerCase().trim();
-    if (l.isEmpty) return 'plaintext';
-    if (l == 'js') return 'javascript';
-    if (l == 'ts') return 'typescript';
-    if (l == 'py') return 'python';
-    if (l == 'rb') return 'ruby';
-    if (l == 'sh' || l == 'shell') return 'bash';
-    if (l == 'yml') return 'yaml';
-    if (l == 'html') return 'xml';
-    if (l == 'c++') return 'cpp';
-    if (l == 'c#') return 'cs';
-    return l;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = widget.colors;
-    final displayLang =
-        widget.language.isEmpty ? 'code' : widget.language;
-
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 14),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0A0B12),
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: colors.border),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.18),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            padding: const EdgeInsets.fromLTRB(16, 11, 10, 11),
-            decoration: BoxDecoration(
-              color: const Color(0xFF0F1119),
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(15),
-                topRight: Radius.circular(15),
-              ),
-              border: Border(
-                bottom: BorderSide(color: colors.border),
-              ),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 10,
-                  height: 10,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: colors.accentGlow,
-                    boxShadow: [
-                      BoxShadow(
-                        color: colors.accentGlow
-                            .withValues(alpha: 0.6),
-                        blurRadius: 9,
-                        spreadRadius: 1.5,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  displayLang,
-                  style: TextStyle(
-                    color: colors.textMuted,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.4,
-                  ),
-                ),
-                const Spacer(),
-                InkWell(
-                  onTap: _copy,
-                  borderRadius: BorderRadius.circular(8),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          _copied
-                              ? Icons.check_rounded
-                              : Icons.copy_rounded,
-                          size: 15,
-                          color: _copied
-                              ? colors.accentGlow
-                              : colors.textMuted,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          _copied ? 'Copied' : 'Copy',
-                          style: TextStyle(
-                            color: _copied
-                                ? colors.accentGlow
-                                : colors.textMuted,
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(15),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: HighlightView(
-                widget.code,
-                language: _normalizeLanguage(widget.language),
-                theme: _theme(),
-                padding: EdgeInsets.zero,
-                textStyle: const TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: 14,
-                  height: 1.65,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Image Zoom Viewer
 // ---------------------------------------------------------------------------
 
-class _ImageZoomViewer extends StatefulWidget {
-  const _ImageZoomViewer({
-    required this.imageUrl,
-    this.localPath,
-    this.onSave,
-    this.onCopyUrl,
-  });
-
-  final String imageUrl;
-  final String? localPath;
-  final VoidCallback? onSave;
-  final VoidCallback? onCopyUrl;
-
-  @override
-  State<_ImageZoomViewer> createState() => _ImageZoomViewerState();
-}
-
-class _ImageZoomViewerState extends State<_ImageZoomViewer>
-    with SingleTickerProviderStateMixin {
-  final TransformationController _transformController =
-      TransformationController();
-
-  late final AnimationController _animController;
-  late Animation<Matrix4> _animation;
-  bool _isZoomed = false;
-  static const double _doubleTapScale = 2.5;
-
-  @override
-  void initState() {
-    super.initState();
-    _animController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 220),
-    );
-    _animation = Matrix4Tween(
-      begin: Matrix4.identity(),
-      end: Matrix4.identity(),
-    ).animate(
-      CurvedAnimation(
-        parent: _animController,
-        curve: Curves.easeOutCubic,
-      ),
-    );
-    _animController.addListener(_onTick);
-    _transformController.addListener(_onTransformChanged);
-  }
-
-  @override
-  void dispose() {
-    _animController.removeListener(_onTick);
-    _animController.dispose();
-    _transformController.removeListener(_onTransformChanged);
-    _transformController.dispose();
-    super.dispose();
-  }
-
-  void _onTick() {
-    _transformController.value = _animation.value;
-  }
-
-  void _onTransformChanged() {
-    final scale = _transformController.value.getMaxScaleOnAxis();
-    final zoomed = scale > 1.05;
-    if (zoomed != _isZoomed) {
-      setState(() => _isZoomed = zoomed);
-    }
-  }
-
-  void _animateTo(Matrix4 target) {
-    _animation = Matrix4Tween(
-      begin: _transformController.value,
-      end: target,
-    ).animate(
-      CurvedAnimation(
-        parent: _animController,
-        curve: Curves.easeOutCubic,
-      ),
-    );
-    _animController.forward(from: 0);
-  }
-
-  void _resetZoom() => _animateTo(Matrix4.identity());
-
-  void _handleDoubleTap() {
-    if (_isZoomed) {
-      _resetZoom();
-    } else {
-      final size = MediaQuery.of(context).size;
-      final cx = size.width / 2;
-      final cy = size.height / 2;
-      final target = Matrix4.identity()
-        ..translate(cx, cy)
-        ..scale(_doubleTapScale, _doubleTapScale, 1.0)
-        ..translate(-cx, -cy);
-      _animateTo(target);
-    }
-  }
-
-  void _close() => Navigator.of(context).maybePop();
-
-  Widget _buildImageViewerImage() {
-    final path = widget.localPath;
-    if (path != null) {
-      final file = File(path);
-      if (file.existsSync()) {
-        return Image.file(
-          file,
-          fit: BoxFit.contain,
-          errorBuilder: (_, __, ___) => _errorImage(),
-        );
-      }
-    }
-    return Image.network(
-      widget.imageUrl,
-      fit: BoxFit.contain,
-      loadingBuilder: (context, child, progress) {
-        if (progress == null) return child;
-        return const Center(
-          child: SizedBox(
-            width: 32,
-            height: 32,
-            child: CircularProgressIndicator(
-              color: Colors.white,
-              strokeWidth: 2.5,
-            ),
-          ),
-        );
-      },
-      errorBuilder: (_, __, ___) => _errorImage(),
-    );
-  }
-
-  Widget _errorImage() {
-    return const Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.broken_image_outlined, color: Colors.white54, size: 60),
-          SizedBox(height: 14),
-          Text(
-            'Could not load image',
-            style: TextStyle(color: Colors.white70, fontSize: 14),
-          ),
-        ],
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          Positioned.fill(
-            child: GestureDetector(
-              onDoubleTap: _handleDoubleTap,
-              child: InteractiveViewer(
-                transformationController: _transformController,
-                minScale: 1.0,
-                maxScale: 6.0,
-                boundaryMargin: EdgeInsets.zero,
-                constrained: true,
-                panEnabled: true,
-                scaleEnabled: true,
-                clipBehavior: Clip.hardEdge,
-                child: Center(child: _buildImageViewerImage()),
-              ),
-            ),
-          ),
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: SafeArea(
-              bottom: false,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.black.withValues(alpha: 0.65),
-                      Colors.transparent,
-                    ],
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    _iconAction(
-                      icon: Icons.close_rounded,
-                      tooltip: 'Close',
-                      onTap: _close,
-                    ),
-                    const Spacer(),
-                    if (_isZoomed)
-                      _iconAction(
-                        icon: Icons.center_focus_strong_rounded,
-                        tooltip: 'Reset zoom',
-                        onTap: _resetZoom,
-                      ),
-                    if (widget.onCopyUrl != null)
-                      _iconAction(
-                        icon: Icons.link_rounded,
-                        tooltip: 'Copy URL',
-                        onTap: () {
-                          widget.onCopyUrl!();
-                          _close();
-                        },
-                      ),
-                    if (widget.onSave != null)
-                      _iconAction(
-                        icon: Icons.save_alt_rounded,
-                        tooltip: 'Save to gallery',
-                        onTap: widget.onSave!,
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: SafeArea(
-              top: false,
-              child: AnimatedOpacity(
-                opacity: _isZoomed ? 0.0 : 1.0,
-                duration: const Duration(milliseconds: 300),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 16,
-                  ),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.bottomCenter,
-                      end: Alignment.topCenter,
-                      colors: [
-                        Colors.black.withValues(alpha: 0.65),
-                        Colors.transparent,
-                      ],
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.pinch_rounded,
-                        size: 16,
-                        color: Colors.white.withValues(alpha: 0.65),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Pinch to zoom • Double-tap to enlarge',
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.75),
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _iconAction({
-    required IconData icon,
-    required String tooltip,
-    required VoidCallback onTap,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(24),
-        child: Tooltip(
-          message: tooltip,
-          child: Padding(
-            padding: const EdgeInsets.all(10),
-            child: Icon(icon, size: 24, color: Colors.white),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Image generating loader
 // ---------------------------------------------------------------------------
-
-class _ImageGeneratingLoader extends StatefulWidget {
-  const _ImageGeneratingLoader({required this.colors});
-
-  final WeuraColors colors;
-
-  @override
-  State<_ImageGeneratingLoader> createState() =>
-      _ImageGeneratingLoaderState();
-}
-
-class _ImageGeneratingLoaderState extends State<_ImageGeneratingLoader>
-    with TickerProviderStateMixin {
-  late final AnimationController _pulseController;
-  late final AnimationController _rotateController;
-  late final AnimationController _sparkleController;
-  late final AnimationController _progressController;
-
-  @override
-  void initState() {
-    super.initState();
-
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1400),
-    );
-    _pulseController.value = 0.5;
-    _pulseController.repeat(reverse: true);
-
-    _rotateController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 5),
-    );
-    _rotateController.value = 0.3;
-    _rotateController.repeat();
-
-    _sparkleController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1800),
-    );
-    _sparkleController.value = 0.4;
-    _sparkleController.repeat();
-
-    _progressController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 4),
-    );
-    _progressController.value = 0.5;
-    _progressController.repeat();
-  }
-
-  @override
-  void dispose() {
-    _pulseController.dispose();
-    _rotateController.dispose();
-    _sparkleController.dispose();
-    _progressController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = widget.colors;
-
-    return RepaintBoundary(
-      child: Container(
-        width: 320,
-        height: 320,
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: colors.surfaceAlt,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            SizedBox(
-              width: 170,
-              height: 170,
-              child: AnimatedBuilder(
-                animation: Listenable.merge([
-                  _pulseController,
-                  _rotateController,
-                  _sparkleController,
-                ]),
-                builder: (context, _) {
-                  return CustomPaint(
-                    painter: _ImageLoadingPainter(
-                      progress: _pulseController.value,
-                      rotation: _rotateController.value,
-                      sparkle: _sparkleController.value,
-                      glow: colors.accentGlow,
-                      accent: colors.accent,
-                    ),
-                  );
-                },
-              ),
-            ),
-            const SizedBox(height: 22),
-            Text(
-              'Creating your image',
-              style: TextStyle(
-                color: colors.textPrimary,
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.4,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'This can take 5-15 seconds',
-              style: TextStyle(
-                color: colors.textMuted,
-                fontSize: 12,
-              ),
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: 160,
-              height: 4,
-              child: AnimatedBuilder(
-                animation: _progressController,
-                builder: (context, _) {
-                  return ClipRRect(
-                    borderRadius: BorderRadius.circular(2),
-                    child: Stack(
-                      children: [
-                        Container(color: colors.surface),
-                        FractionallySizedBox(
-                          widthFactor: 0.35,
-                          alignment: Alignment(
-                            -1.0 + (_progressController.value * 2.4),
-                            0,
-                          ),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: [
-                                  colors.accentGlow
-                                      .withValues(alpha: 0.0),
-                                  colors.accentGlow,
-                                  colors.accentGlow
-                                      .withValues(alpha: 0.0),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ImageLoadingPainter extends CustomPainter {
-  _ImageLoadingPainter({
-    required this.progress,
-    required this.rotation,
-    required this.sparkle,
-    required this.glow,
-    required this.accent,
-  });
-
-  final double progress;
-  final double rotation;
-  final double sparkle;
-  final Color glow;
-  final Color accent;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final baseRadius = size.width / 2;
-
-    _paintDashedRing(
-      canvas,
-      center,
-      baseRadius * 0.95,
-      rotation,
-      accent.withValues(alpha: 0.85),
-      strokeWidth: 3,
-    );
-
-    _paintDashedRing(
-      canvas,
-      center,
-      baseRadius * 0.72,
-      -rotation * 1.4,
-      glow.withValues(alpha: 0.6),
-      strokeWidth: 2.5,
-    );
-
-    final pulseRadius = baseRadius * (0.55 + progress * 0.22);
-    final haloPaint = Paint()
-      ..shader = RadialGradient(
-        colors: [
-          glow.withValues(alpha: 0.55 * (0.6 + progress * 0.4)),
-          glow.withValues(alpha: 0.0),
-        ],
-      ).createShader(
-        Rect.fromCircle(center: center, radius: pulseRadius),
-      );
-    canvas.drawCircle(center, pulseRadius, haloPaint);
-
-    final corePaint = Paint()..color = accent.withValues(alpha: 1.0);
-    canvas.drawCircle(center, baseRadius * 0.40, corePaint);
-
-    final highlightPaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.55);
-    canvas.drawCircle(
-      Offset(
-        center.dx - baseRadius * 0.08,
-        center.dy - baseRadius * 0.08,
-      ),
-      baseRadius * 0.20,
-      highlightPaint,
-    );
-
-    _paintBrushIcon(canvas, center, baseRadius * 0.45);
-    _paintSparkles(canvas, center, baseRadius * 0.88, sparkle);
-  }
-
-  void _paintDashedRing(
-    Canvas canvas,
-    Offset center,
-    double radius,
-    double rotation,
-    Color color, {
-    double strokeWidth = 2.5,
-  }) {
-    const segments = 24;
-    const gapFactor = 0.55;
-
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = strokeWidth
-      ..strokeCap = StrokeCap.round
-      ..style = PaintingStyle.stroke;
-
-    for (int i = 0; i < segments; i++) {
-      final startAngle =
-          (i / segments) * 2 * math.pi + rotation * 2 * math.pi;
-      final sweep = (2 * math.pi / segments) * gapFactor;
-
-      canvas.drawArc(
-        Rect.fromCircle(center: center, radius: radius),
-        startAngle,
-        sweep,
-        false,
-        paint,
-      );
-    }
-  }
-
-  void _paintSparkles(
-    Canvas canvas,
-    Offset center,
-    double radius,
-    double progress,
-  ) {
-    const sparkleCount = 8;
-
-    for (int i = 0; i < sparkleCount; i++) {
-      final baseAngle = (i / sparkleCount) * 2 * math.pi;
-      final phase = (progress + i / sparkleCount) % 1.0;
-      final scale = phase < 0.5 ? phase * 2 : (1 - phase) * 2;
-
-      if (scale < 0.15) continue;
-
-      final offset = Offset(
-        center.dx + radius * math.cos(baseAngle),
-        center.dy + radius * math.sin(baseAngle),
-      );
-
-      final sparklePaint = Paint()
-        ..color = glow.withValues(alpha: scale * 1.0)
-        ..strokeWidth = 2.5
-        ..strokeCap = StrokeCap.round;
-
-      final armLength = 5.0 * scale;
-
-      canvas.drawLine(
-        Offset(offset.dx - armLength, offset.dy),
-        Offset(offset.dx + armLength, offset.dy),
-        sparklePaint,
-      );
-      canvas.drawLine(
-        Offset(offset.dx, offset.dy - armLength),
-        Offset(offset.dx, offset.dy + armLength),
-        sparklePaint,
-      );
-    }
-  }
-
-  void _paintBrushIcon(Canvas canvas, Offset center, double size) {
-    final paint = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.fill;
-
-    final handleRect = Rect.fromCenter(
-      center: Offset(center.dx, center.dy + size * 0.20),
-      width: size * 0.20,
-      height: size * 0.70,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        handleRect,
-        Radius.circular(size * 0.08),
-      ),
-      paint,
-    );
-
-    final bristlesPath = Path()
-      ..moveTo(center.dx - size * 0.28, center.dy - size * 0.30)
-      ..lineTo(center.dx + size * 0.28, center.dy - size * 0.30)
-      ..lineTo(center.dx, center.dy - size * 0.85)
-      ..close();
-    canvas.drawPath(bristlesPath, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _ImageLoadingPainter oldDelegate) {
-    return oldDelegate.progress != progress ||
-        oldDelegate.rotation != rotation ||
-        oldDelegate.sparkle != sparkle;
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Thinking indicator — cinematic animation
 // ---------------------------------------------------------------------------
 
-class _WeuraThinking extends StatefulWidget {
-  const _WeuraThinking({required this.colors});
-
-  final WeuraColors colors;
-
-  @override
-  State<_WeuraThinking> createState() => _WeuraThinkingState();
-}
-
-class _WeuraThinkingState extends State<_WeuraThinking>
-    with TickerProviderStateMixin {
-  late final AnimationController _rotateController;
-  late final AnimationController _pulseController;
-  late final AnimationController _waveController;
-  late final AnimationController _particleController;
-  late final AnimationController _shimmerController;
-  late final AnimationController _breatheController;
-
-  @override
-  void initState() {
-    super.initState();
-
-    _rotateController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 6),
-    )..repeat();
-
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1400),
-    )..repeat(reverse: true);
-
-    _waveController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2400),
-    )..repeat();
-
-    _particleController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 4),
-    )..repeat();
-
-    _shimmerController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2200),
-    )..repeat();
-
-    _breatheController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2600),
-    )..repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _rotateController.dispose();
-    _pulseController.dispose();
-    _waveController.dispose();
-    _particleController.dispose();
-    _shimmerController.dispose();
-    _breatheController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = widget.colors;
-
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(
-          bottom: 28,
-          right: 40,
-          top: 8,
-          left: 4,
-        ),
-        padding: const EdgeInsets.symmetric(
-          horizontal: 22,
-          vertical: 20,
-        ),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              colors.surface.withValues(alpha: 0.85),
-              colors.surfaceAlt.withValues(alpha: 0.85),
-              colors.surface.withValues(alpha: 0.85),
-            ],
-            stops: const [0.0, 0.5, 1.0],
-          ),
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: colors.accentGlow.withValues(alpha: 0.30),
-            width: 1.2,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: colors.accentGlow.withValues(alpha: 0.20),
-              blurRadius: 32,
-              spreadRadius: 2,
-              offset: const Offset(0, 8),
-            ),
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.20),
-              blurRadius: 20,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: 240,
-              height: 150,
-              child: RepaintBoundary(
-                child: AnimatedBuilder(
-                  animation: Listenable.merge([
-                    _rotateController,
-                    _pulseController,
-                    _waveController,
-                    _particleController,
-                    _breatheController,
-                  ]),
-                  builder: (context, _) {
-                    return CustomPaint(
-                      painter: _WeuraThinkingPainter(
-                        rotation: _rotateController.value,
-                        pulse: _pulseController.value,
-                        wave: _waveController.value,
-                        particle: _particleController.value,
-                        breathe: _breatheController.value,
-                        primary: colors.accent,
-                        glow: colors.accentGlow,
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-            AnimatedBuilder(
-              animation: _shimmerController,
-              builder: (context, _) {
-                return ShaderMask(
-                  blendMode: BlendMode.srcIn,
-                  shaderCallback: (bounds) {
-                    final t = _shimmerController.value;
-                    return LinearGradient(
-                      begin: Alignment(-1.0 - t * 2, 0),
-                      end: Alignment(1.0 - t * 2, 0),
-                      colors: [
-                        colors.textSecondary.withValues(alpha: 0.45),
-                        colors.textPrimary,
-                        colors.accentGlow,
-                        colors.textPrimary,
-                        colors.textSecondary.withValues(alpha: 0.45),
-                      ],
-                      stops: const [0.0, 0.3, 0.5, 0.7, 1.0],
-                    ).createShader(bounds);
-                  },
-                  child: Text(
-                    'WEURA is thinking...',
-                    style: TextStyle(
-                      color: colors.textPrimary,
-                      fontSize: 14.5,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.6,
-                    ),
-                  ),
-                );
-              },
-            ),
-            const SizedBox(height: 6),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: List.generate(3, (i) {
-                return AnimatedBuilder(
-                  animation: _pulseController,
-                  builder: (context, _) {
-                    final offset = i * 0.18;
-                    final v = (_pulseController.value + offset) % 1.0;
-                    final opacity = 0.25 + (math.sin(v * math.pi) * 0.75);
-                    final scale = 0.85 + (math.sin(v * math.pi) * 0.35);
-                    return Padding(
-                      padding: EdgeInsets.only(right: i < 2 ? 6 : 0),
-                      child: Transform.scale(
-                        scale: scale,
-                        child: Container(
-                          width: 6,
-                          height: 6,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: colors.accentGlow
-                                .withValues(alpha: opacity),
-                            boxShadow: [
-                              BoxShadow(
-                                color: colors.accentGlow
-                                    .withValues(alpha: opacity * 0.6),
-                                blurRadius: 8,
-                                spreadRadius: 1,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                );
-              }),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _WeuraThinkingPainter extends CustomPainter {
-  _WeuraThinkingPainter({
-    required this.rotation,
-    required this.pulse,
-    required this.wave,
-    required this.particle,
-    required this.breathe,
-    required this.primary,
-    required this.glow,
-  });
-
-  final double rotation;
-  final double pulse;
-  final double wave;
-  final double particle;
-  final double breathe;
-  final Color primary;
-  final Color glow;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final maxR = math.min(size.width, size.height) / 2;
-
-    for (int i = 0; i < 3; i++) {
-      final phase = (wave + i / 3.0) % 1.0;
-      final r = maxR * 0.30 + phase * maxR * 0.70;
-      final opacity = (1.0 - phase) * 0.35;
-      canvas.drawCircle(
-        center,
-        r,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.5
-          ..color = glow.withValues(alpha: opacity),
-      );
-    }
-
-    _drawArcRing(
-      canvas,
-      center,
-      maxR * 0.90,
-      rotation,
-      glow.withValues(alpha: 0.55),
-      2.0,
-      3,
-    );
-
-    _drawArcRing(
-      canvas,
-      center,
-      maxR * 0.70,
-      -rotation * 1.5,
-      primary.withValues(alpha: 0.75),
-      2.5,
-      4,
-    );
-
-    _drawArcRing(
-      canvas,
-      center,
-      maxR * 0.50,
-      rotation * 2.2,
-      glow.withValues(alpha: 0.90),
-      2.0,
-      2,
-    );
-
-    const particleCount = 6;
-    for (int i = 0; i < particleCount; i++) {
-      final angle =
-          (i / particleCount) * 2 * math.pi + particle * 2 * math.pi;
-      final r = maxR * 0.80;
-      final pos = Offset(
-        center.dx + r * math.cos(angle),
-        center.dy + r * math.sin(angle),
-      );
-      final s = 2.5 + math.sin(particle * 2 * math.pi + i) * 1.5;
-
-      canvas.drawCircle(
-        pos,
-        s * 3.0,
-        Paint()..color = glow.withValues(alpha: 0.25),
-      );
-      canvas.drawCircle(
-        pos,
-        s,
-        Paint()..color = Colors.white.withValues(alpha: 0.95),
-      );
-    }
-
-    final coreR = maxR * (0.30 + pulse * 0.10);
-    final corePaint = Paint()
-      ..shader = RadialGradient(
-        colors: [
-          Colors.white.withValues(alpha: 0.95),
-          glow,
-          primary.withValues(alpha: 0.5),
-          primary.withValues(alpha: 0.0),
-        ],
-        stops: const [0.0, 0.25, 0.55, 1.0],
-      ).createShader(
-        Rect.fromCircle(center: center, radius: coreR * 2.4),
-      );
-    canvas.drawCircle(center, coreR * 2.4, corePaint);
-
-    canvas.drawCircle(
-      center,
-      coreR * 0.55,
-      Paint()..color = Colors.white.withValues(alpha: 0.98),
-    );
-
-    for (int i = 0; i < 8; i++) {
-      final angle = (i / 8) * 2 * math.pi + rotation * 3;
-      final r = maxR * 0.55;
-      final pos = Offset(
-        center.dx + r * math.cos(angle),
-        center.dy + r * math.sin(angle),
-      );
-      final sp = math.sin(breathe * math.pi * 2 + i) * 0.5 + 0.5;
-      final len = 3 + sp * 4;
-
-      final sparklePaint = Paint()
-        ..color = Colors.white.withValues(alpha: sp * 0.75)
-        ..strokeWidth = 1.6
-        ..strokeCap = StrokeCap.round;
-
-      canvas.drawLine(
-        Offset(pos.dx - len, pos.dy),
-        Offset(pos.dx + len, pos.dy),
-        sparklePaint,
-      );
-      canvas.drawLine(
-        Offset(pos.dx, pos.dy - len),
-        Offset(pos.dx, pos.dy + len),
-        sparklePaint,
-      );
-    }
-  }
-
-  void _drawArcRing(
-    Canvas canvas,
-    Offset center,
-    double radius,
-    double rotation,
-    Color color,
-    double strokeWidth,
-    int segments,
-  ) {
-    final paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth
-      ..strokeCap = StrokeCap.round
-      ..color = color;
-
-    for (int i = 0; i < segments; i++) {
-      final startAngle =
-          (i / segments) * 2 * math.pi + rotation * 2 * math.pi;
-      final sweep = (2 * math.pi / segments) * 0.70;
-      canvas.drawArc(
-        Rect.fromCircle(center: center, radius: radius),
-        startAngle,
-        sweep,
-        false,
-        paint,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _WeuraThinkingPainter oldDelegate) {
-    return oldDelegate.rotation != rotation ||
-        oldDelegate.pulse != pulse ||
-        oldDelegate.wave != wave ||
-        oldDelegate.particle != particle ||
-        oldDelegate.breathe != breathe;
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Football thinking indicator — cinematic animation (English only)
 // ---------------------------------------------------------------------------
-
-class _FootballThinking extends StatefulWidget {
-  const _FootballThinking({required this.colors});
-
-  final WeuraColors colors;
-
-  @override
-  State<_FootballThinking> createState() => _FootballThinkingState();
-}
-
-class _FootballThinkingState extends State<_FootballThinking>
-    with TickerProviderStateMixin {
-  late final AnimationController _ballController;
-  late final AnimationController _pulseController;
-  late final AnimationController _grassController;
-  late final AnimationController _lightController;
-  late final AnimationController _shimmerController;
-
-  @override
-  void initState() {
-    super.initState();
-
-    _ballController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1600),
-    )..repeat();
-
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1200),
-    )..repeat(reverse: true);
-
-    _grassController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2400),
-    )..repeat();
-
-    _lightController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 900),
-    )..repeat(reverse: true);
-
-    _shimmerController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2200),
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _ballController.dispose();
-    _pulseController.dispose();
-    _grassController.dispose();
-    _lightController.dispose();
-    _shimmerController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = widget.colors;
-
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(
-          bottom: 28,
-          left: 4,
-          right: 40,
-          top: 8,
-        ),
-        padding: const EdgeInsets.symmetric(
-          horizontal: 22,
-          vertical: 20,
-        ),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              const Color(0xFF08150C).withValues(alpha: 0.92),
-              const Color(0xFF0A1018).withValues(alpha: 0.92),
-              colors.surface.withValues(alpha: 0.92),
-            ],
-            stops: const [0.0, 0.5, 1.0],
-          ),
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: const Color(0xFF34D399).withValues(alpha: 0.40),
-            width: 1.2,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF10B981).withValues(alpha: 0.28),
-              blurRadius: 36,
-              spreadRadius: 3,
-              offset: const Offset(0, 8),
-            ),
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.22),
-              blurRadius: 20,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              height: 110,
-              width: 240,
-              child: RepaintBoundary(
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      child: AnimatedBuilder(
-                        animation: _grassController,
-                        builder: (context, _) {
-                          return CustomPaint(
-                            size: const Size(double.infinity, 22),
-                            painter: _GrassPainter(
-                              progress: _grassController.value,
-                              color1: const Color(0xFF047857),
-                              color2: const Color(0xFF10B981),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                    Positioned(
-                      left: 0,
-                      top: 4,
-                      child: AnimatedBuilder(
-                        animation: _lightController,
-                        builder: (context, _) => _lightBeam(
-                          opacity: _lightController.value,
-                          color: const Color(0xFFFBBF24),
-                          alignLeft: true,
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      right: 0,
-                      top: 4,
-                      child: AnimatedBuilder(
-                        animation: _lightController,
-                        builder: (context, _) => _lightBeam(
-                          opacity: 1.0 - _lightController.value,
-                          color: const Color(0xFFFBBF24),
-                          alignLeft: false,
-                        ),
-                      ),
-                    ),
-                    Align(
-                      alignment: Alignment.bottomCenter,
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: 14),
-                        child: AnimatedBuilder(
-                          animation: _ballController,
-                          builder: (context, _) {
-                            final t = _ballController.value;
-                            return Transform.translate(
-                              offset: Offset(
-                                0,
-                                -6 * math.sin(t * 2 * math.pi),
-                              ),
-                              child: Transform.rotate(
-                                angle: t * 2 * math.pi,
-                                child: Transform.scale(
-                                  scale: 1.0 +
-                                      0.06 * math.sin(t * 2 * math.pi),
-                                  child: SizedBox(
-                                    width: 52,
-                                    height: 52,
-                                    child: CustomPaint(
-                                      painter: _FootballPainter(),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ),
-                    Align(
-                      alignment: Alignment.bottomCenter,
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: 14),
-                        child: AnimatedBuilder(
-                          animation: _pulseController,
-                          builder: (context, _) {
-                            return Opacity(
-                              opacity: 1.0 - _pulseController.value,
-                              child: Transform.scale(
-                                scale: 1.0 + _pulseController.value * 1.1,
-                                child: Container(
-                                  width: 52,
-                                  height: 52,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: const Color(0xFF34D399)
-                                          .withValues(alpha: 0.65),
-                                      width: 1.6,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 14),
-            AnimatedBuilder(
-              animation: _shimmerController,
-              builder: (context, _) {
-                return ShaderMask(
-                  blendMode: BlendMode.srcIn,
-                  shaderCallback: (bounds) {
-                    final t = _shimmerController.value;
-                    return LinearGradient(
-                      begin: Alignment(-1.0 - t * 2, 0),
-                      end: Alignment(1.0 - t * 2, 0),
-                      colors: [
-                        const Color(0xFF34D399).withValues(alpha: 0.45),
-                        Colors.white,
-                        const Color(0xFF34D399),
-                        Colors.white,
-                        const Color(0xFF34D399).withValues(alpha: 0.45),
-                      ],
-                      stops: const [0.0, 0.3, 0.5, 0.7, 1.0],
-                    ).createShader(bounds);
-                  },
-                  child: const Text(
-                    'Football thinking...',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 15.5,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                );
-              },
-            ),
-            const SizedBox(height: 6),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: List.generate(3, (i) {
-                return AnimatedBuilder(
-                  animation: _pulseController,
-                  builder: (context, _) {
-                    final offset = i * 0.18;
-                    final v = (_pulseController.value + offset) % 1.0;
-                    final opacity = 0.25 + (math.sin(v * math.pi) * 0.75);
-                    final scale = 0.85 + (math.sin(v * math.pi) * 0.35);
-                    return Padding(
-                      padding: EdgeInsets.only(right: i < 2 ? 6 : 0),
-                      child: Transform.scale(
-                        scale: scale,
-                        child: Container(
-                          width: 6,
-                          height: 6,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: const Color(0xFF34D399)
-                                .withValues(alpha: opacity),
-                            boxShadow: [
-                              BoxShadow(
-                                color: const Color(0xFF34D399)
-                                    .withValues(alpha: opacity * 0.7),
-                                blurRadius: 8,
-                                spreadRadius: 1,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                );
-              }),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _lightBeam({
-    required double opacity,
-    required Color color,
-    required bool alignLeft,
-  }) {
-    return Opacity(
-      opacity: opacity.clamp(0.15, 1.0),
-      child: Transform.rotate(
-        angle: alignLeft ? 0.6 : -0.6,
-        child: Container(
-          width: 26,
-          height: 40,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: alignLeft
-                  ? Alignment.topRight
-                  : Alignment.topLeft,
-              end: alignLeft
-                  ? Alignment.bottomLeft
-                  : Alignment.bottomRight,
-              colors: [
-                color.withValues(alpha: 0.90),
-                color.withValues(alpha: 0.0),
-              ],
-            ),
-            borderRadius: BorderRadius.circular(6),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _GrassPainter extends CustomPainter {
-  _GrassPainter({
-    required this.progress,
-    required this.color1,
-    required this.color2,
-  });
-
-  final double progress;
-  final Color color1;
-  final Color color2;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final basePaint = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [color1.withValues(alpha: 0.0), color2],
-      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
-    canvas.drawRect(
-      Rect.fromLTWH(0, 0, size.width, size.height),
-      basePaint,
-    );
-
-    final bladePaint = Paint()
-      ..color = color2
-      ..strokeWidth = 1.4
-      ..strokeCap = StrokeCap.round;
-
-    const count = 40;
-    for (int i = 0; i < count; i++) {
-      final x = (i / count) * size.width;
-      final phase = (progress + i / count) % 1.0;
-      final h = 4 + (math.sin(phase * math.pi * 2) * 0.5 + 0.5) * 8;
-      canvas.drawLine(
-        Offset(x, size.height),
-        Offset(x + math.sin(phase * math.pi * 2) * 1.2, size.height - h),
-        bladePaint,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _GrassPainter oldDelegate) {
-    return oldDelegate.progress != progress;
-  }
-}
-
-class _FootballPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = size.width / 2;
-
-    final ballPaint = Paint()
-      ..shader = RadialGradient(
-        colors: [
-          Colors.white,
-          const Color(0xFFE5E7EB),
-        ],
-      ).createShader(Rect.fromCircle(center: center, radius: radius));
-    canvas.drawCircle(center, radius, ballPaint);
-
-    final blackPaint = Paint()..color = const Color(0xFF111827);
-
-    _drawPentagon(canvas, center, radius * 0.32, blackPaint);
-
-    for (int i = 0; i < 5; i++) {
-      final angle = (i / 5) * 2 * math.pi - math.pi / 2;
-      final pos = Offset(
-        center.dx + radius * 0.62 * math.cos(angle),
-        center.dy + radius * 0.62 * math.sin(angle),
-      );
-      _drawPentagon(canvas, pos, radius * 0.22, blackPaint);
-    }
-
-    canvas.drawCircle(
-      center,
-      radius,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1
-        ..color = Colors.black.withValues(alpha: 0.15),
-    );
-  }
-
-  void _drawPentagon(
-    Canvas canvas,
-    Offset center,
-    double radius,
-    Paint paint,
-  ) {
-    final path = Path();
-    for (int i = 0; i < 5; i++) {
-      final angle = (i / 5) * 2 * math.pi - math.pi / 2;
-      final point = Offset(
-        center.dx + radius * math.cos(angle),
-        center.dy + radius * math.sin(angle),
-      );
-      if (i == 0) {
-        path.moveTo(point.dx, point.dy);
-      } else {
-        path.lineTo(point.dx, point.dy);
-      }
-    }
-    path.close();
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
 
 // ---------------------------------------------------------------------------
 // Cinematic chat background — aurora + stars + glow + vignette
 // (Theme-aware, performance-optimized: 40 stars, 2 aurora blobs, no grid)
 // ---------------------------------------------------------------------------
 
-class _ChatBackground extends StatefulWidget {
-  const _ChatBackground({required this.colors});
-
-  final WeuraColors colors;
-
-  @override
-  State<_ChatBackground> createState() => _ChatBackgroundState();
-}
-
-class _ChatBackgroundState extends State<_ChatBackground>
-    with WidgetsBindingObserver {
-  // 30 fps tick — smooth enough, light on Mali-G57.
-  static const Duration _tick = Duration(milliseconds: 33);
-  Timer? _timer;
-  double _aurora = 0.0;
-  double _stars = 0.0;
-  double _twinkle = 0.0;
-  int _frame = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _startTimer();
-  }
-
-  @override
-  void dispose() {
-    _stopTimer();
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _startTimer();
-    } else {
-      _stopTimer();
-    }
-  }
-
-  void _startTimer() {
-    _timer?.cancel();
-    _timer = Timer.periodic(_tick, (_) {
-      if (!mounted) return;
-      _frame++;
-      // Aurora only updates every 6 frames (~5fps) — it's slow blobs.
-      final updateAurora = _frame % 6 == 0;
-      setState(() {
-        if (updateAurora) {
-          _aurora = (_aurora + 6 / (18 * 30)) % 1.0;
-        }
-        _stars = (_stars + 1 / (60 * 30)) % 1.0;
-        _twinkle = (_twinkle + 1 / (3 * 30)) % 1.0;
-      });
-    });
-  }
-
-  void _stopTimer() {
-    _timer?.cancel();
-    _timer = null;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = widget.colors;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    final gradientTop = isDark
-        ? const Color(0xFF04060B)
-        : const Color(0xFFF8FAFF);
-    final gradientMid = isDark
-        ? const Color(0xFF060912)
-        : const Color(0xFFF0F4FF);
-    final gradientBottom = isDark
-        ? const Color(0xFF04060B)
-        : const Color(0xFFF8FAFF);
-
-    final starColor = isDark
-        ? Colors.white
-        : const Color(0xFF1A2540);
-
-    final glowOpacity = isDark ? 1.0 : 0.55;
-    final vignetteOpacity = isDark ? 0.35 : 0.06;
-
-    return RepaintBoundary(
-      child: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              gradientTop,
-              gradientMid,
-              colors.background,
-              gradientBottom,
-            ],
-            stops: const [0.0, 0.3, 0.65, 1.0],
-          ),
-        ),
-        child: Stack(
-          children: [
-            // Aurora blobs (2) — updated at ~5fps (slow, no need for 30)
-            CustomPaint(
-              size: Size.infinite,
-              painter: _AuroraPainter(
-                progress: _aurora,
-                blue: colors.accent,
-                glow: colors.accentGlow,
-                intensity: isDark ? 1.0 : 0.55,
-              ),
-            ),
-
-            // Stars (15) — 30fps tick
-            RepaintBoundary(
-              child: CustomPaint(
-                size: Size.infinite,
-                painter: _StarsPainter(
-                  drift: _stars,
-                  twinkle: _twinkle,
-                  color: starColor,
-                  intensity: isDark ? 1.0 : 0.45,
-                ),
-              ),
-            ),
-
-            // Bottom glow
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              height: 240,
-              child: IgnorePointer(
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: RadialGradient(
-                      center: const Alignment(0, 1.2),
-                      radius: 0.9,
-                      colors: [
-                        colors.accent
-                            .withValues(alpha: 0.18 * glowOpacity),
-                        colors.accent
-                            .withValues(alpha: 0.06 * glowOpacity),
-                        Colors.transparent,
-                      ],
-                      stops: const [0.0, 0.5, 1.0],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-
-            // Top glow
-            Positioned(
-              left: 0,
-              right: 0,
-              top: 0,
-              height: 180,
-              child: IgnorePointer(
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: RadialGradient(
-                      center: const Alignment(0, -1.5),
-                      radius: 1.1,
-                      colors: [
-                        colors.accentGlow
-                            .withValues(alpha: 0.10 * glowOpacity),
-                        Colors.transparent,
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-
-            // Vignette
-            Positioned.fill(
-              child: IgnorePointer(
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: RadialGradient(
-                      center: Alignment.center,
-                      radius: 1.0,
-                      colors: [
-                        Colors.transparent,
-                        Colors.black.withValues(alpha: vignetteOpacity),
-                      ],
-                      stops: const [0.55, 1.0],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _AuroraPainter extends CustomPainter {
-  _AuroraPainter({
-    required this.progress,
-    required this.blue,
-    required this.glow,
-    this.intensity = 1.0,
-  });
-
-  final double progress;
-  final Color blue;
-  final Color glow;
-  final double intensity;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final t = progress * 2 * math.pi;
-
-    _blob(
-      canvas,
-      size,
-      cx: size.width * (0.30 + 0.15 * math.sin(t)),
-      cy: size.height * (0.20 + 0.10 * math.cos(t * 0.8)),
-      radius: size.width * 0.60,
-      color: blue.withValues(alpha: 0.16 * intensity),
-    );
-
-    _blob(
-      canvas,
-      size,
-      cx: size.width * (0.75 + 0.10 * math.cos(t * 0.7)),
-      cy: size.height * (0.45 + 0.12 * math.sin(t * 0.9)),
-      radius: size.width * 0.55,
-      color: glow.withValues(alpha: 0.14 * intensity),
-    );
-  }
-
-  void _blob(
-    Canvas canvas,
-    Size size, {
-    required double cx,
-    required double cy,
-    required double radius,
-    required Color color,
-  }) {
-    final paint = Paint()
-      ..shader = RadialGradient(
-        colors: [
-          color,
-          color.withValues(alpha: 0.0),
-        ],
-      ).createShader(
-        Rect.fromCircle(center: Offset(cx, cy), radius: radius),
-      );
-
-    canvas.drawCircle(Offset(cx, cy), radius, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _AuroraPainter oldDelegate) {
-    return oldDelegate.progress != progress ||
-        oldDelegate.intensity != intensity;
-  }
-}
-
-class _StarsPainter extends CustomPainter {
-  _StarsPainter({
-    required this.drift,
-    required this.twinkle,
-    required this.color,
-    this.intensity = 1.0,
-  });
-
-  final double drift;
-  final double twinkle;
-  final Color color;
-  final double intensity;
-
-  // 15 stars — smooth 60fps target.
-  static final List<_StarSeed> _stars = _generateStars();
-
-  static List<_StarSeed> _generateStars() {
-    final rnd = math.Random(42);
-    return List.generate(15, (i) {
-      return _StarSeed(
-        x: rnd.nextDouble(),
-        y: rnd.nextDouble(),
-        size: 1.2 + rnd.nextDouble() * 1.6,
-        phase: rnd.nextDouble(),
-      );
-    });
-  }
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    for (final star in _stars) {
-      // Gentle vertical drift.
-      final y = (star.y - drift * 0.5 + 1.0) % 1.0;
-
-      final tw = 0.4 +
-          0.6 *
-              math.sin(
-                (twinkle + star.phase) * 2 * math.pi,
-              );
-
-      final pos = Offset(star.x * size.width, y * size.height);
-
-      // Outer halo — soft, breathing.
-      canvas.drawCircle(
-        pos,
-        star.size * 3.0,
-        Paint()
-          ..color = color.withValues(alpha: 0.12 * tw * intensity),
-      );
-
-      // Mid glow — adds depth.
-      canvas.drawCircle(
-        pos,
-        star.size * 1.6,
-        Paint()
-          ..color = color.withValues(alpha: 0.35 * tw * intensity),
-      );
-
-      // Bright core — visible.
-      canvas.drawCircle(
-        pos,
-        star.size * 0.55,
-        Paint()
-          ..color = color.withValues(alpha: 0.95 * tw * intensity),
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _StarsPainter oldDelegate) {
-    return oldDelegate.drift != drift ||
-        oldDelegate.twinkle != twinkle ||
-        oldDelegate.intensity != intensity;
-  }
-}
-
-class _StarSeed {
-  const _StarSeed({
-    required this.x,
-    required this.y,
-    required this.size,
-    required this.phase,
-  });
-
-  final double x;
-  final double y;
-  final double size;
-  final double phase;
-}
