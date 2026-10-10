@@ -9,7 +9,16 @@ class AuthService extends ChangeNotifier {
   static final AuthService instance = AuthService._();
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final GoogleSignIn _google = GoogleSignIn();
+
+  // Web Client ID from Firebase Console (Google Sign-In → Web SDK config).
+  // Needed because google-services.json has oauth_client empty.
+  static const String _webClientId =
+      '69822511873-83c54m89qprtsnd3jnjogfvm0p8ip5.apps.googleusercontent.com';
+
+  final GoogleSignIn _google = GoogleSignIn(
+    serverClientId: _webClientId,
+    scopes: ['email', 'profile'],
+  );
 
   User? get currentUser => _auth.currentUser;
   bool get isSignedIn => _auth.currentUser != null;

@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/Theme/weura_theme.dart';
@@ -441,11 +442,11 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Google G logo
-              SizedBox(
+              // Google G logo (SVG)
+              SvgPicture.asset(
+                'assets/logo/google_g.svg',
                 width: 22,
                 height: 22,
-                child: CustomPaint(painter: _GoogleLogoPainter()),
               ),
               const SizedBox(width: 12),
               Text(
@@ -462,54 +463,4 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
   }
-}
-
-/// Draws the official 4-color Google "G".
-class _GoogleLogoPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final c = size.width / 2;
-    final r = size.width / 2;
-    final strokeW = size.width * 0.22;
-
-    void arc(Color color, double start, double sweep) {
-      final paint = Paint()
-        ..color = color
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = strokeW
-        ..strokeCap = StrokeCap.butt;
-      canvas.drawArc(
-        Rect.fromCircle(center: Offset(c, c), radius: r - strokeW / 2),
-        start,
-        sweep,
-        false,
-        paint,
-      );
-    }
-
-    // Google brand colors
-    arc(const Color(0xFF4285F4), -0.5, 1.05); // blue (top-right)
-    arc(const Color(0xFF34A853), 0.55, 1.55); // green (bottom)
-    arc(const Color(0xFFFBBC05), 2.10, 0.90); // yellow (bottom-left)
-    arc(const Color(0xFFEA4335), 3.00, 1.28); // red (top-left)
-
-    // White notch for the "G" bar
-    final barPaint = Paint()..color = Colors.transparent;
-    canvas.drawRect(
-      Rect.fromLTWH(c, c - strokeW / 2, r, strokeW),
-      barPaint,
-    );
-
-    // Blue horizontal bar
-    final blueBar = Paint()
-      ..color = const Color(0xFF4285F4)
-      ..style = PaintingStyle.fill;
-    canvas.drawRect(
-      Rect.fromLTWH(c - 1, c - strokeW / 2, r, strokeW),
-      blueBar,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
