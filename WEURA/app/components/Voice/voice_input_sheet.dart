@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/Settings/app_settings.dart';
 import '../../core/Theme/weura_theme.dart';
+import '../../core/i18n/weura_strings.dart';
 import '../../services/Voice/voice_service.dart';
 
 class VoiceInputSheet extends StatefulWidget {
@@ -187,10 +188,10 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
                 const SizedBox(height: 18),
                 Text(
                   _isListening
-                      ? 'يستمع...'
+                      ? WeuraStrings.voiceListening
                       : (_error != null && !_isAvailable
-                          ? 'غير متوفر'
-                          : 'إدخال صوتي'),
+                          ? WeuraStrings.voiceUnavailable
+                          : WeuraStrings.voiceInputTitle),
                   style: TextStyle(
                     color: colors.textPrimary,
                     fontSize: 16,
@@ -207,8 +208,8 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
                 else
                   Text(
                     _isListening
-                        ? 'اتكلم الآن...'
-                        : 'لم يتم التقاط أي صوت.',
+                        ? WeuraStrings.voiceSpeakNow
+                        : WeuraStrings.voiceNoSound,
                     style: TextStyle(
                       color: colors.textMuted,
                       fontSize: 13,
@@ -220,7 +221,7 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
                     Expanded(
                       child: _outlinedButton(
                         colors: colors,
-                        label: 'إلغاء',
+                        label: WeuraStrings.cancel,
                         onTap: _cancel,
                       ),
                     ),
@@ -228,7 +229,9 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
                     Expanded(
                       child: _filledButton(
                         colors: colors,
-                        label: canSend ? 'إرسال' : 'إيقاف',
+                        label: canSend
+                            ? WeuraStrings.voiceSend
+                            : WeuraStrings.voiceStop,
                         icon: canSend
                             ? Icons.arrow_upward_rounded
                             : Icons.stop_rounded,
@@ -263,9 +266,17 @@ class _VoiceInputSheetState extends State<VoiceInputSheet>
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _langChip(colors: colors, label: 'العربية', code: 'ar'),
+          _langChip(
+            colors: colors,
+            label: WeuraStrings.voiceSwitchArabic,
+            code: 'ar',
+          ),
           const SizedBox(width: 4),
-          _langChip(colors: colors, label: 'English', code: 'en'),
+          _langChip(
+            colors: colors,
+            label: WeuraStrings.voiceSwitchEnglish,
+            code: 'en',
+          ),
         ],
       ),
     );
