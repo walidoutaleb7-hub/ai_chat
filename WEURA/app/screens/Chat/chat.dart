@@ -21,6 +21,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../components/Composer/comppser.dart';
 import '../../components/Player/player_card.dart';
 import '../../components/Voice/voice_input_sheet.dart';
+import '../../../config/environment/environment.dart';
 import '../../core/AI/ai_router.dart';
 import '../../core/History/chat_history.dart';
 import '../../core/Memory/memory_manager.dart';
@@ -195,8 +196,8 @@ class _ChatScreenState extends State<ChatScreen>
   WeuraFile? _attachedFile;
   XFile? _attachedImage;
 
-  static const String _serverUrl =
-      'https://ai-chat-tlol.onrender.com';
+  static const String _serverUrl = EnvironmentConfig.production.apiBaseUrl;
+      
   static const String _feedbackKey = 'weura_message_feedback';
 
   static const List<String> _footballKeywords = [
