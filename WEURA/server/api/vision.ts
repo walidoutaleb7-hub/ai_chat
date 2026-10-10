@@ -2,42 +2,27 @@ import express from 'express';
 
 const router = express.Router();
 
+const GEMINI_API_URL =
+  'https://generativelanguage.googleapis.com/v1beta/models';
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
 const MAX_IMAGE_DATA_URL_LENGTH = 6_000_000;
 const MAX_QUESTION_LENGTH = 2000;
 const MODEL_TIMEOUT_MS = 45_000;
-
-/**
- * Keep max_tokens LOW.
- *
- * Groq free tier: 1000 OTPM (output tokens per minute) for qwen3.8.
- * A vision request with max_tokens 1500 would fail with 429.
- *
- * ✅ FIXED: 500 → 800.
- * 500 was too short for complex images (scanned PDFs, busy scenes).
- * 800 is a safe middle ground: enough detail, still under the OTPM limit.
- */
 const MAX_OUTPUT_TOKENS = 800;
 
-/**
- * Only qwen3.8-27b is available on this Groq account.
- * (llama-4-*, llama-3.2-vision, qwen3.6-27b → all unavailable)
- */
-const VISION_MODELS = [
-  'qwen/qwen3.8-27b',
+const GEMINI_VISION_MODELS = [
+  'gemini-3.5-flash-lite',
+  'gemini-3.1-flash-lite',
 ];
 
-function getVisionModels(): string[] {
-  const custom = process.env.GROQ_VISION_MODEL?.trim();
-  if (custom) {
-    return [custom, ...VISION_MODELS.filter((m) => m !== custom)];
-  }
-  return VISION_MODELS;
-}
+const GROQ_VISION_MODELS = ['qwen/qwen3.8-27b'];
 
 const ALLOWED_MIME_TYPES = new Set([
-  'image/jpeg', 'image/jpg', 'image/png', 'image/webp',
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+  'image/webp',
 ]);
 
 const SYSTEM_PROMPT = `You are WEURA Vision — an expert image analyst.
@@ -53,6 +38,7 @@ type CallResult = {
   status: number;
   error?: string;
   retryAfterMs?: number;
+  model?: string;
 };
 
 function validateImageData(raw: string): string | null {
@@ -84,6 +70,124 @@ function sanitizeQuestion(raw: unknown): string {
   return clean || 'Describe this image in detail.';
 }
 
+function parseDataUrl(
+  dataUrl: string,
+): { mime: string; base64: string } | null {
+  const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+  if (!match) return null;
+  return { mime: match[1], base64: match[2] };
+}
+
+/* ============================================================
+ *  GEMINI VISION
+ * ============================================================ */
+
+async function callGeminiVision(
+  model: string,
+  apiKey: string,
+  imageData: string,
+  question: string,
+): Promise<CallResult> {
+  try {
+    const parsed = parseDataUrl(imageData);
+    if (!parsed) {
+      return {
+        ok: false,
+        status: 400,
+        error: 'gemini: invalid image data URL.',
+      };
+    }
+
+    const url = `${GEMINI_API_URL}/${model}:generateContent?key=${apiKey}`;
+
+    const body = {
+      systemInstruction: {
+        parts: [{ text: SYSTEM_PROMPT }],
+      },
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            { text: question },
+            {
+              inline_data: {
+                mime_type: parsed.mime,
+                data: parsed.base64,
+              },
+            },
+          ],
+        },
+      ],
+      generationConfig: {
+        temperature: 0.3,
+        maxOutputTokens: MAX_OUTPUT_TOKENS,
+      },
+    };
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(MODEL_TIMEOUT_MS),
+    });
+
+    const raw = await response.text();
+    let data: any;
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      return {
+        ok: false,
+        status: response.status,
+        error: `gemini: invalid JSON (HTTP ${response.status}).`,
+      };
+    }
+
+    if (!response.ok) {
+      const providerError =
+        data?.error?.message ?? `HTTP ${response.status}`;
+      return {
+        ok: false,
+        status: response.status,
+        error: `gemini: ${String(providerError)}`,
+        retryAfterMs: response.status === 429 ? 15_000 : undefined,
+      };
+    }
+
+    const text =
+      data?.candidates?.[0]?.content?.parts
+        ?.map((p: any) => p?.text ?? '')
+        .join('') ?? '';
+
+    if (!text || text.trim().length === 0) {
+      return {
+        ok: false,
+        status: response.status,
+        error: 'gemini: empty response.',
+      };
+    }
+
+    return {
+      ok: true,
+      content: text.trim(),
+      status: response.status,
+      model: `gemini:${model}`,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: 0,
+      error:
+        'gemini: ' +
+        (error instanceof Error ? error.message : 'unknown'),
+    };
+  }
+}
+
+/* ============================================================
+ *  GROQ VISION
+ * ============================================================ */
+
 function isModelUnavailable(error: string): boolean {
   const e = error.toLowerCase();
   return (
@@ -106,21 +210,16 @@ function isRateLimit(error: string): boolean {
   );
 }
 
-/**
- * Extracts "try again in X.XXs" from a Groq 429 message.
- */
 function extractRetryAfterMs(error: string): number {
   const match = error.match(/try again in ([\d.]+)s/i);
   if (match) {
     const sec = parseFloat(match[1]);
-    if (!isNaN(sec) && sec > 0) {
-      return Math.ceil(sec * 1000) + 1000; // +1s buffer
-    }
+    if (!isNaN(sec) && sec > 0) return Math.ceil(sec * 1000) + 1000;
   }
-  return 15_000; // default 15s
+  return 15_000;
 }
 
-async function callVisionModel(
+async function callGroqVision(
   model: string,
   apiKey: string,
   imageData: string,
@@ -159,7 +258,7 @@ async function callVisionModel(
       return {
         ok: false,
         status: response.status,
-        error: `Invalid JSON (HTTP ${response.status}).`,
+        error: `groq: invalid JSON (HTTP ${response.status}).`,
       };
     }
 
@@ -169,7 +268,7 @@ async function callVisionModel(
       return {
         ok: false,
         status: response.status,
-        error: String(providerError),
+        error: `groq: ${String(providerError)}`,
         retryAfterMs: isRateLimit(String(providerError))
           ? extractRetryAfterMs(String(providerError))
           : undefined,
@@ -181,77 +280,28 @@ async function callVisionModel(
       return {
         ok: false,
         status: response.status,
-        error: 'Empty response from vision model.',
+        error: 'groq: empty response.',
       };
     }
 
-    return { ok: true, content: content.trim(), status: response.status };
+    return {
+      ok: true,
+      content: content.trim(),
+      status: response.status,
+      model: `groq:${model}`,
+    };
   } catch (error) {
     return {
       ok: false,
       status: 0,
-      error: error instanceof Error ? error.message : 'Unknown',
+      error:
+        'groq: ' + (error instanceof Error ? error.message : 'unknown'),
     };
   }
 }
 
 /* ============================================================
- *  DEBUG — list which vision models are available
- * ============================================================ */
-
-const TINY_PNG_32 =
-  'data:image/png;base64,' +
-  'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAA' +
-  'vklEQVR4AcXBsW2FMBiF0Y8r3GQb6jeBxRauYRpo4yGQkM' +
-  'd4A7kg7Z/GUfSKe8703fKDkTATZsJsrr0RlZSJ9r4RLayMvLmJjnQ' +
-  'S1d6IhJkwE2bT13U/DBzp5BN73xgRZsJMmM1HOolqb/yWiWpvjJSU' +
-  'iRZWopIykTATZsJs5g+1N6KSMiO1N/5DmAkzYTa9Lh6MhJkwE2ZzS' +
-  'Zlo7xvRwson3txERzqJhJkwE2bT6+Lh/wcjYSbM5Jk6bwEAAAAA' +
-  'SUVORK5CYII=';
-
-router.get('/vision/models', async (_req, res) => {
-  const apiKey = process.env.GROQ_API_KEY?.trim();
-  if (!apiKey) {
-    return res.status(503).json({
-      success: false,
-      error: 'GROQ_API_KEY is not configured.',
-    });
-  }
-
-  const models = getVisionModels();
-  const results: Array<{
-    model: string;
-    ok: boolean;
-    status: number;
-    error?: string;
-  }> = [];
-
-  for (const model of models) {
-    const result = await callVisionModel(
-      model,
-      apiKey,
-      TINY_PNG_32,
-      'Describe this image.',
-    );
-
-    results.push({
-      model,
-      ok: result.ok,
-      status: result.status,
-      error: result.ok ? undefined : result.error,
-    });
-  }
-
-  return res.json({
-    success: true,
-    total: models.length,
-    working: results.filter((r) => r.ok).length,
-    results,
-  });
-});
-
-/* ============================================================
- *  MAIN VISION ROUTE
+ *  MAIN ROUTE
  * ============================================================ */
 
 router.post('/vision', async (req, res) => {
@@ -264,26 +314,20 @@ router.post('/vision', async (req, res) => {
 
     const imageError = validateImageData(imageData);
     if (imageError) {
-      return res.status(400).json({ success: false, error: imageError });
+      return res
+        .status(400)
+        .json({ success: false, error: imageError });
     }
 
-    const apiKey = process.env.GROQ_API_KEY?.trim();
-    if (!apiKey) {
-      return res.status(503).json({
-        success: false,
-        error: 'Vision provider is not configured.',
-      });
-    }
-
-    const models = getVisionModels();
     const errors: string[] = [];
 
-    for (const model of models) {
-      // Try up to 2 times per model (second try only on rate limit).
-      for (let attempt = 1; attempt <= 2; attempt++) {
-        const result = await callVisionModel(
+    // ─── Gemini primary ─────────────────────────────────────
+    const geminiKey = process.env.GEMINI_API_KEY?.trim();
+    if (geminiKey) {
+      for (const model of GEMINI_VISION_MODELS) {
+        const result = await callGeminiVision(
           model,
-          apiKey,
+          geminiKey,
           imageData,
           question,
         );
@@ -292,46 +336,79 @@ router.post('/vision', async (req, res) => {
           return res.json({
             success: true,
             content: result.content,
-            model,
+            model: result.model,
+            provider: 'gemini',
           });
         }
 
-        const errMsg = result.error ?? 'unknown error';
+        const errMsg = result.error ?? 'unknown';
+        errors.push(errMsg);
+        console.log(
+          `[WEURA] Gemini vision "${model}" failed: ${errMsg}`,
+        );
+      }
+    } else {
+      errors.push('gemini: GEMINI_API_KEY not configured.');
+    }
 
-        // Model missing → skip silently.
-        if (isModelUnavailable(errMsg)) {
-          console.log(
-            `[WEURA] Vision model "${model}" unavailable, skipping.`,
+    // ─── Groq fallback ──────────────────────────────────────
+    const groqKey = process.env.GROQ_API_KEY?.trim();
+    if (groqKey) {
+      for (const model of GROQ_VISION_MODELS) {
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          const result = await callGroqVision(
+            model,
+            groqKey,
+            imageData,
+            question,
           );
+
+          if (result.ok && result.content) {
+            return res.json({
+              success: true,
+              content: result.content,
+              model: result.model,
+              provider: 'groq',
+            });
+          }
+
+          const errMsg = result.error ?? 'unknown';
+
+          if (isModelUnavailable(errMsg)) {
+            console.log(
+              `[WEURA] Groq vision "${model}" unavailable, skip.`,
+            );
+            break;
+          }
+
+          if (isRateLimit(errMsg) && attempt === 1) {
+            const waitMs = result.retryAfterMs ?? 15_000;
+            console.log(
+              `[WEURA] Groq vision "${model}" rate-limited. Wait ${waitMs}ms.`,
+            );
+            await new Promise((r) => setTimeout(r, waitMs));
+            continue;
+          }
+
+          errors.push(errMsg);
           break;
         }
-
-        // Rate limit → wait and retry once.
-        if (isRateLimit(errMsg) && attempt === 1) {
-          const waitMs = result.retryAfterMs ?? 15_000;
-          console.log(
-            `[WEURA] Vision "${model}" rate-limited. Waiting ${waitMs}ms then retry.`,
-          );
-          await new Promise((r) => setTimeout(r, waitMs));
-          continue;
-        }
-
-        // Real error → record and move to next model.
-        errors.push(`${model}: ${errMsg}`);
-        break;
       }
+    } else {
+      errors.push('groq: GROQ_API_KEY not configured.');
     }
 
     return res.status(502).json({
       success: false,
       error: errors.length
         ? errors.join('\n')
-        : 'Vision model unavailable.',
+        : 'Vision providers unavailable.',
     });
   } catch (error) {
     return res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : 'Vision error.',
+      error:
+        error instanceof Error ? error.message : 'Vision error.',
     });
   }
 });
