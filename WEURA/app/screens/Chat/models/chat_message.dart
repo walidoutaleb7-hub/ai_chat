@@ -22,6 +22,10 @@ class ChatMessage {
     this.searchQuery,
     this.isSearching = false,
     this.reflection,
+    this.searchUsed = false,
+    this.memoryUsed = false,
+    this.football = false,
+    this.resultCount = 0,
   });
 
   final String text;
@@ -53,4 +57,8 @@ class ChatMessage {
 
   // Reflection metadata
   final GrokReflection? reflection;
+  final bool searchUsed;
+  final bool memoryUsed;
+  final bool football;
+  final int resultCount;
 }

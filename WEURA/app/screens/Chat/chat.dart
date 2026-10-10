@@ -1658,6 +1658,10 @@ class _ChatScreenState extends State<ChatScreen>
               text: result.content,
               isUser: false,
               reflection: result.reflection,
+              searchUsed: result.searchUsed,
+              memoryUsed: result.memoryUsed,
+              football: result.football,
+              resultCount: result.resultCount,
             ),
           );
           _typingIndices.add(_messages.length - 1);
@@ -3671,15 +3675,17 @@ class _ChatScreenState extends State<ChatScreen>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // ─── Reflection pill (only for assistant, non-error) ───
-            if (!message.isError && message.reflection != null)
+            if (!message.isError &&
+                message.reflection != null &&
+                (message.searchUsed ||
+                    message.memoryUsed ||
+                    message.football))
               ReflectionCard(
                 reflection: message.reflection!,
-                searchUsed: message.reflection!.needSearch,
-                memoryUsed: message.reflection!.reason
-                    .toLowerCase()
-                    .contains('memory'),
-                football: false,
-                resultCount: message.reflection!.needSearch ? 8 : 0,
+                searchUsed: message.searchUsed,
+                memoryUsed: message.memoryUsed,
+                football: message.football,
+                resultCount: message.resultCount,
                 colors: colors,
               ),
 
