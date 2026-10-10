@@ -9,6 +9,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../../core/Theme/weura_theme.dart';
 import '../widgets/inline_image.dart';
 import 'compare_block.dart';
+import 'report_block.dart';
 import 'diagram_block.dart';
 import 'dialogue_block.dart';
 import 'latex_block.dart';
@@ -90,6 +91,11 @@ class CodeBlockBuilder extends MarkdownElementBuilder {
         serverUrl: serverUrl,
         colors: colors,
       );
+    }
+
+    // Code verification report
+    if (language == 'report' || language == 'verification') {
+      return ReportBlock(content: code, colors: colors);
     }
 
     // Steps block

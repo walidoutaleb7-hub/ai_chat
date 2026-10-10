@@ -9,6 +9,7 @@ import imageRouter from './api/image';
 import visionRouter from './api/vision';
 import playerRouter from './api/player';
 import filesRouter from './api/files';
+import codeRouter from './api/code';
 
 import {
   rateLimit,
@@ -162,6 +163,7 @@ app.use('/api', imageRouter);
 app.use('/api', visionRouter);
 app.use('/api', playerRouter);
 app.use('/api', filesRouter);
+app.use('/api', codeRouter);
 
 /* ============================================================
  *  404
