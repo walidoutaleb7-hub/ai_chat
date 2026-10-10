@@ -387,11 +387,18 @@ class _ChatScreenState extends State<ChatScreen>
     } catch (_) {}
   }
 
-  /// Called while AI is streaming. Only follows if the user is
-  /// already near the bottom. Never drags them.
+  /// Called while AI is streaming. NEVER forces scroll — if the user
+  /// scrolled up to read, we leave them alone.
   void _autoScrollDuringTyping() {
     if (!_userAtBottom) return;
-    _scrollToBottom(animated: false, force: false);
+    if (!_scrollController.hasClients) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      if (!_userAtBottom) return;
+      _scrollController.jumpTo(
+        _scrollController.position.maxScrollExtent,
+      );
+    });
   }
 
   Future<void> _editUserMessage(int index, WeuraColors colors) async {
@@ -2916,8 +2923,9 @@ class _ChatScreenState extends State<ChatScreen>
 
   (String, List<String>) _splitSources(String raw) {
     // Flexible markers: with or without colon, optional ## prefix.
+    // Matches "المصادر:" or "**المصادر:**" anywhere (same line or new line).
     final markerRegex = RegExp(
-      r'(?:^|\n)\s*#{0,6}\s*(المصادر|المصدر|Sources?|References?)\s*:?\s*\n',
+      r'(?:^|\n)\s*(?:\*\*)?#{0,6}\s*(?:\*\*)?\s*(المصادر|المصدر|Sources?|References?)\s*:?\s*(?:\*\*)?\s*',
       multiLine: true,
     );
     final matches = markerRegex.allMatches(raw).toList();
