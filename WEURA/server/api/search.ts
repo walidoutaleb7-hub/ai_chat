@@ -4,6 +4,9 @@ const router = express.Router();
 
 const TAVILY_URL = 'https://api.tavily.com/search';
 
+// Domains sent to Tavily must NOT contain: / ? * #
+const INVALID_DOMAIN_CHARS = /[/?*#]/;
+
 export type TavilyResult = {
   title: string;
   url: string;
@@ -207,7 +210,7 @@ const UNIVERSITIES = [
   'harvard.edu', 'mit.edu', 'stanford.edu', 'berkeley.edu',
   'caltech.edu', 'princeton.edu', 'yale.edu', 'columbia.edu',
   'ox.ac.uk', 'cam.ac.uk', 'imperial.ac.uk', 'ucl.ac.uk',
-  'ethz.ch', 'epfl.ch', 'ethz.ch',
+  'ethz.ch', 'epfl.ch',
   'sorbonne-universite.fr', 'psl.eu', 'polytechnique.edu',
   'utoronto.ca', 'ubc.ca', 'mcgill.ca',
   'unimelb.edu.au', 'usyd.edu.au', 'anu.edu.au',
@@ -674,7 +677,6 @@ function buildDomainList(options: SearchOptions): string[] | null {
  *  This helper filters out invalid entries and logs a warning.
  * ============================================================ */
 
-const INVALID_DOMAIN_CHARS = /[/?*#]/;
 
 export function sanitizeDomains(
   domains: string[],

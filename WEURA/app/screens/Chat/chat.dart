@@ -3014,18 +3014,18 @@ class _ChatScreenState extends State<ChatScreen>
       return text.replaceAll(RegExp(r'\s*\[(\d+)\]'), '');
     }
     return text.replaceAllMapped(
-      RegExp(r'\[(\d+)\](?!\()'),
+      RegExp(r'\s*\[(\d+)\](?!\()'),
       (match) {
         final n = int.tryParse(match.group(1)!);
+        // Out-of-range citation → drop it (no orphan [6] markers).
         if (n == null || n < 1 || n > sources.length) {
-          return match.group(0)!;
+          return '';
         }
         final source = sources[n - 1];
         if (source.startsWith('http')) {
-          return '[${match.group(1)}]($source)';
+          return ' [${match.group(1)}]($source)';
         }
-        // No URL → just remove the marker (title shown in sources list).
-        return '[${match.group(1)}](#)';
+        return ' [${match.group(1)}](#)';
       },
     );
   }
