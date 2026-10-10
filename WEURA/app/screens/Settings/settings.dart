@@ -358,18 +358,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
         width: 48,
         height: 48,
         decoration: BoxDecoration(
-          color: colors.accent,
           borderRadius: BorderRadius.circular(14),
         ),
-        child: const Center(
-          child: Text(
-            'W',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 22,
-              fontWeight: FontWeight.w900,
-              height: 1,
-            ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: Image.asset(
+            'assets/logo/app_icon.png',
+            width: 48,
+            height: 48,
+            fit: BoxFit.cover,
           ),
         ),
       ),

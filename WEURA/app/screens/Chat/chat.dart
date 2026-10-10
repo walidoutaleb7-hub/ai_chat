@@ -2027,21 +2027,22 @@ class _ChatScreenState extends State<ChatScreen>
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: colors.surface,
               borderRadius: BorderRadius.circular(13),
-              border: Border.all(
-                color: colors.accentGlow.withValues(alpha: 0.22),
-              ),
-            ),
-            child: Center(
-              child: Text(
-                'W',
-                style: TextStyle(
-                  color: colors.accentGlow,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                  height: 1,
+              boxShadow: [
+                BoxShadow(
+                  color: colors.accent.withValues(alpha: 0.25),
+                  blurRadius: 14,
+                  spreadRadius: 1,
                 ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(13),
+              child: Image.asset(
+                'assets/logo/app_icon.png',
+                width: 44,
+                height: 44,
+                fit: BoxFit.cover,
               ),
             ),
           ),

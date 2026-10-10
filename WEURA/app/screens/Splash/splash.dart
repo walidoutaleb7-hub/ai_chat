@@ -188,30 +188,26 @@ class _SplashScreenState extends State<SplashScreen>
     return Container(
       width: 104,
       height: 104,
-      padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: colors.surface,
-        border: Border.all(
-          color: colors.accentGlow.withValues(alpha: 0.22),
-          width: 1,
-        ),
+        borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: colors.accent.withValues(alpha: 0.20),
+            color: colors.accent.withValues(alpha: 0.35),
             blurRadius: 45,
             spreadRadius: 4,
           ),
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.15),
+            color: Colors.black.withValues(alpha: 0.25),
             blurRadius: 30,
           ),
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
         child: Image.asset(
           'assets/logo/app_icon.png',
+          width: 104,
+          height: 104,
           fit: BoxFit.cover,
         ),
       ),

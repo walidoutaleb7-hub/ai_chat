@@ -197,21 +197,22 @@ class _HomeScreenState extends State<HomeScreen>
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: colors.surface,
               borderRadius: BorderRadius.circular(13),
-              border: Border.all(
-                color: colors.accentGlow.withValues(alpha: 0.22),
-              ),
-            ),
-            child: Center(
-              child: Text(
-                'W',
-                style: TextStyle(
-                  color: colors.accentGlow,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                  height: 1,
+              boxShadow: [
+                BoxShadow(
+                  color: colors.accent.withValues(alpha: 0.25),
+                  blurRadius: 14,
+                  spreadRadius: 1,
                 ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(13),
+              child: Image.asset(
+                'assets/logo/app_icon.png',
+                width: 44,
+                height: 44,
+                fit: BoxFit.cover,
               ),
             ),
           ),
@@ -373,21 +374,22 @@ class _HomeScreenState extends State<HomeScreen>
                 width: 27,
                 height: 27,
                 decoration: BoxDecoration(
-                  color: colors.accentSoft,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: colors.accentGlow.withValues(alpha: 0.35),
-                  ),
-                ),
-                child: Center(
-                  child: Text(
-                    'W',
-                    style: TextStyle(
-                      color: colors.accentGlow,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w900,
-                      height: 1,
+                  boxShadow: [
+                    BoxShadow(
+                      color: colors.accent.withValues(alpha: 0.30),
+                      blurRadius: 10,
+                      spreadRadius: 1,
                     ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.asset(
+                    'assets/logo/app_icon.png',
+                    width: 27,
+                    height: 27,
+                    fit: BoxFit.cover,
                   ),
                 ),
               ),
@@ -478,28 +480,22 @@ class _HomeScreenState extends State<HomeScreen>
       width: 86,
       height: 86,
       decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: colors.surface,
-        border: Border.all(
-          color: colors.accentGlow.withValues(alpha: 0.20),
-        ),
+        borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color: colors.accent.withValues(alpha: 0.18),
+            color: colors.accent.withValues(alpha: 0.30),
             blurRadius: 45,
             spreadRadius: 5,
           ),
         ],
       ),
-      child: Center(
-        child: Text(
-          'W',
-          style: TextStyle(
-            color: colors.accentGlow,
-            fontSize: 40,
-            fontWeight: FontWeight.w900,
-            height: 1,
-          ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(22),
+        child: Image.asset(
+          'assets/logo/app_icon.png',
+          width: 86,
+          height: 86,
+          fit: BoxFit.cover,
         ),
       ),
     );
