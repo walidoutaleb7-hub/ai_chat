@@ -41,7 +41,6 @@ jobs:
       - name: Fix Android config
         working-directory: WEURA/android
         run: |
-          sed -i 's|id "org.jetbrains.kotlin.android" version "[^"]*"|id "org.jetbrains.kotlin.android" version "2.1.0"|' settings.gradle 2>/dev/null || true
           sed -i 's|^\(\s*\)compileSdk = .*|\1compileSdk = 36|' app/build.gradle 2>/dev/null || true
           sed -i 's|^\(\s*\)compileSdkVersion .*|\1compileSdkVersion 36|' app/build.gradle 2>/dev/null || true
           sed -i 's|^\(\s*\)ndkVersion = .*|\1ndkVersion = "27.0.12077973"|' app/build.gradle 2>/dev/null || true
@@ -61,22 +60,15 @@ jobs:
           ls -la android/app/google-services.json
           head -5 android/app/google-services.json
 
-      - name: Add Google Services plugin
+      - name: Fix settings.gradle plugins
         working-directory: WEURA/android
         run: |
-          # settings.gradle — add google-services plugin classpath
+          sed -i 's|id "org.jetbrains.kotlin.android" version "[^"]*"|id "org.jetbrains.kotlin.android" version "2.1.20"|' settings.gradle
           if ! grep -q 'com.google.gms.google-services' settings.gradle; then
-            sed -i 's|id "org.jetbrains.kotlin.android" version "2.1.0"|id "org.jetbrains.kotlin.android" version "2.1.0"\n    id "com.google.gms.google-services" version "4.4.2" apply false|' settings.gradle
+            sed -i 's|id "org.jetbrains.kotlin.android" version "2.1.20" apply false|id "org.jetbrains.kotlin.android" version "2.1.20" apply false\n    id "com.google.gms.google-services" version "4.4.2" apply false|' settings.gradle
           fi
           echo "=== settings.gradle ==="
           cat settings.gradle
-
-          # app/build.gradle — add google-services plugin to the plugins block
-          if ! grep -q 'com.google.gms.google-services' app/build.gradle; then
-            sed -i 's|id "dev.flutter.flutter-gradle-plugin"|id "dev.flutter.flutter-gradle-plugin"\n    id "com.google.gms.google-services"|' app/build.gradle
-          fi
-          echo "=== app/build.gradle (first 20 lines) ==="
-          head -20 app/build.gradle
 
       - name: Get dependencies
         working-directory: WEURA
