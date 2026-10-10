@@ -1278,8 +1278,12 @@ function analyzeSourceAgreement(
  *  BUILD MESSAGES
  * ============================================================ */
 
-const MAX_HISTORY_MESSAGES = 4;
-const MAX_HISTORY_CHARS = 300;
+// Increased to preserve links, sources, and important context
+// from earlier turns. Assistant replies can be long → truncate
+// those first; NEVER truncate user messages.
+const MAX_HISTORY_MESSAGES = 30;
+const MAX_HISTORY_CHARS = 4000;
+const MAX_USER_MSG_CHARS = 8000;
 
 async function buildMessages(
   safeMessages: GrokMessage[],
@@ -1335,6 +1339,24 @@ async function buildMessages(
         : buildEmptyMemoryBlock(),
     },
     { role: 'system', content: buildModeBlock(mode) },
+    {
+      role: 'system',
+      content:
+        'CONTEXT INTEGRITY (never break):\n' +
+        '- The conversation history above is the ONLY source of prior context.\n' +
+        '- If the user references a source, link, or fact from an EARLIER turn\n' +
+        '  that you cannot see, reply honestly:\n' +
+        '  "لم يعد ذلك الجزء من المحادثة متاحًا لي. أعد إرسال الرابط."\n' +
+        '  / "That part of the conversation is no longer available to me.\n' +
+        '     Please resend the link."\n' +
+        '- NEVER replace a user-provided source with a Wikipedia link or any\n' +
+        '  other source you invented.\n' +
+        '- NEVER claim a source exists if you did not see it in this turn\n' +
+        '  or the visible history above.\n' +
+        '- If you cite [1], [2] etc., they MUST come from SEARCH RESULTS in\n' +
+        '  THIS request or explicit URLs the user provided.\n' +
+        '- When in doubt → say you don\'t see it. Do NOT hallucinate.',
+    },
     {
       role: 'system',
       content: buildVerificationBlock(
@@ -1460,15 +1482,19 @@ async function buildMessages(
 
   const history = safeMessages.slice(-MAX_HISTORY_MESSAGES);
 
-  // Do NOT truncate the LAST message — the AI must read it fully,
-  // even if it's thousands of lines. Only older messages get trimmed.
+  // Truncate ONLY long assistant replies. Never user messages —
+  // they often contain URLs and data the user will reference later.
   const lastIdx = history.length - 1;
   for (let i = 0; i < history.length; i++) {
     const msg = history[i];
     const isLast = i === lastIdx;
-    const content = (!isLast && msg.content.length > MAX_HISTORY_CHARS)
-      ? msg.content.slice(0, MAX_HISTORY_CHARS) + '...'
+    const isUser = msg.role === 'user';
+    const limit = isUser ? MAX_USER_MSG_CHARS : MAX_HISTORY_CHARS;
+
+    const content = (!isLast && msg.content.length > limit)
+      ? msg.content.slice(0, limit) + '...'
       : msg.content;
+
     out.push({ role: msg.role, content });
   }
 

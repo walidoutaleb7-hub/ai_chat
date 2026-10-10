@@ -1596,45 +1596,47 @@ class _ChatScreenState extends State<ChatScreen>
         userName: userName,
       );
 
-      // Build a CLEAN history:
-      // 1. Skip special messages (player cards, images) AND the user
-      //    message that triggered them.
-      // 2. Guarantee no consecutive user messages.
+      // Build a CLEAN history for the AI:
+      // 1. Keep ALL user + assistant text messages in order.
+      // 2. Skip image/player/error metadata messages (no text to send).
+      // 3. NEVER clear the buffer — earlier links/data must survive.
+      // 4. Allow up to 30 messages. Merge consecutive same-role
+      //    messages instead of dropping them.
       final history = <GrokMessage>[];
-      final buffer = <ChatMessage>[];
 
       for (final m in _messages) {
-        // Reset buffer when we hit a special feature message.
-        if (m.imageUrl != null ||
-            m.visionImagePath != null ||
-            m.playerData != null ||
-            m.isError) {
-          buffer.clear();
-          continue;
-        }
+        // Special messages without text → skip silently, keep buffer.
+        if (m.isError) continue;
+        if (m.imageUrl != null) continue;
+        if (m.visionImagePath != null) continue;
+        if (m.playerData != null) continue;
+        if (m.isSearching || m.searchResults != null) continue;
 
-        if (m.text.trim().isEmpty) continue;
+        final text = m.text.trim();
+        if (text.isEmpty) continue;
 
-        buffer.add(m);
-      }
-
-      // Take last 6 from the clean buffer.
-      final recent = buffer.length > 6
-          ? buffer.sublist(buffer.length - 6)
-          : buffer;
-
-      // Build the messages, ensuring no two user messages in a row.
-      for (final m in recent) {
         final role = m.isUser ? 'user' : 'assistant';
+
+        // Merge consecutive same-role messages instead of dropping.
         if (history.isNotEmpty && history.last.role == role) {
-          // Skip duplicate role (merge with previous).
-          continue;
+          final merged =
+              '${history.last.content}\n\n$text';
+          history[history.length - 1] = GrokMessage(
+            role: role,
+            content: merged,
+          );
+        } else {
+          history.add(GrokMessage(role: role, content: text));
         }
-        history.add(GrokMessage(role: role, content: m.text));
       }
+
+      // Keep the last 30 turns. Newest-first trimming.
+      final trimmed = history.length > 30
+          ? history.sublist(history.length - 30)
+          : history;
 
       final result = await _grok.sendMessage(
-        messages: history,
+        messages: trimmed,
         memory: enrichedMemory,
         mode: resolvedMode.name,
       );
