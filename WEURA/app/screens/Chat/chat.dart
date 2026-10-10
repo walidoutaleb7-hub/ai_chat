@@ -2707,47 +2707,156 @@ class _ChatScreenState extends State<ChatScreen>
   }
 
   Widget _emptyState(WeuraColors colors) {
+    final isAr = AppSettingsManager.instance.effectiveLanguage == 'Arabic';
+
+    final suggestions = isAr
+        ? const [
+            'اشرحلي حاجة',
+            'ساعدني نكتب',
+            'حلّل هذه الفكرة',
+            'ساعدني في الكود',
+          ]
+        : const [
+            'Explain something',
+            'Help me write',
+            'Analyze an idea',
+            'Help me code',
+          ];
+
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(28),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            // ─── Glowing logo ───
             Container(
-              width: 68,
-              height: 68,
+              width: 88,
+              height: 88,
               decoration: BoxDecoration(
-                color: colors.accentSoft,
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(
-                  color: colors.accentGlow.withValues(alpha: 0.18),
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: colors.accent.withValues(alpha: 0.35),
+                    blurRadius: 50,
+                    spreadRadius: 6,
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(24),
+                child: Image.asset(
+                  'assets/logo/app_icon.png',
+                  width: 88,
+                  height: 88,
+                  fit: BoxFit.cover,
                 ),
               ),
-              child: Icon(
-                Icons.auto_awesome_rounded,
-                size: 32,
-                color: colors.accentGlow,
+            ),
+            const SizedBox(height: 32),
+
+            // ─── Gradient title ───
+            ShaderMask(
+              blendMode: BlendMode.srcIn,
+              shaderCallback: (bounds) => LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  colors.textPrimary,
+                  colors.accentGlow,
+                  colors.accent,
+                ],
+                stops: const [0.0, 0.6, 1.0],
+              ).createShader(bounds),
+              child: Text(
+                isAr ? 'فكّر أبعد.' : 'Think Beyond.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 42,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -1.0,
+                  height: 1.1,
+                ),
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 14),
+
             Text(
-              'Think Beyond.',
+              isAr
+                  ? 'مساحتك الذكية للأفكار، الأجوبة والإبداع.'
+                  : 'Your intelligent space for ideas, answers and creation.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: colors.textPrimary,
-                fontSize: 30,
-                fontWeight: FontWeight.w700,
+                color: colors.textSecondary,
+                fontSize: 15.5,
+                height: 1.5,
               ),
             ),
-            const SizedBox(height: 10),
-            Text(
-              'Ask WEURA anything.',
-              style: TextStyle(
-                color: colors.textSecondary,
-                fontSize: 16,
-              ),
+            const SizedBox(height: 48),
+
+            // ─── Suggestion chips ───
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 10,
+              runSpacing: 10,
+              children: suggestions.map((s) {
+                return _suggestionChip(colors, s);
+              }).toList(),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _suggestionChip(WeuraColors colors, String text) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          if (_isLoading) return;
+          _sendMessage(text);
+        },
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: 18,
+            vertical: 13,
+          ),
+          decoration: BoxDecoration(
+            color: colors.surface.withValues(alpha: 0.85),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: colors.accentGlow.withValues(alpha: 0.20),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: colors.accent.withValues(alpha: 0.08),
+                blurRadius: 16,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.auto_awesome_rounded,
+                size: 15,
+                color: colors.accentGlow,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                text,
+                style: TextStyle(
+                  color: colors.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

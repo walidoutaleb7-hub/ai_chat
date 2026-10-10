@@ -65,21 +65,47 @@ class _HomeScreenState extends State<HomeScreen>
   void _openChat([String? message]) {
     final text = message ?? _controller.text.trim();
 
-    if (text.isEmpty) {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => const ChatScreen(),
-        ),
-      );
-      return;
-    }
-
-    _controller.clear();
+    if (text.isNotEmpty) _controller.clear();
 
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ChatScreen(initialMessage: text),
+      _smoothChatRoute(
+        ChatScreen(
+          initialMessage: text.isEmpty ? null : text,
+        ),
       ),
+    );
+  }
+
+  /// Premium fade + slide-up route for chat transitions.
+  Route<void> _smoothChatRoute(Widget page) {
+    return PageRouteBuilder<void>(
+      transitionDuration: const Duration(milliseconds: 420),
+      reverseTransitionDuration: const Duration(milliseconds: 320),
+      pageBuilder: (_, __, ___) => page,
+      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+          reverseCurve: Curves.easeInCubic,
+        );
+
+        final slide = Tween<Offset>(
+          begin: const Offset(0, 0.08),
+          end: Offset.zero,
+        ).animate(curved);
+
+        final fade = Tween<double>(begin: 0.0, end: 1.0).animate(curved);
+
+        final scale = Tween<double>(begin: 0.96, end: 1.0).animate(curved);
+
+        return FadeTransition(
+          opacity: fade,
+          child: SlideTransition(
+            position: slide,
+            child: ScaleTransition(scale: scale, child: child),
+          ),
+        );
+      },
     );
   }
 
