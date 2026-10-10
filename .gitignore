@@ -90,3 +90,7 @@ package-lock.json
 *.b64
 *.keystore
 weura-release.*
+
+# ─── Firebase config (NEVER commit) ───
+google-services.json
+google-services.b64

@@ -54,6 +54,30 @@ jobs:
             sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>\n    <uses-permission android:name="android.permission.CAMERA"/>\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>\n    <application|' "$MANIFEST"
           fi
 
+      - name: Decode google-services.json
+        working-directory: WEURA
+        run: |
+          echo "${{ secrets.GOOGLE_SERVICES_JSON }}" | base64 -d > android/app/google-services.json
+          ls -la android/app/google-services.json
+          head -5 android/app/google-services.json
+
+      - name: Add Google Services plugin
+        working-directory: WEURA/android
+        run: |
+          # settings.gradle — add google-services plugin classpath
+          if ! grep -q 'com.google.gms.google-services' settings.gradle; then
+            sed -i 's|id "org.jetbrains.kotlin.android" version "2.1.0"|id "org.jetbrains.kotlin.android" version "2.1.0"\n    id "com.google.gms.google-services" version "4.4.2" apply false|' settings.gradle
+          fi
+          echo "=== settings.gradle ==="
+          cat settings.gradle
+
+          # app/build.gradle — add google-services plugin to the plugins block
+          if ! grep -q 'com.google.gms.google-services' app/build.gradle; then
+            sed -i 's|id "dev.flutter.flutter-gradle-plugin"|id "dev.flutter.flutter-gradle-plugin"\n    id "com.google.gms.google-services"|' app/build.gradle
+          fi
+          echo "=== app/build.gradle (first 20 lines) ==="
+          head -20 app/build.gradle
+
       - name: Get dependencies
         working-directory: WEURA
         run: flutter pub get
