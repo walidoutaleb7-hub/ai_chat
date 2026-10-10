@@ -353,7 +353,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       applicationName: 'WEURA AI',
       applicationVersion: '1.0.0',
-      applicationLegalese: 'Think Beyond. • Walid Out',
+      applicationLegalese: 'Think Beyond. • Walid Outaleb',
       applicationIcon: Container(
         width: 48,
         height: 48,
