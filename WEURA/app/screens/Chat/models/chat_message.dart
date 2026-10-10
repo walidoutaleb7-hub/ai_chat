@@ -31,8 +31,14 @@ class ChatMessage {
   final String? imageLocalPath;
   final bool isImageLoading;
 
-  // Vision (uploaded image being analyzed)
-  final String? visionImagePath;
+  // Vision (uploaded images being analyzed) — supports multiple
+  final List<String>? visionImagePaths;
+
+  // Legacy single-image field (kept for backwards compatibility)
+  String? get visionImagePath =>
+      (visionImagePaths?.isNotEmpty ?? false)
+          ? visionImagePaths!.first
+          : null;
 
   // Player card (football)
   final Map<String, dynamic>? playerData;

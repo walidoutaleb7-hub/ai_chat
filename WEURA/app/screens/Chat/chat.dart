@@ -193,7 +193,7 @@ class _ChatScreenState extends State<ChatScreen>
               imageUrl: msg.imageUrl,
               imagePrompt: msg.imagePrompt,
               playerData: msg.playerData,
-              visionImagePath: msg.visionImagePath,
+              visionImagePaths: msg.visionImagePaths,
               imageLocalPath: msg.imageLocalPath,
             ),
           );
@@ -350,7 +350,7 @@ class _ChatScreenState extends State<ChatScreen>
           imageUrl: msg.imageUrl,
           imagePrompt: msg.imagePrompt,
           playerData: msg.playerData,
-          visionImagePath: msg.visionImagePath,
+          visionImagePaths: msg.visionImagePaths,
           imageLocalPath: msg.imageLocalPath,
         ),
       );
@@ -1258,7 +1258,7 @@ class _ChatScreenState extends State<ChatScreen>
           ChatMessage(
             text: defaultQuestion,
             isUser: true,
-            visionImagePath: images.first.path,
+            visionImagePaths: images.map((i) => i.path).toList(),
           ),
         );
         _isLoading = true;
@@ -1382,7 +1382,7 @@ class _ChatScreenState extends State<ChatScreen>
         ChatMessage(
           text: instruction,
           isUser: true,
-          visionImagePath: image.path,
+          visionImagePaths: [image.path],
         ),
       );
       _messages.add(
@@ -3341,6 +3341,71 @@ class _ChatScreenState extends State<ChatScreen>
     );
   }
 
+  Widget _userImagesGrid(WeuraColors colors, List<String> paths) {
+    final count = paths.length;
+
+    // Single image → show large.
+    if (count == 1) {
+      return _userImageTile(colors, paths.first, 280, 200);
+    }
+
+    // 2 images → side by side, bigger.
+    if (count == 2) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(child: _userImageTile(colors, paths[0], 130, 130)),
+          const SizedBox(width: 6),
+          Flexible(child: _userImageTile(colors, paths[1], 130, 130)),
+        ],
+      );
+    }
+
+    // 3+ images → grid (3 per row).
+    return SizedBox(
+      width: 280,
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        children: paths.map((p) {
+          return _userImageTile(colors, p, 88, 88);
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _userImageTile(
+    WeuraColors colors,
+    String path,
+    double width,
+    double height,
+  ) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Image.file(
+        File(path),
+        width: width,
+        height: height,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Container(
+          width: width,
+          height: height,
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Center(
+            child: Icon(
+              Icons.broken_image_outlined,
+              color: colors.userBubbleText.withValues(alpha: 0.7),
+              size: 20,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _userBubble(
     WeuraColors colors,
     ChatMessage message,
@@ -3400,31 +3465,10 @@ class _ChatScreenState extends State<ChatScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (message.visionImagePath != null) ...[
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(14),
-                      child: Image.file(
-                        File(message.visionImagePath!),
-                        width: 280,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
-                          width: 280,
-                          height: 150,
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: Center(
-                            child: Text(
-                              '🖼️ Image',
-                              style: TextStyle(
-                                color: colors.userBubbleText,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
+                  if ((message.visionImagePaths?.isNotEmpty ?? false)) ...[
+                    _userImagesGrid(
+                      colors,
+                      message.visionImagePaths!,
                     ),
                     if (message.text.trim().isNotEmpty)
                       const SizedBox(height: 10),

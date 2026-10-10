@@ -14,7 +14,7 @@ class ChatMessageData {
     this.imageUrl,
     this.imagePrompt,
     this.playerData,
-    this.visionImagePath,
+    this.visionImagePaths,
     this.imageLocalPath,
   });
 
@@ -24,7 +24,14 @@ class ChatMessageData {
   final String? imageUrl;
   final String? imagePrompt;
   final Map<String, dynamic>? playerData;
-  final String? visionImagePath;
+  /// List of image paths (may hold multiple images for vision).
+  final List<String>? visionImagePaths;
+
+  /// Legacy single-image accessor (first of the list).
+  String? get visionImagePath =>
+      (visionImagePaths?.isNotEmpty ?? false)
+          ? visionImagePaths!.first
+          : null;
   final String? imageLocalPath;
 
   Map<String, dynamic> toJson() {
@@ -35,7 +42,7 @@ class ChatMessageData {
       if (imageUrl != null) 'imageUrl': imageUrl,
       if (imagePrompt != null) 'imagePrompt': imagePrompt,
       if (playerData != null) 'playerData': playerData,
-      if (visionImagePath != null) 'visionImagePath': visionImagePath,
+      if (visionImagePaths != null) 'visionImagePaths': visionImagePaths,
       if (imageLocalPath != null) 'imageLocalPath': imageLocalPath,
     };
   }
@@ -53,7 +60,14 @@ class ChatMessageData {
       playerData: json['playerData'] is Map
           ? Map<String, dynamic>.from(json['playerData'] as Map)
           : null,
-      visionImagePath: json['visionImagePath']?.toString(),
+      visionImagePaths: (json['visionImagePaths'] is List)
+          ? (json['visionImagePaths'] as List)
+              .whereType<String>()
+              .toList()
+          : (json['visionImagePath'] is String &&
+                  (json['visionImagePath'] as String).isNotEmpty)
+              ? [json['visionImagePath'] as String]
+              : null,
       imageLocalPath: json['imageLocalPath']?.toString(),
     );
   }
@@ -65,7 +79,7 @@ class ChatMessageData {
     String? imageUrl,
     String? imagePrompt,
     Map<String, dynamic>? playerData,
-    String? visionImagePath,
+    List<String>? visionImagePaths,
     String? imageLocalPath,
   }) {
     return ChatMessageData(
@@ -75,7 +89,7 @@ class ChatMessageData {
       imageUrl: imageUrl ?? this.imageUrl,
       imagePrompt: imagePrompt ?? this.imagePrompt,
       playerData: playerData ?? this.playerData,
-      visionImagePath: visionImagePath ?? this.visionImagePath,
+      visionImagePaths: visionImagePaths ?? this.visionImagePaths,
       imageLocalPath: imageLocalPath ?? this.imageLocalPath,
     );
   }
