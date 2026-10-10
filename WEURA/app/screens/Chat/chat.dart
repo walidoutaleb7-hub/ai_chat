@@ -2482,123 +2482,178 @@ class _ChatScreenState extends State<ChatScreen>
   }
 
   Widget _attachedImagesRow(WeuraColors colors) {
+    const tileSize = 96.0;
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 4, 14, 0),
+      padding: const EdgeInsets.fromLTRB(14, 6, 14, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ─── Header: count + clear all ───
           Padding(
-            padding: const EdgeInsets.only(left: 4, bottom: 6),
+            padding: const EdgeInsets.only(left: 4, right: 4, bottom: 8),
             child: Row(
               children: [
-                Icon(
-                  Icons.image_rounded,
-                  size: 14,
-                  color: colors.accentGlow,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  '${_attachedImages.length} / $_maxImages',
-                  style: TextStyle(
-                    color: colors.textMuted,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: colors.accentSoft,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.image_rounded,
+                        size: 13,
+                        color: colors.accentGlow,
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        '${_attachedImages.length} / $_maxImages',
+                        style: TextStyle(
+                          color: colors.accentGlow,
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const Spacer(),
                 if (_attachedImages.length > 1)
-                  TextButton.icon(
-                    onPressed: () =>
-                        setState(() => _attachedImages.clear()),
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 2,
-                      ),
-                      minimumSize: Size.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    icon: Icon(
-                      Icons.close_rounded,
-                      size: 14,
-                      color: colors.danger,
-                    ),
-                    label: Text(
-                      'Clear all',
-                      style: TextStyle(
-                        color: colors.danger,
-                        fontSize: 11.5,
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () =>
+                          setState(() => _attachedImages.clear()),
+                      borderRadius: BorderRadius.circular(8),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.delete_outline_rounded,
+                              size: 15,
+                              color: colors.danger,
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              'Clear all',
+                              style: TextStyle(
+                                color: colors.danger,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
               ],
             ),
           ),
+
+          // ─── Horizontal tile strip ───
           SizedBox(
-            height: 72,
+            height: tileSize,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 2),
               itemCount: _attachedImages.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              separatorBuilder: (_, __) => const SizedBox(width: 10),
               itemBuilder: (context, i) {
                 final image = _attachedImages[i];
-                return Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: Container(
-                        width: 72,
-                        height: 72,
-                        decoration: BoxDecoration(
-                          color: colors.surface,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: colors.accentGlow
-                                .withValues(alpha: 0.30),
-                          ),
-                        ),
-                        child: Image.file(
-                          File(image.path),
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Icon(
-                            Icons.broken_image_outlined,
-                            color: colors.textMuted,
-                            size: 22,
-                          ),
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      top: -6,
-                      right: -6,
-                      child: Material(
-                        color: colors.danger,
-                        shape: const CircleBorder(),
-                        child: InkWell(
-                          onTap: () {
-                            setState(() => _attachedImages.removeAt(i));
-                          },
-                          customBorder: const CircleBorder(),
-                          child: const Padding(
-                            padding: EdgeInsets.all(4),
-                            child: Icon(
-                              Icons.close_rounded,
-                              size: 12,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+                return _attachedImageTile(
+                  colors: colors,
+                  path: image.path,
+                  size: tileSize,
+                  onRemove: () {
+                    setState(() => _attachedImages.removeAt(i));
+                  },
                 );
               },
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _attachedImageTile({
+    required WeuraColors colors,
+    required String path,
+    required double size,
+    required VoidCallback onRemove,
+  }) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              color: colors.surface,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: colors.accentGlow.withValues(alpha: 0.25),
+                width: 1.2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.15),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: Image.file(
+              File(path),
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => Center(
+                child: Icon(
+                  Icons.broken_image_outlined,
+                  color: colors.textMuted,
+                  size: 24,
+                ),
+              ),
+            ),
+          ),
+        ),
+        // ─── Remove button (top-right, outside the tile) ───
+        Positioned(
+          top: -8,
+          right: -8,
+          child: Material(
+            color: colors.danger,
+            shape: const CircleBorder(),
+            elevation: 2,
+            shadowColor: colors.danger.withValues(alpha: 0.5),
+            child: InkWell(
+              onTap: onRemove,
+              customBorder: const CircleBorder(),
+              child: const Padding(
+                padding: EdgeInsets.all(5),
+                child: Icon(
+                  Icons.close_rounded,
+                  size: 14,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
